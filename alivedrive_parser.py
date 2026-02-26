@@ -26,6 +26,15 @@ ENGINE_SPEED_SCALE = 2.6179938780e-02  # rad/s per raw unit
 STEERING_SCALE = 1.0908307825e-03  # rad per raw unit
 HEADING_SCALE = 1.0908307825e-03  # rad per raw unit (same as steering)
 
+# Wheel speed uses the same angular velocity scale as engine speed
+WHEEL_SPEED_SCALE = ENGINE_SPEED_SCALE  # 0.026180 rad/s per raw unit
+# Effective tire rolling radius for CT5-V Blackwing 245/35R19 (compressed)
+TIRE_RADIUS_M = 0.321  # best-fit vs GPS; nominal geometric = 0.337 m
+
+# Engine torque zero-offset encoding
+TORQUE_ZERO_OFFSET = 2048  # raw value at zero torque
+TORQUE_SCALE_NM = 0.5  # N·m per raw count (preliminary estimate)
+
 # Conversion helpers
 RAD_TO_RPM = 60.0 / (2.0 * math.pi)
 MPS_TO_KPH = 3.6
@@ -249,7 +258,11 @@ def parse_adcp(data):
 
 
 def parse_adcr(data):
-    """Parse the rate table from the adcr box payload."""
+    """Parse the rate table from the adcr box payload.
+
+    In version 1, the first group uses 3 padding bytes before its period field,
+    but subsequent groups use 4 padding bytes.
+    """
     offset = 0
     # Header: version(1) + flags(1) + num_groups(1) + pad(1)
     version = data[0]
@@ -258,9 +271,11 @@ def parse_adcr(data):
 
     groups = []
     for g in range(num_groups):
-        # 3 padding bytes + 4 byte period
-        pad = data[offset:offset+3]
-        offset += 3
+        # Version 1: first group has 3 pad bytes, subsequent have 4
+        pad_size = 3 if g == 0 else 4
+        offset += pad_size
+        if offset + 6 > len(data):
+            break
         period = struct.unpack('>I', data[offset:offset+4])[0]
         offset += 4
         num_channels = struct.unpack('>H', data[offset:offset+2])[0]
@@ -268,6 +283,8 @@ def parse_adcr(data):
 
         channels = []
         for c in range(num_channels):
+            if offset + 3 > len(data):
+                break
             ch_id = struct.unpack('>H', data[offset:offset+2])[0]
             offset += 2
             width = data[offset]
@@ -465,21 +482,38 @@ def decode_100hz_frame(packet, offset):
     frame = packet[offset:offset+17]
     if len(frame) < 17:
         return None
+
+    torque_raw = struct.unpack('>H', frame[3:5])[0]
+    ws_fl_raw = struct.unpack('>H', frame[7:9])[0]
+    ws_fr_raw = struct.unpack('>H', frame[9:11])[0]
+    ws_rl_raw = struct.unpack('>H', frame[11:13])[0]
+    ws_rr_raw = struct.unpack('>H', frame[13:15])[0]
+
     return {
         'motor_powerlevel': frame[0],
         'engine_rpm': struct.unpack('>H', frame[1:3])[0] * ENGINE_SPEED_SCALE * RAD_TO_RPM,
-        'engine_torque_raw': struct.unpack('>H', frame[3:5])[0],
+        'engine_torque_raw': torque_raw,
+        'engine_torque_nm': (torque_raw - TORQUE_ZERO_OFFSET) * TORQUE_SCALE_NM,
         'steering_angle_deg': struct.unpack('>h', frame[5:7])[0] * STEERING_SCALE * RAD_TO_DEG,
-        'wheel_speed_fl_raw': struct.unpack('>H', frame[7:9])[0],
-        'wheel_speed_fr_raw': struct.unpack('>H', frame[9:11])[0],
-        'wheel_speed_rl_raw': struct.unpack('>H', frame[11:13])[0],
-        'wheel_speed_rr_raw': struct.unpack('>H', frame[13:15])[0],
+        'wheel_speed_fl_raw': ws_fl_raw,
+        'wheel_speed_fr_raw': ws_fr_raw,
+        'wheel_speed_rl_raw': ws_rl_raw,
+        'wheel_speed_rr_raw': ws_rr_raw,
+        'wheel_speed_fl_kph': ws_fl_raw * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+        'wheel_speed_fr_kph': ws_fr_raw * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+        'wheel_speed_rl_kph': ws_rl_raw * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+        'wheel_speed_rr_kph': ws_rr_raw * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
         'gyro_yaw_raw': struct.unpack('>h', frame[15:17])[0],
     }
 
 
 def decode_50hz_frame(packet, offset):
-    """Decode a 50Hz sub-frame (24 bytes = 6 × float32)."""
+    """Decode a 50Hz sub-frame (24 bytes = 6 × float32).
+
+    The 6 channels are two independent 3-axis accelerometer readings:
+    - Set A (raw/tilted sensor frame): channels 0, 2, 4
+    - Set B (gravity-compensated vehicle frame): channels 1, 3, 5
+    """
     if offset + 24 > len(packet):
         return None
 
@@ -488,12 +522,12 @@ def decode_50hz_frame(packet, offset):
         floats.append(struct.unpack('>f', packet[offset+i*4:offset+i*4+4])[0])
 
     return {
-        'accel_lateral_max_g': floats[0],
-        'accel_lateral_min_g': floats[1],
-        'accel_longitudinal_max_g': floats[2],
-        'accel_longitudinal_min_g': floats[3],
-        'accel_vertical_1': floats[4],
-        'accel_vertical_2': floats[5],
+        'accel_raw_lateral_g': floats[0],
+        'accel_comp_lateral_g': floats[1],
+        'accel_raw_longitudinal_g': floats[2],
+        'accel_comp_longitudinal_g': floats[3],
+        'accel_raw_vertical_g': floats[4],
+        'accel_comp_vertical_g': floats[5],
     }
 
 
@@ -546,6 +580,24 @@ def decode_5hz_frame(packet, offset):
         'engine_startstop': packet[offset+1],
         'esc_status': packet[offset+2],
         'tcs_status': packet[offset+3],
+    }
+
+
+def decode_1hz_frame(packet, lat_offset):
+    """Decode confirmed fields from the 1 Hz frame (31 bytes).
+
+    The 1 Hz block starts after the 10 Hz frame (26 bytes), 5 Hz frame (4 bytes),
+    and 2 Hz frame (1 byte) in frame 0: lat_offset + 26 + 4 + 1 = lat_offset + 31.
+    """
+    hz1_offset = lat_offset + 26 + 4 + 1  # after group2 + group3 + group4
+    if hz1_offset + 31 > len(packet):
+        return None
+
+    block = packet[hz1_offset:hz1_offset + 31]
+    return {
+        'fuel_level_pct': block[8],
+        'battery_voltage_v': block[9] * 0.1,
+        'transmission_temp_c': block[11] - 40,
     }
 
 
@@ -627,25 +679,36 @@ def decode_packet(packet, packet_idx, reference_lat_range=None):
         if hz100_frames:
             record['engine_rpm'] = sum(f['engine_rpm'] for f in hz100_frames) / len(hz100_frames)
             record['engine_torque_raw'] = sum(f['engine_torque_raw'] for f in hz100_frames) / len(hz100_frames)
+            record['engine_torque_nm'] = sum(f['engine_torque_nm'] for f in hz100_frames) / len(hz100_frames)
             record['steering_angle_deg'] = sum(f['steering_angle_deg'] for f in hz100_frames) / len(hz100_frames)
             record['wheel_speed_fl_raw'] = sum(f['wheel_speed_fl_raw'] for f in hz100_frames) / len(hz100_frames)
             record['wheel_speed_fr_raw'] = sum(f['wheel_speed_fr_raw'] for f in hz100_frames) / len(hz100_frames)
             record['wheel_speed_rl_raw'] = sum(f['wheel_speed_rl_raw'] for f in hz100_frames) / len(hz100_frames)
             record['wheel_speed_rr_raw'] = sum(f['wheel_speed_rr_raw'] for f in hz100_frames) / len(hz100_frames)
+            record['wheel_speed_fl_kph'] = sum(f['wheel_speed_fl_kph'] for f in hz100_frames) / len(hz100_frames)
+            record['wheel_speed_fr_kph'] = sum(f['wheel_speed_fr_kph'] for f in hz100_frames) / len(hz100_frames)
+            record['wheel_speed_rl_kph'] = sum(f['wheel_speed_rl_kph'] for f in hz100_frames) / len(hz100_frames)
+            record['wheel_speed_rr_kph'] = sum(f['wheel_speed_rr_kph'] for f in hz100_frames) / len(hz100_frames)
             record['gyro_yaw_raw'] = sum(f['gyro_yaw_raw'] for f in hz100_frames) / len(hz100_frames)
             record['motor_powerlevel'] = hz100_frames[-1]['motor_powerlevel']
 
-        # Add averaged 50Hz data
+        # Add averaged 50Hz data (gravity-compensated vehicle-frame values)
         if hz50_frames:
-            record['accel_lateral_g'] = sum(f['accel_lateral_max_g'] for f in hz50_frames) / len(hz50_frames)
-            record['accel_longitudinal_g'] = sum(f['accel_longitudinal_max_g'] for f in hz50_frames) / len(hz50_frames)
-            record['accel_vertical_g'] = sum(f['accel_vertical_2'] for f in hz50_frames) / len(hz50_frames)
+            record['accel_lateral_g'] = sum(f['accel_comp_lateral_g'] for f in hz50_frames) / len(hz50_frames)
+            record['accel_longitudinal_g'] = sum(f['accel_comp_longitudinal_g'] for f in hz50_frames) / len(hz50_frames)
+            record['accel_vertical_g'] = sum(f['accel_comp_vertical_g'] for f in hz50_frames) / len(hz50_frames)
 
         # Add 5Hz data
         if hz5_data:
             record['brake'] = hz5_data['brake']
             record['esc_status'] = hz5_data['esc_status']
             record['tcs_status'] = hz5_data['tcs_status']
+
+        # Add 1Hz data (only in frame 0)
+        if frame_idx == 0:
+            hz1_data = decode_1hz_frame(packet, lat_off)
+            if hz1_data:
+                record.update(hz1_data)
 
         records.append(record)
 
@@ -882,12 +945,16 @@ def write_csv(records, csv_path):
         'latitude_deg', 'longitude_deg', 'altitude_m',
         'speed_kph', 'speed_mph', 'speed_mps',
         'heading_deg', 'gps_fix_quality', 'gps_satellites',
-        'engine_rpm', 'engine_torque_raw', 'steering_angle_deg',
+        'engine_rpm', 'engine_torque_raw', 'engine_torque_nm',
+        'steering_angle_deg',
         'accel_lateral_g', 'accel_longitudinal_g', 'accel_vertical_g',
+        'wheel_speed_fl_kph', 'wheel_speed_fr_kph',
+        'wheel_speed_rl_kph', 'wheel_speed_rr_kph',
         'wheel_speed_fl_raw', 'wheel_speed_fr_raw',
         'wheel_speed_rl_raw', 'wheel_speed_rr_raw',
         'gyro_yaw_raw', 'motor_powerlevel',
         'brake', 'esc_status', 'tcs_status',
+        'fuel_level_pct', 'battery_voltage_v', 'transmission_temp_c',
         'emotor_power_raw', 'engine_power_raw',
         'internal_raw', 'ch18_raw', 'ch20_raw',
     ]
