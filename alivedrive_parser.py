@@ -68,6 +68,156 @@ RAD_TO_DEG = 180.0 / math.pi
 
 
 # =============================================================================
+# Enum Value-to-Label Mappings (decoded from adcp box enum descriptors)
+# =============================================================================
+# Each enum channel stores a u8 raw value.  The adcp box contains the complete
+# label set for each channel, which we decoded by parsing the enum descriptor
+# binary format:
+#
+#   num_subfields: u8
+#   For each subfield:
+#     name\0             — null-terminated ASCII subfield name
+#     max_raw_value: u8  — maximum defined raw value (domain range)
+#     default_label\0    — null-terminated default/unknown label
+#     default_value: u8  — raw value for the default state
+#     num_values: u8     — count of additional (non-default) entries
+#     For each value:
+#       label\0          — null-terminated ASCII label
+#       value: u8        — raw value
+
+# Ch 7: ABS — Anti-Lock Braking System (10 Hz, subfield "status")
+ENUM_ABS = {
+    0: 'inactive',
+    1: 'active',
+    3: 'unknown',       # default
+}
+
+# Ch 17: Gear (5 Hz, subfield "current")
+ENUM_GEAR = {
+    0:  'notsupported',  # default — no gear data available
+    1:  'first',
+    2:  'second',
+    3:  'third',
+    4:  'fourth',
+    5:  'fifth',
+    6:  'sixth',
+    7:  'seventh',
+    8:  'eighth',
+    9:  'ninth',
+    10: 'tenth',
+    11: 'unused',
+    12: 'cvtforward',
+    13: 'neutral',
+    14: 'reverse',
+    15: 'park',
+}
+
+# Ch 19: Drive Performance Mode (1 Hz, subfield "status")
+ENUM_DRIVE_MODE = {
+    0:  'none',           # default
+    1:  'tour',
+    2:  'sport',
+    3:  'track',
+    4:  'winter',
+    5:  'offroad',
+    6:  'towhaul',
+    7:  'hold',
+    8:  'mountain',
+    9:  'personal',
+    10: 'custom',
+    11: 'awd',
+    12: 'economy',
+    13: 'automatic',
+    14: 'ev',
+    15: 'gradebraking',
+    16: 'exhaustbrake',
+    17: 'activerevmatch',
+    18: '2wd',
+    19: 'comfort',
+    20: 'startstopdisable',
+    21: 'crawl',
+    22: 'chargeplus',
+    23: 'baja',
+    24: 'maxpower',
+}
+
+# Ch 20: E-Motor Axle Available (1 Hz, subfield "status")
+ENUM_EMOTOR_AXLE = {
+    0: 'notavailable',
+    1: 'available',
+    3: 'unknown',        # default
+}
+
+# Ch 30: Engine Start/Stop (5 Hz, subfield "state")
+ENUM_ENGINE_STARTSTOP = {
+    0: 'engineoff',       # note: firmware string is "engineofff" (triple-f typo)
+    1: 'enginerunning',
+    2: 'enginestarting',
+    3: 'enginestopping',
+    7: 'unknown',         # default
+}
+
+# Ch 33: ESC — Electronic Stability Control (5 Hz, subfield "status")
+ENUM_ESC = {
+    0: 'inactive',
+    1: 'active',
+    3: 'unknown',        # default
+}
+
+# Ch 39: PTM — Performance Traction Management (1 Hz, subfield "mode")
+ENUM_PTM = {
+    0: 'disabled',
+    1: 'wet',
+    2: 'dry',
+    3: 'sport1',
+    4: 'sport2',
+    5: 'race',
+    6: 'inactive',
+    7: 'unknown',        # default
+}
+
+# Ch 43: TCS — Traction Control System (5 Hz, subfield "status")
+ENUM_TCS = {
+    0: 'inactive',
+    1: 'active',
+    3: 'unknown',        # default
+}
+
+# Ch 53: VSE — Vehicle Stability Enhancement (1 Hz, subfield "status")
+# NOTE: VSE has OPPOSITE polarity from ABS/ESC/TCS (0 = active, 1 = inactive)
+ENUM_VSE = {
+    0: 'active',
+    1: 'inactive',
+    3: 'unknown',        # default
+}
+
+# Consolidated lookup: channel_field_name → enum dict
+ENUM_LABELS = {
+    'abs_status':            ENUM_ABS,
+    'gear':                  ENUM_GEAR,
+    'drive_mode':            ENUM_DRIVE_MODE,
+    'emotor_axle_available': ENUM_EMOTOR_AXLE,
+    'engine_startstop':      ENUM_ENGINE_STARTSTOP,
+    'esc_status':            ENUM_ESC,
+    'ptm_mode':              ENUM_PTM,
+    'tcs_status':            ENUM_TCS,
+    'vse_status':            ENUM_VSE,
+}
+
+
+def enum_label(field_name, raw_value):
+    """Look up the human-readable label for an enum channel's raw value.
+
+    Returns the label string if defined, or 'unknown_<value>' as a fallback
+    for raw values not present in the mapping (future firmware additions, etc.).
+    """
+    mapping = ENUM_LABELS.get(field_name)
+    if mapping is None:
+        return str(raw_value)
+    return mapping.get(raw_value, f'unknown_{raw_value}')
+
+
+# =============================================================================
 # MP4 Box Parser
 # =============================================================================
 
@@ -276,6 +426,81 @@ def parse_adcp(data):
         58: 'gyro.yaw',
     }
     return channel_names
+
+
+def parse_adcp_enums(data):
+    """Parse enum descriptors from the adcp box payload.
+
+    Reads the binary adcp payload and extracts the value-to-label mapping for
+    every enum channel (type byte 0x02).  This allows the parser to dynamically
+    decode enum labels from *any* AliveDrive PDR 2.5 MP4 file, rather than
+    relying solely on the hardcoded ENUM_LABELS dictionaries above.
+
+    Returns a dict: { channel_id: { raw_value: label_string, ... }, ... }
+    """
+    if len(data) < 4:
+        return {}
+
+    def _read_cstring(buf, off):
+        start = off
+        while off < len(buf) and buf[off] != 0:
+            off += 1
+        return buf[start:off].decode('ascii', errors='replace'), off + 1
+
+    # Format byte → min/max bound size (bytes per bound, ×2 for min+max)
+    _BOUND_SIZES = {
+        0x01: 1, 0x02: 1, 0x03: 2, 0x04: 2,
+        0x05: 2, 0x06: 4, 0x09: 4, 0x0a: 4,
+    }
+
+    offset = 2  # skip 2-byte header
+    enums = {}
+
+    while offset < len(data) - 4:
+        # Channel ID (u16 BE)
+        ch_id = struct.unpack('>H', data[offset:offset+2])[0]
+        offset += 2
+
+        # Null-terminated channel name
+        _name, offset = _read_cstring(data, offset)
+
+        if offset + 4 > len(data):
+            break
+
+        # Unit ID (u16 BE), type byte, format byte
+        _unit_id = struct.unpack('>H', data[offset:offset+2])[0]
+        offset += 2
+        type_byte = data[offset]; offset += 1
+        fmt_byte  = data[offset]; offset += 1
+
+        if type_byte == 0x01:
+            # Numeric descriptor: skip scale(8) + offset(8) + min/max bounds
+            offset += 16
+            bs = _BOUND_SIZES.get(fmt_byte, 0)
+            if bs == 0:
+                break  # unknown format — stop to avoid desync
+            offset += bs * 2
+
+        elif type_byte == 0x02:
+            # Enum descriptor
+            num_subfields = data[offset]; offset += 1
+            values = {}
+            for _ in range(num_subfields):
+                _sf_name, offset = _read_cstring(data, offset)
+                _max_raw = data[offset]; offset += 1  # domain range
+                default_label, offset = _read_cstring(data, offset)
+                default_value = data[offset]; offset += 1
+                num_values = data[offset]; offset += 1
+                values[default_value] = default_label
+                for _ in range(num_values):
+                    label, offset = _read_cstring(data, offset)
+                    val = data[offset]; offset += 1
+                    values[val] = label
+            enums[ch_id] = values
+        else:
+            break  # unknown type
+
+    return enums
 
 
 def parse_adcr(data):
@@ -590,6 +815,7 @@ def decode_10hz_frame(packet, lat_offset):
         'gps_fix_quality': fixquality,
         'gps_satellites': satellites,
         'abs_status': abs_status,
+        'abs_status_label': enum_label('abs_status', abs_status),
         'throttle_position': throttle_raw * PROPORTION_SCALE,
         'boost_pressure_kpa': boost_raw * BOOST_PRESSURE_SCALE / 1000.0,
         'emotor_power_kw': emotor_raw * POWER_SCALE / 1000.0,
@@ -601,11 +827,19 @@ def decode_5hz_frame(packet, offset):
     """Decode 5Hz data (4 bytes): gear, startstop, ESC, TCS."""
     if offset + 4 > len(packet):
         return None
+    gear_raw = packet[offset]
+    startstop_raw = packet[offset+1]
+    esc_raw = packet[offset+2]
+    tcs_raw = packet[offset+3]
     return {
-        'gear': packet[offset],
-        'engine_startstop': packet[offset+1],
-        'esc_status': packet[offset+2],
-        'tcs_status': packet[offset+3],
+        'gear': gear_raw,
+        'gear_label': enum_label('gear', gear_raw),
+        'engine_startstop': startstop_raw,
+        'engine_startstop_label': enum_label('engine_startstop', startstop_raw),
+        'esc_status': esc_raw,
+        'esc_status_label': enum_label('esc_status', esc_raw),
+        'tcs_status': tcs_raw,
+        'tcs_status_label': enum_label('tcs_status', tcs_raw),
     }
 
 
@@ -627,7 +861,9 @@ def decode_1hz_frame(packet, lat_offset):
         'emotor_powerlevel': b[0] * 0.01,
         'hv_battery_charge': hv_charge_raw * 1.5259e-5,
         'drive_mode': b[3],
+        'drive_mode_label': enum_label('drive_mode', b[3]),
         'emotor_axle_available': b[4],
+        'emotor_axle_available_label': enum_label('emotor_axle_available', b[4]),
         'emotor_temp_rotor_c': b[5] - 40 if b[5] > 0 else None,
         'emotor_temp_stator_c': b[6] - 40 if b[6] > 0 else None,
         'engine_temp_coolant_c': b[7] - 40,
@@ -641,6 +877,7 @@ def decode_1hz_frame(packet, lat_offset):
         'hv_battery_temp_min_c': b[15] * 0.5 - 40 if b[15] > 0 else None,
         'odometer_km': odometer_raw * ODOMETER_SCALE / 1000.0,
         'ptm_mode': b[20],
+        'ptm_mode_label': enum_label('ptm_mode', b[20]),
         'trans_oil_temp_c': b[21] - 40,
         'tire_pressure_fl_kpa': b[22] * TIRE_PRESSURE_SCALE / 1000.0,
         'tire_pressure_fr_kpa': b[23] * TIRE_PRESSURE_SCALE / 1000.0,
@@ -651,6 +888,7 @@ def decode_1hz_frame(packet, lat_offset):
         'tire_temp_rl_c': b[28] - 20,
         'tire_temp_rr_c': b[29] - 20,
         'vse_status': b[30],
+        'vse_status_label': enum_label('vse_status', b[30]),
     }
 
 
@@ -761,8 +999,13 @@ def decode_packet(packet, packet_idx, reference_lat_range=None):
         # Add 5Hz data
         if hz5_data:
             record['gear'] = hz5_data['gear']
+            record['gear_label'] = hz5_data['gear_label']
+            record['engine_startstop'] = hz5_data['engine_startstop']
+            record['engine_startstop_label'] = hz5_data['engine_startstop_label']
             record['esc_status'] = hz5_data['esc_status']
+            record['esc_status_label'] = hz5_data['esc_status_label']
             record['tcs_status'] = hz5_data['tcs_status']
+            record['tcs_status_label'] = hz5_data['tcs_status_label']
 
         # Add 2Hz data
         if oil_pressure_kpa is not None:
@@ -1012,7 +1255,7 @@ def write_csv(records, csv_path):
         'speed_kph', 'speed_mph', 'speed_mps',
         'heading_deg', 'gps_fix_quality', 'gps_satellites',
         # 10 Hz vehicle
-        'throttle_position', 'abs_status',
+        'throttle_position', 'abs_status', 'abs_status_label',
         'boost_pressure_kpa', 'engine_power_kw', 'emotor_power_kw',
         # 100 Hz (averaged per 10 Hz period)
         'brake_position', 'engine_rpm', 'engine_torque_nm',
@@ -1022,7 +1265,10 @@ def write_csv(records, csv_path):
         # 50 Hz accelerometer (averaged)
         'accel_lateral_g', 'accel_longitudinal_g', 'accel_vertical_g',
         # 5 Hz
-        'gear', 'esc_status', 'tcs_status',
+        'gear', 'gear_label',
+        'engine_startstop', 'engine_startstop_label',
+        'esc_status', 'esc_status_label',
+        'tcs_status', 'tcs_status_label',
         # 2 Hz
         'oil_pressure_kpa',
         # 1 Hz — engine / environment
@@ -1035,7 +1281,10 @@ def write_csv(records, csv_path):
         'tire_temp_fl_c', 'tire_temp_fr_c',
         'tire_temp_rl_c', 'tire_temp_rr_c',
         # 1 Hz — status / hybrid
-        'drive_mode', 'ptm_mode', 'vse_status',
+        'drive_mode', 'drive_mode_label',
+        'ptm_mode', 'ptm_mode_label',
+        'vse_status', 'vse_status_label',
+        'emotor_axle_available', 'emotor_axle_available_label',
         'engine_powerlevel', 'emotor_powerlevel',
         'hv_battery_charge',
     ]
