@@ -2,7 +2,7 @@
 
 Open-source parser for the **AliveDrive PDR 2.5** telemetry format found in modern GM vehicles equipped with the Cosworth Performance Data Recorder (PDR 2.5), such as the 2025–2026 Cadillac CT5-V Blackwing.
 
-The PDR records high-rate vehicle telemetry (GPS, accelerometer, engine, steering, wheel speeds, etc.) into an MP4 file alongside video. This data is normally only accessible through proprietary software (Cosworth Toolbox / AliveDrive app). 
+The PDR records high-rate vehicle telemetry (GPS, accelerometer, engine, steering, wheel speeds, etc.) into an MP4 file alongside video. This data is normally only accessible through proprietary software (Cosworth Toolbox / AliveDrive app).
 
 In this project, we reverse-engineered the binary telemetry format and provide tools to extract the data to CSV.
 
@@ -10,14 +10,18 @@ In this project, we reverse-engineered the binary telemetry format and provide t
 
 ## Decoded Channels
 
+All 59 channels defined in the `adcp` box have been identified with their
+authoritative Cosworth namespace names, scale factors, and offsets. Every rate
+group's byte layout is fully mapped.
+
 | Rate | Channels |
 |------|----------|
-| 100 Hz | Engine RPM, torque, steering angle, 4× wheel speeds, gyro yaw |
-| 50 Hz | 3-axis accelerometer (lateral, longitudinal, vertical) |
-| 10 Hz | GPS (lat/lon/alt/heading/satellites), vehicle speed, coolant temp, boost, tire pressure |
-| 5 Hz | Brake, ESC status, TCS status |
+| 100 Hz | Brake position, engine RPM, torque (N·m), steering angle, 4× wheel speeds, gyro yaw rate |
+| 50 Hz | Dual 3-axis accelerometer (raw device frame + gravity-compensated vehicle frame) |
+| 10 Hz | GPS (lat/lon/alt/heading/satellites/fix), vehicle speed, ABS status, throttle position, boost pressure, e-motor power, engine power |
+| 5 Hz | Gear, engine start/stop, ESC status, TCS status |
 | 2 Hz | Oil pressure |
-| 1 Hz | Tire temps, VIN, odometer, battery voltage, ambient temp (partial decode) |
+| 1 Hz | Engine temps (coolant, oil, air intake), transmission temp, outside air temp, fuel level, odometer, tire pressures (4×), tire temps (4×), drive mode, PTM mode, VSE status, HV battery/e-motor channels |
 
 ## Quick Start
 
@@ -60,10 +64,14 @@ options:
 See [ALIVEDRIVE_FORMAT.md](ALIVEDRIVE_FORMAT.md) for the full reverse-engineered format specification, including:
 
 - MP4 container layout and track identification
-- Rate table structure and channel definitions
+- Complete channel definitions with Cosworth namespace names (all 59 channels)
+- `adcp` box structure (channel parameters: scale, offset, min/max, type)
+- `adud` box structure (unit definitions: angle, velocity, temperature, etc.)
+- Rate table structure (`adcr`) and rate-table width overhead analysis
 - Packet framing and multi-rate interleaving pattern
-- Scale factors and unit conversions
-- Sub-frame byte layouts for all rate groups
+- Scale factors and unit conversions for all channel types
+- Complete sub-frame byte layouts for all 6 rate groups (100/50/10/5/2/1 Hz)
+- Temperature encoding (Kelvin offset model), torque formula, pressure/proportion scales
 
 ## How It Works
 
@@ -75,21 +83,15 @@ See [ALIVEDRIVE_FORMAT.md](ALIVEDRIVE_FORMAT.md) for the full reverse-engineered
 
 ## Known Limitations
 
-- The **1 Hz frame** (31 bytes, 27 channels) is not fully mapped — tire temps, VIN, odometer, etc. are present but individual byte assignments are unconfirmed
-- **Wheel speed scale factor** is close to but not confirmed identical to the engine speed scale
-- **Engine torque** scale factor and unit (N·m vs lb·ft) are undetermined
-- **Accelerometer data** shows a ~0.64 g lateral offset at rest that may need calibration
-- Some packets at recording boundaries have non-standard sizes
-
-See section 15 of [ALIVEDRIVE_FORMAT.md](ALIVEDRIVE_FORMAT.md) for the full list.
+- **Enum channels** (gear, drive mode, ABS, ESC, TCS, VSE, PTM) have label strings in `adcp` but the full value-to-label mapping is not yet decoded
+- The **`advi` and `adeg`** sub-box structures are not yet documented
 
 ## Contributing
 
 Contributions are welcome, especially for:
 
-- Completing the 1 Hz frame mapping
-- Confirming scale factors for torque and wheel speed
-- Testing with other GM/PDR 2.5 vehicles
+- Decoding enum value mappings from `adcp` descriptors (gear, drive mode, etc.)
+- Testing with other GM/PDR 2.5 vehicles (especially hybrids to validate e-motor/HV battery channels)
 - Adding export formats (GPX, MoTeC, etc.)
 
 ## License
