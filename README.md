@@ -69,6 +69,8 @@ See [ALIVEDRIVE_FORMAT.md](ALIVEDRIVE_FORMAT.md) for the full reverse-engineered
 - Complete channel definitions with Cosworth namespace names (all 59 channels)
 - `adcp` box structure (channel parameters: scale, offset, min/max, type)
 - `adud` box structure (unit definitions: angle, velocity, temperature, etc.)
+- `advi` box structure (format version info and source identifier)
+- `adeg` box structure (20 performance timing event definitions)
 - Rate table structure (`adcr`) and rate-table width overhead analysis
 - Packet framing and multi-rate interleaving pattern
 - Scale factors and unit conversions for all channel types
@@ -83,15 +85,12 @@ See [ALIVEDRIVE_FORMAT.md](ALIVEDRIVE_FORMAT.md) for the full reverse-engineered
 4. **Frame decoding** — Walks the interleaved multi-rate structure (100/50/10/5/2/1 Hz) relative to each GPS anchor
 5. **CSV export** — Writes all decoded channels with timestamps
 
-## Known Limitations
-
-- The **`advi` and `adeg`** sub-box structures are not yet documented
-
 ## Contributing
 
 Contributions are welcome, especially for:
 
 - Testing with other GM/PDR 2.5 vehicles (especially hybrids to validate e-motor/HV battery channels)
+- Identifying the remaining numeric fields in the `advi` header (requires multiple sample files)
 - Adding export formats (GPX, MoTeC, etc.)
 
 ## License
