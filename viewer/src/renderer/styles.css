@@ -1,4 +1,4 @@
-/* OpenPDR Viewer — Phase 0 PoC styles (dark motorsport theme) */
+/* OpenPDR Viewer — Phase 2 styles (dark motorsport theme) */
 
 * {
   margin: 0;
@@ -59,12 +59,46 @@ html, body {
   background: var(--accent-dim);
 }
 
+#btn-settings {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid #444 !important;
+  font-size: 16px !important;
+  padding: 2px 10px !important;
+}
+
+#btn-settings:hover {
+  background: #3a3a3a !important;
+}
+
+#toolbar-spacer {
+  flex: 1;
+}
+
 #file-name {
   font-size: 13px;
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+#fps-counter {
+  display: none;
+  font-size: 11px;
+  font-family: Consolas, monospace;
+  color: var(--green);
+  min-width: 52px;
+  text-align: right;
+}
+
+/* ── Main content area (video + charts) ── */
+#main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
 
 /* ── Video container ── */
@@ -76,6 +110,7 @@ html, body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  min-height: 200px;
 }
 
 #video {
@@ -127,7 +162,7 @@ html, body {
   display: none;
 }
 
-/* ── HUD overlay ── */
+/* ── HUD overlay (bottom bar) ── */
 #hud {
   position: absolute;
   bottom: 10px;
@@ -144,6 +179,7 @@ html, body {
   display: flex;
 }
 
+/* Speed */
 #hud-speed {
   display: flex;
   align-items: baseline;
@@ -164,25 +200,17 @@ html, body {
   text-shadow: 0 0 8px rgba(0,0,0,0.8);
 }
 
-#hud-rpm {
+/* RPM gauge */
+#hud-rpm-gauge {
   display: flex;
-  align-items: baseline;
-  gap: 4px;
+  align-items: flex-end;
 }
 
-#hud-rpm-value {
-  font-size: 28px;
-  font-weight: 600;
-  color: #fff;
-  text-shadow: 0 0 8px rgba(0,0,0,0.8);
+#rpm-gauge-canvas {
+  background: transparent;
 }
 
-#hud-rpm-label {
-  font-size: 12px;
-  color: #aaa;
-  text-shadow: 0 0 8px rgba(0,0,0,0.8);
-}
-
+/* Gear */
 #hud-gear {
   display: flex;
   align-items: center;
@@ -200,6 +228,17 @@ html, body {
   color: #fff;
 }
 
+/* Steering indicator */
+#hud-steering {
+  display: flex;
+  align-items: center;
+}
+
+#steering-canvas {
+  background: transparent;
+}
+
+/* G-force */
 #hud-gforce {
   margin-left: auto;
 }
@@ -209,7 +248,7 @@ html, body {
   border-radius: 50%;
 }
 
-/* ── Pedal bars ── */
+/* Pedal bars */
 #hud-pedals {
   display: flex;
   flex-direction: column;
@@ -250,6 +289,123 @@ html, body {
   font-size: 10px;
   color: #ccc;
   text-shadow: 0 0 4px rgba(0,0,0,0.8);
+}
+
+/* ── GPS display (top-right overlay) ── */
+#hud-gps {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  color: #aaa;
+  background: rgba(0,0,0,0.5);
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-shadow: 0 0 4px rgba(0,0,0,0.8);
+  pointer-events: none;
+}
+
+#hud-gps.active {
+  display: flex;
+}
+
+/* ── Resize handle ── */
+#resize-handle {
+  height: 6px;
+  background: var(--bg-secondary);
+  border-top: 1px solid #333;
+  border-bottom: 1px solid #333;
+  cursor: row-resize;
+  flex-shrink: 0;
+  display: none;
+  touch-action: none;
+}
+
+#resize-handle.active {
+  display: block;
+}
+
+#resize-handle:hover,
+#resize-handle.dragging {
+  background: var(--accent-dim);
+}
+
+/* ── Chart panel ── */
+#chart-panel {
+  display: none;
+  flex-direction: column;
+  background: var(--bg-primary);
+  min-height: 80px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+#chart-panel.active {
+  display: flex;
+}
+
+#chart-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.chart-channel-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: 'Consolas', monospace;
+  border: 1px solid #444;
+  border-radius: 3px;
+  cursor: pointer;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  transition: background 0.1s, color 0.1s;
+}
+
+.chart-channel-btn.active {
+  color: #fff;
+  border-color: currentColor;
+}
+
+.chart-channel-btn:hover {
+  background: #3a3a3a;
+}
+
+#chart-canvas-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+#chart-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#chart-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+#chart-empty.hidden {
+  display: none;
 }
 
 /* ── Transport controls ── */
@@ -294,6 +450,7 @@ html, body {
   flex: 1;
   padding: 4px 0;
   cursor: pointer;
+  touch-action: none;
 }
 
 #scrub-track {
@@ -343,7 +500,73 @@ html, body {
   cursor: pointer;
 }
 
-/* ── Debug panel ── */
+/* ── Overlay settings dropdown ── */
+#overlay-settings-panel {
+  display: none;
+  position: absolute;
+  top: 38px;
+  right: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 10px 14px;
+  z-index: 1000;
+  font-size: 13px;
+  min-width: 200px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+#overlay-settings-panel.visible {
+  display: block;
+}
+
+.settings-section {
+  margin-bottom: 10px;
+}
+
+.settings-section:last-child {
+  margin-bottom: 0;
+}
+
+.settings-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.settings-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  flex: 1;
+}
+
+.settings-row input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.settings-row input[type="number"] {
+  width: 70px;
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid #444;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: 'Consolas', monospace;
+}
+
+/* ── Debug panel (hidden by default, F2 to toggle) ── */
 #debug-panel {
   position: fixed;
   top: 40px;
@@ -362,10 +585,11 @@ html, body {
   word-break: break-all;
   z-index: 9999;
   pointer-events: auto;
+  display: none;
 }
 
-#debug-panel:empty {
-  display: none;
+#debug-panel.visible {
+  display: block;
 }
 
 /* ── Drag-and-drop visual ── */
