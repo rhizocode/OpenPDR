@@ -61,6 +61,20 @@ options:
   --verbose, -v         Verbose output
 ```
 
+## Viewer App
+
+The [**OpenPDR Viewer**](viewer/) is a desktop application that plays PDR MP4 recordings with synchronized telemetry overlays. Built with Electron + TypeScript + Vite.
+
+- Plays the original PDR video with a HUD overlay showing speed, RPM, gear, g-force ball, and throttle/brake bars
+- Binary-search telemetry sync via `requestAnimationFrame` for smooth updates at display refresh rate
+- Custom scrub bar, keyboard shortcuts, playback rate control, click-to-play/pause
+
+```bash
+cd viewer && npm install && npm run dev
+```
+
+See [`viewer/README.md`](viewer/README.md) for full details.
+
 ## Format Documentation
 
 See [ALIVEDRIVE_FORMAT.md](ALIVEDRIVE_FORMAT.md) for the full reverse-engineered format specification, including:
