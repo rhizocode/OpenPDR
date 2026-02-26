@@ -238,6 +238,27 @@ def read_box_header(data, offset):
     return size, box_type, header_size, offset + header_size
 
 
+def scan_for_box(data, box_type):
+    """Brute-force scan for a box by its 4-byte type tag anywhere in the file.
+
+    Works for boxes nested inside non-standard containers (e.g., adco sub-boxes
+    inside stsd) where structured traversal can't reach. Validates that the
+    preceding 4 bytes form a plausible box size.
+    """
+    tag = box_type.encode('ascii') if isinstance(box_type, str) else box_type
+    pos = 0
+    while True:
+        idx = data.find(tag, pos)
+        if idx == -1 or idx < 4:
+            return None
+        size = struct.unpack('>I', data[idx - 4:idx])[0]
+        if 8 < size < 100000:
+            data_start = idx + 4
+            return idx - 4, size, data_start
+        pos = idx + 4
+    return None
+
+
 def find_box(data, box_type, offset=0, end=None):
     """Find a box by type within a range."""
     if end is None:
@@ -1107,6 +1128,55 @@ def parse_adop(data):
 
 
 # =============================================================================
+# Version Info Parser
+# =============================================================================
+
+def parse_advi(data):
+    """Parse version info from advi box.
+
+    Returns a dict with format_version and source identifier string.
+    """
+    info = {}
+    if len(data) < 24:
+        return info
+
+    info['format_version'] = struct.unpack('>H', data[0:2])[0]
+
+    # Find null-terminated source identifier string
+    # It follows 22 bytes of numeric header fields
+    str_start = 22
+    if str_start < len(data):
+        end = data.find(b'\x00', str_start)
+        if end != -1:
+            info['source'] = data[str_start:end].decode('ascii', errors='replace')
+
+    return info
+
+
+# =============================================================================
+# Event Definitions Parser
+# =============================================================================
+
+def parse_adeg(data):
+    """Parse event definitions from adeg box.
+
+    Returns a list of (event_id, event_name) tuples.
+    """
+    events = []
+    pos = 0
+    while pos < len(data) - 2:
+        event_id = struct.unpack('>H', data[pos:pos + 2])[0]
+        pos += 2
+        end = data.find(b'\x00', pos)
+        if end == -1:
+            break
+        name = data[pos:end].decode('ascii', errors='replace')
+        pos = end + 1
+        events.append((event_id, name))
+    return events
+
+
+# =============================================================================
 # Main Extraction Pipeline
 # =============================================================================
 
@@ -1158,8 +1228,26 @@ def extract_telemetry(mp4_path, csv_path=None, verbose=False):
             sizes[s] = sizes.get(s, 0) + 1
         print(f"Sample sizes: {dict(sorted(sizes.items()))}")
 
+    # Parse version info (advi) and event definitions (adeg)
+    advi_box = scan_for_box(mp4_data, 'advi')
+    if advi_box:
+        advi_data = mp4_data[advi_box[2]:advi_box[0]+advi_box[1]]
+        advi_info = parse_advi(advi_data)
+        if verbose and advi_info:
+            print(f"Format version: {advi_info.get('format_version', '?')}")
+            print(f"Source: {advi_info.get('source', '?')}")
+
+    adeg_box = scan_for_box(mp4_data, 'adeg')
+    if adeg_box:
+        adeg_data = mp4_data[adeg_box[2]:adeg_box[0]+adeg_box[1]]
+        events = parse_adeg(adeg_data)
+        if verbose and events:
+            print(f"Event definitions: {len(events)} events")
+            for eid, ename in events:
+                print(f"  {eid:2d}: {ename}")
+
     # Find reference GPS location from outing properties
-    adop = find_box(mp4_data, 'adop', 0, len(mp4_data))
+    adop = scan_for_box(mp4_data, 'adop')
     ref_lat_range = None
     if adop:
         adop_data = mp4_data[adop[2]:adop[0]+adop[1]]
