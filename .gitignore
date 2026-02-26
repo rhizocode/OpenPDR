@@ -22,6 +22,9 @@ env/
 .DS_Store
 Thumbs.db
 
+# Dev
+dev/
+
 # Input/output files
 *.mp4
 *.bin
