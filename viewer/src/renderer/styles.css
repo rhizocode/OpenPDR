@@ -367,3 +367,30 @@ html, body {
 #debug-panel:empty {
   display: none;
 }
+
+/* ── Drag-and-drop visual ── */
+#video-container.drag-over {
+  outline: 3px dashed var(--accent);
+  outline-offset: -3px;
+}
+
+/* ── Parse progress overlay ── */
+#parse-progress {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 16px 32px;
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+  z-index: 100;
+  display: none;
+  pointer-events: none;
+}
+
+#parse-progress.active {
+  display: block;
+}

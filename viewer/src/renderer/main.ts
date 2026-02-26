@@ -1,31 +1,102 @@
 /**
- * OpenPDR Viewer — Phase 0 PoC
+ * OpenPDR Viewer — Phase 1 Foundation
  *
- * Validates that Electron <video> seeking is acceptable for track analysis.
- * Loads a hardcoded telemetry JSON and syncs HUD overlays via
+ * Opens PDR MP4 files directly — parses telemetry from the adco data track
+ * without needing a JSON sidecar. Syncs HUD overlays via
  * requestAnimationFrame + binary search on video.currentTime.
  */
 
-// Typing for the preload API
-interface PdrApi {
-  openFileDialog(): Promise<string | null>
-  loadTelemetry(jsonPath: string): Promise<TelemetryRow[]>
-  getVideoUrl(filePath: string): string
+// ── Typing for the preload API ──
+interface ParseResult {
+  rows: TelemetryRow[]
+  metadata: {
+    fileName: string
+    fileSize: number
+    sampleCount: number
+    duration: number
+    maxSpeed_kph?: number
+    maxRpm?: number
+  }
 }
 
 interface TelemetryRow {
   time: number
-  speed_kph: number
-  speed_mph: number
-  rpm: number
-  gear: string
-  throttle: number
-  brake: number
+  packetIdx: number
+  frameIdx: number
+  // GPS (10 Hz)
   lat: number
   lon: number
+  altitude_m: number
+  heading_deg: number
+  speed_kph: number
+  speed_mph: number
+  speed_mps: number
+  gps_fix_quality: number
+  gps_satellites: number
+  // 10 Hz vehicle
+  throttle: number
+  abs_status: number
+  abs_status_label: string
+  boost_pressure_kpa: number
+  emotor_power_kw: number
+  engine_power_kw: number
+  // 100 Hz averaged
+  brake: number
+  rpm: number
+  engine_torque_nm: number
+  steering_deg: number
+  gyro_yaw_deg_s: number
+  wheel_speed_fl_kph: number
+  wheel_speed_fr_kph: number
+  wheel_speed_rl_kph: number
+  wheel_speed_rr_kph: number
+  // 50 Hz averaged
   gforce_lat: number
   gforce_lon: number
-  steering_deg: number
+  gforce_vert: number
+  // 5 Hz (sparse)
+  gear?: string
+  gear_raw?: number
+  engine_startstop?: string
+  esc_status?: string
+  tcs_status?: string
+  // 2 Hz
+  oil_pressure_kpa?: number
+  // 1 Hz (all optional)
+  emotor_powerlevel?: number
+  hv_battery_charge?: number
+  drive_mode?: string
+  emotor_axle_available?: string
+  emotor_temp_rotor_c?: number | null
+  emotor_temp_stator_c?: number | null
+  engine_temp_coolant_c?: number
+  engine_temp_airintake_c?: number
+  engine_temp_oil_c?: number
+  engine_powerlevel?: number
+  outside_air_temp_c?: number
+  fuel_level_pct?: number
+  hv_battery_temp_avg_c?: number | null
+  hv_battery_temp_max_c?: number | null
+  hv_battery_temp_min_c?: number | null
+  odometer_km?: number
+  ptm_mode?: string
+  trans_oil_temp_c?: number
+  tire_pressure_fl_kpa?: number
+  tire_pressure_fr_kpa?: number
+  tire_pressure_rl_kpa?: number
+  tire_pressure_rr_kpa?: number
+  tire_temp_fl_c?: number
+  tire_temp_fr_c?: number
+  tire_temp_rl_c?: number
+  tire_temp_rr_c?: number
+  vse_status?: string
+}
+
+interface PdrApi {
+  openFileDialog(): Promise<string | null>
+  parsePdrFile(filePath: string): Promise<ParseResult>
+  onParseProgress(callback: (phase: string, pct: number) => void): void
+  getVideoUrl(filePath: string): string
 }
 
 declare global {
@@ -35,6 +106,7 @@ declare global {
 const pdr = window.pdr
 
 // ── Debug panel ──
+const BUILD_ID = 'phase1-v3'
 const debugPanel = document.getElementById('debug-panel') as HTMLDivElement
 function dbg(msg: string): void {
   const line = `[${new Date().toLocaleTimeString()}] ${msg}`
@@ -43,7 +115,7 @@ function dbg(msg: string): void {
   debugPanel.scrollTop = debugPanel.scrollHeight
 }
 
-dbg('Renderer loaded, pdr API: ' + (pdr ? 'OK' : 'MISSING'))
+dbg(`Renderer loaded [${BUILD_ID}], pdr API: ` + (pdr ? 'OK' : 'MISSING'))
 
 // ── DOM elements ──
 const video = document.getElementById('video') as HTMLVideoElement
@@ -59,6 +131,7 @@ const scrubContainer = document.getElementById('scrub-container') as HTMLDivElem
 const scrubProgress = document.getElementById('scrub-progress') as HTMLDivElement
 const scrubThumb = document.getElementById('scrub-thumb') as HTMLDivElement
 const playbackRate = document.getElementById('playback-rate') as HTMLSelectElement
+const parseProgress = document.getElementById('parse-progress') as HTMLDivElement
 
 // HUD elements
 const hudSpeedValue = document.getElementById('hud-speed-value') as HTMLSpanElement
@@ -81,7 +154,28 @@ let telemetry: TelemetryRow[] = []
 let currentRow: TelemetryRow | null = null
 let animFrameId = 0
 let isScrubbing = false
+
+// Carry-forward values for sparse-rate channels
 let lastKnownGear = '-'
+let lastKnownEngineStartstop = ''
+let lastKnownEscStatus = ''
+let lastKnownTcsStatus = ''
+let lastKnownOilPressure = 0
+let lastKnownDriveMode = ''
+let lastKnownPtmMode = ''
+let lastKnownVseStatus = ''
+let lastKnownEngineTemp = 0
+let lastKnownFuelLevel = 0
+
+// ── Progress overlay ──
+function showProgress(msg: string): void {
+  parseProgress.textContent = msg
+  parseProgress.classList.add('active')
+}
+
+function hideProgress(): void {
+  parseProgress.classList.remove('active')
+}
 
 // ── Binary search: find the telemetry row closest to a given time ──
 function findRowAtTime(t: number): TelemetryRow | null {
@@ -106,7 +200,6 @@ function findRowAtTime(t: number): TelemetryRow | null {
   }
 
   // lo is the first element > t, hi is the last element < t
-  // Return whichever is closer
   if (lo >= telemetry.length) return telemetry[hi]
   if (hi < 0) return telemetry[lo]
   return (t - telemetry[hi].time) <= (telemetry[lo].time - t)
@@ -136,11 +229,12 @@ function updateHud(row: TelemetryRow | null): void {
   hudSpeedValue.textContent = Math.round(row.speed_mph).toString()
   hudRpmValue.textContent = Math.round(row.rpm).toString()
 
-  // Gear: map word labels to short display, hold last known value for sparse (5 Hz) data
-  if (row.gear && row.gear !== '-') {
+  // Carry forward sparse values
+  if (row.gear !== undefined) {
     lastKnownGear = GEAR_DISPLAY[row.gear] ?? row.gear
   }
   hudGearValue.textContent = lastKnownGear
+
   throttleFill.style.width = `${(row.throttle * 100).toFixed(0)}%`
   brakeFill.style.width = `${(row.brake * 100).toFixed(0)}%`
 
@@ -155,7 +249,7 @@ function drawGForce(lat: number, lon: number): void {
   const h = gforceCanvas.height
   const cx = w / 2
   const cy = h / 2
-  const maxG = 1.5 // scale: 1.5g = edge of circle
+  const maxG = 1.5
   const radius = (w / 2) - 8
 
   ctx.clearRect(0, 0, w, h)
@@ -186,7 +280,7 @@ function drawGForce(lat: number, lon: number): void {
   // G-force dot
   const clampG = (v: number) => Math.max(-maxG, Math.min(maxG, v))
   const dotX = cx + (clampG(lat) / maxG) * radius
-  const dotY = cy - (clampG(lon) / maxG) * radius // positive lon = forward = up
+  const dotY = cy - (clampG(lon) / maxG) * radius
   ctx.beginPath()
   ctx.arc(dotX, dotY, 5, 0, Math.PI * 2)
   ctx.fillStyle = '#ff6b00'
@@ -220,7 +314,6 @@ function updateScrubBar(t: number): void {
 function scrubToPosition(e: MouseEvent): void {
   const rect = scrubContainer.getBoundingClientRect()
   const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-  dbg(`scrub: clientX=${e.clientX} rect.left=${rect.left.toFixed(0)} rect.width=${rect.width.toFixed(0)} pct=${pct.toFixed(3)} duration=${video.duration}`)
   if (video.duration && isFinite(video.duration)) {
     video.currentTime = pct * video.duration
   }
@@ -244,10 +337,10 @@ document.addEventListener('mouseup', () => {
 btnPlay.addEventListener('click', () => {
   if (video.paused) {
     video.play()
-    btnPlay.innerHTML = '&#9646;&#9646;' // pause icon
+    btnPlay.innerHTML = '&#9646;&#9646;'
   } else {
     video.pause()
-    btnPlay.innerHTML = '&#9654;' // play icon
+    btnPlay.innerHTML = '&#9654;'
   }
 })
 
@@ -261,10 +354,8 @@ document.addEventListener('keydown', (e) => {
   } else if (e.code === 'ArrowLeft') {
     video.currentTime = Math.max(0, video.currentTime - 5)
   } else if (e.code === 'Period' && video.paused) {
-    // Frame step forward (~1/30s)
     video.currentTime = Math.min(video.duration || 0, video.currentTime + 1 / 30)
   } else if (e.code === 'Comma' && video.paused) {
-    // Frame step backward
     video.currentTime = Math.max(0, video.currentTime - 1 / 30)
   }
 })
@@ -294,42 +385,78 @@ video.addEventListener('ended', () => {
 })
 
 // ── File open flow ──
-async function openFile(): Promise<void> {
-  dbg('Opening file dialog...')
-  const filePath = await pdr.openFileDialog()
-  if (!filePath) { dbg('Dialog canceled'); return }
+async function openFile(filePath?: string): Promise<void> {
+  if (!filePath) {
+    dbg('Opening file dialog...')
+    filePath = await pdr.openFileDialog()
+    if (!filePath) { dbg('Dialog canceled'); return }
+  }
   dbg('Selected: ' + filePath)
 
   // Display file name
   const parts = filePath.replace(/\\/g, '/').split('/')
   fileName.textContent = parts[parts.length - 1]
 
-  // Load video via custom protocol
+  // Show progress
+  showProgress('Parsing...')
+
+  // Listen for progress updates
+  pdr.onParseProgress((phase, pct) => {
+    showProgress(`${phase} ${pct}%`)
+  })
+
+  // Load video via pdr-file:// protocol
   const videoUrl = pdr.getVideoUrl(filePath)
   dbg('Video URL: ' + videoUrl)
   video.src = videoUrl
   video.load()
-  dbg('video.load() called')
 
-  // Load telemetry — look for a .json sidecar next to the video
-  const jsonPath = filePath.replace(/\.mp4$/i, '_telemetry.json')
-  dbg('Telemetry path: ' + jsonPath)
+  // Parse telemetry directly from the MP4 file
   try {
-    telemetry = await pdr.loadTelemetry(jsonPath)
-    dbg(`Loaded ${telemetry.length} telemetry rows (first time: ${telemetry[0]?.time}s)`)
+    const result = await pdr.parsePdrFile(filePath)
+    telemetry = result.rows
+    const meta = result.metadata
+    dbg(`Parsed ${telemetry.length} rows, duration ${meta.duration.toFixed(1)}s`)
+    if (meta.maxSpeed_kph) dbg(`Max speed: ${meta.maxSpeed_kph.toFixed(1)} kph`)
+    if (meta.maxRpm) dbg(`Max RPM: ${meta.maxRpm.toFixed(0)}`)
+    hideProgress()
   } catch (err) {
-    dbg('Telemetry load failed: ' + (err instanceof Error ? err.message : String(err)))
+    dbg('Parse failed: ' + (err instanceof Error ? err.message : String(err)))
+    hideProgress()
     telemetry = []
   }
+
+  // Reset carry-forward values
+  lastKnownGear = '-'
 }
 
-btnOpen.addEventListener('click', openFile)
-btnOpenPrompt.addEventListener('click', openFile)
+btnOpen.addEventListener('click', () => openFile())
+btnOpenPrompt.addEventListener('click', () => openFile())
+
+// ── Drag-and-drop ──
+const videoContainer = document.getElementById('video-container') as HTMLDivElement
+
+videoContainer.addEventListener('dragover', (e) => {
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+  videoContainer.classList.add('drag-over')
+})
+
+videoContainer.addEventListener('dragleave', () => {
+  videoContainer.classList.remove('drag-over')
+})
+
+videoContainer.addEventListener('drop', (e) => {
+  e.preventDefault()
+  videoContainer.classList.remove('drag-over')
+  const file = e.dataTransfer?.files[0]
+  if (file && (file as any).path && file.name.toLowerCase().endsWith('.mp4')) {
+    openFile((file as any).path)
+  }
+})
 
 // Click on video area to toggle play/pause
-const videoContainer = document.getElementById('video-container') as HTMLDivElement
 videoContainer.addEventListener('click', (e) => {
-  // Ignore if clicking the open-file prompt buttons
   if ((e.target as HTMLElement).closest('#no-file-prompt')) return
   if (!video.src) return
   btnPlay.click()

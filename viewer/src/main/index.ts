@@ -1,7 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, protocol } from 'electron'
 import { join } from 'path'
-import { readFile } from 'fs/promises'
-import { pathToFileURL } from 'url'
+import { createReadStream, statSync } from 'fs'
+import { parsePdrFile } from './parser'
+import type { ParseResult } from './parser'
+
+const BUILD_ID = 'phase1-v3'
+console.log(`[OpenPDR main] build=${BUILD_ID}`)
 
 let mainWindow: BrowserWindow | null = null
 
@@ -16,7 +20,7 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false  // Phase 0: allow file:// URLs from dev server origin
+      // webSecurity defaults to true — pdr-file:// protocol handles video serving
     }
   })
 
@@ -39,15 +43,64 @@ protocol.registerSchemesAsPrivileged([
 
 app.whenReady().then(() => {
   // Handle serving local files via pdr-file:// protocol
-  // Must use net.fetch (not global fetch) — it handles file:// URLs properly
-  // with correct Content-Type headers and Range request support for video streaming
+  // Manually handle Range requests so HTML5 video seeking works
   protocol.handle('pdr-file', (request) => {
     const url = new URL(request.url)
     const filePath = decodeURIComponent(url.pathname).replace(/^\//, '')
-    console.log('[pdr-file] request:', request.url, '→ resolved:', filePath)
-    const fileUrl = pathToFileURL(filePath).href
-    console.log('[pdr-file] fetching:', fileUrl)
-    return net.fetch(fileUrl)
+    const rangeHeader = request.headers.get('Range')
+
+    const fileSize = statSync(filePath).size
+    const mimeType = filePath.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'application/octet-stream'
+
+    if (rangeHeader) {
+      // Parse "bytes=start-end"
+      const match = rangeHeader.match(/bytes=(\d+)-(\d*)/)
+      if (match) {
+        const start = parseInt(match[1], 10)
+        const end = match[2] ? parseInt(match[2], 10) : fileSize - 1
+        const chunkSize = end - start + 1
+
+        const stream = createReadStream(filePath, { start, end })
+        const readable = new ReadableStream({
+          start(controller) {
+            stream.on('data', (chunk: Buffer) => controller.enqueue(chunk))
+            stream.on('end', () => controller.close())
+            stream.on('error', (err) => controller.error(err))
+          },
+          cancel() { stream.destroy() }
+        })
+
+        return new Response(readable, {
+          status: 206,
+          headers: {
+            'Content-Type': mimeType,
+            'Content-Length': String(chunkSize),
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+          }
+        })
+      }
+    }
+
+    // No Range header — return full file
+    const stream = createReadStream(filePath)
+    const readable = new ReadableStream({
+      start(controller) {
+        stream.on('data', (chunk: Buffer) => controller.enqueue(chunk))
+        stream.on('end', () => controller.close())
+        stream.on('error', (err) => controller.error(err))
+      },
+      cancel() { stream.destroy() }
+    })
+
+    return new Response(readable, {
+      status: 200,
+      headers: {
+        'Content-Type': mimeType,
+        'Content-Length': String(fileSize),
+        'Accept-Ranges': 'bytes',
+      }
+    })
   })
 
   createWindow()
@@ -82,8 +135,9 @@ ipcMain.handle('open-file-dialog', async () => {
   return result.filePaths[0]
 })
 
-// IPC: Load telemetry JSON from a file path
-ipcMain.handle('load-telemetry', async (_event, jsonPath: string) => {
-  const data = await readFile(jsonPath, 'utf-8')
-  return JSON.parse(data)
+// IPC: Parse PDR file — extracts telemetry directly from MP4
+ipcMain.handle('parse-pdr-file', async (_event, filePath: string): Promise<ParseResult> => {
+  return parsePdrFile(filePath, (phase, pct) => {
+    mainWindow?.webContents.send('parse-progress', phase, pct)
+  })
 })
