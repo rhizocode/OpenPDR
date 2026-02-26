@@ -1,6 +1,6 @@
-# alivedrive-decode
+# OpenPDR
 
-Open-source parser for the **AliveDrive PDR 2.5** telemetry format found in modern GM vehicles equipped with the Cosworth Performance Data Recorder (PDR 2.5), such as the 2025–2026 Cadillac CT5-V Blackwing.
+OpenPDR is an open-source parser for the **AliveDrive PDR 2.5** telemetry format found in modern GM vehicles equipped with the Cosworth Performance Data Recorder (PDR 2.5), such as the 2025–2026 Cadillac CT5-V Blackwing.
 
 The PDR records high-rate vehicle telemetry (GPS, accelerometer, engine, steering, wheel speeds, etc.) into an MP4 file alongside video. This data is normally only accessible through proprietary software (Cosworth Toolbox / AliveDrive app).
 
@@ -33,7 +33,7 @@ group's byte layout is fully mapped.
 ### From an MP4 file
 
 ```bash
-python alivedrive_parser.py ADV_0600.mp4 --csv output.csv
+python alivedrive_parser.py input.mp4 --csv output.csv
 ```
 
 ### From a pre-extracted binary
