@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenPDR Viewer</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Top bar -->
+    <header id="toolbar">
+      <button id="btn-open" title="Open PDR file">Open File</button>
+      <span id="file-name">No file loaded</span>
+    </header>
+
+    <!-- Video + overlay container -->
+    <div id="video-container">
+      <video id="video" preload="auto"></video>
+      <canvas id="overlay-canvas"></canvas>
+
+      <!-- Speed HUD overlay -->
+      <div id="hud">
+        <div id="hud-speed">
+          <span id="hud-speed-value">--</span>
+          <span id="hud-speed-unit">mph</span>
+        </div>
+        <div id="hud-rpm">
+          <span id="hud-rpm-value">--</span>
+          <span id="hud-rpm-label">RPM</span>
+        </div>
+        <div id="hud-gear">
+          <span id="hud-gear-value">-</span>
+        </div>
+        <div id="hud-gforce">
+          <canvas id="gforce-canvas" width="120" height="120"></canvas>
+        </div>
+        <div id="hud-pedals">
+          <div class="pedal-bar">
+            <div id="throttle-fill" class="pedal-fill throttle"></div>
+            <span class="pedal-label">THR</span>
+          </div>
+          <div class="pedal-bar">
+            <div id="brake-fill" class="pedal-fill brake"></div>
+            <span class="pedal-label">BRK</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- No-file prompt -->
+      <div id="no-file-prompt">
+        <p>Open a PDR recording to begin</p>
+        <button id="btn-open-prompt">Open File</button>
+      </div>
+    </div>
+
+    <!-- Transport controls + scrub bar -->
+    <div id="controls">
+      <button id="btn-play" title="Play/Pause">&#9654;</button>
+      <span id="time-current">0:00.0</span>
+      <div id="scrub-container">
+        <div id="scrub-track">
+          <div id="scrub-progress"></div>
+          <div id="scrub-thumb"></div>
+        </div>
+      </div>
+      <span id="time-total">0:00.0</span>
+      <select id="playback-rate" title="Playback speed">
+        <option value="0.25">0.25x</option>
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Debug panel -->
+  <div id="debug-panel"></div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
