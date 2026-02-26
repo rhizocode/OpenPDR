@@ -40,7 +40,7 @@ The `adco` sample description entry (inside `stsd`) contains these nested boxes:
 | `adcp` | Channel parameter definitions (59 channels with Cosworth namespace names, scale factors, offsets, and min/max ranges) |
 | `adcr` | Rate table — defines rate groups, periods, and channel assignments |
 | `adud` | Unit definitions (maps unit IDs to Cosworth namespace unit names) |
-| `adeg` | Engine / vehicle configuration |
+| `adeg` | Event definitions (performance timing triggers) |
 
 ---
 
@@ -957,7 +957,94 @@ data packets.
 
 ---
 
-## 14. Comparison with Older Marlin Format
+## 14. Version Info (`advi`)
+
+The `advi` box (64 bytes) contains format version information and a Cosworth
+namespace source identifier string.
+
+### 14.1 Structure
+
+```
+Offset  Size  Type    Field
+0       4     u32 BE  box size (64)
+4       4     ascii   box type ("advi")
+8       2     u16 BE  format_version (5 = PDR 2.5)
+10      2     u16 BE  reserved (0)
+12      2     u16 BE  field_1 (observed: 1)
+14      2     u16 BE  field_2 (observed: 8)
+16      2     u16 BE  field_3 (observed: 110)
+18      2     u16 BE  field_4 (observed: 30)
+20      4     u32 BE  field_5 (observed: 384063)
+24      2     u16 BE  field_6 (observed: 1)
+26      2     u16 BE  field_7 (observed: 17)
+28      2     u16 BE  field_8 (observed: 80)
+30      var   string  null-terminated source identifier
+```
+
+The source identifier string is `"com.cosworth.outing.source.pdr2_5"`,
+which identifies the data format as AliveDrive PDR 2.5.
+
+> **Note:** The format_version value 5 corresponds to the "pdr2_5" suffix in
+> the source identifier. The semantic meaning of fields 1–8 has not been
+> determined from a single sample file; additional recordings from different
+> vehicle platforms would help clarify these values.
+
+---
+
+## 15. Event Definitions (`adeg`)
+
+The `adeg` box (950 bytes) defines the performance timing events that the PDR
+system can trigger during a recording session. Each event has a numeric ID and
+a Cosworth namespace name.
+
+### 15.1 Structure
+
+```
+Offset  Size  Type    Field
+0       4     u32 BE  box size
+4       4     ascii   box type ("adeg")
+
+Repeated for each event:
+  2     u16 BE    event ID (0–19)
+  var   string    null-terminated ASCII event name
+```
+
+### 15.2 Event Table
+
+Events come in start/end pairs, defining 10 performance timing categories:
+
+| ID | Cosworth Name | Category |
+|----|--------------|----------|
+| 0 | event.lap.start | Lap timing |
+| 1 | event.lap.end | Lap timing |
+| 2 | event.performance.0-60mph.start | 0–60 mph |
+| 3 | event.performance.0-60mph.end | 0–60 mph |
+| 4 | event.performance.0-100mph.start | 0–100 mph |
+| 5 | event.performance.0-100mph.end | 0–100 mph |
+| 6 | event.performance.0-100-0mph.start | 0–100–0 mph |
+| 7 | event.performance.0-100-0mph.end | 0–100–0 mph |
+| 8 | event.performance.standingquartermi.start | Standing ¼ mi |
+| 9 | event.performance.standingquartermi.end | Standing ¼ mi |
+| 10 | event.performance.0-96kph.start | 0–96 kph |
+| 11 | event.performance.0-96kph.end | 0–96 kph |
+| 12 | event.performance.0-160kph.start | 0–160 kph |
+| 13 | event.performance.0-160kph.end | 0–160 kph |
+| 14 | event.performance.0-160-0kph.start | 0–160–0 kph |
+| 15 | event.performance.0-160-0kph.end | 0–160–0 kph |
+| 16 | event.performance.standing402m.start | Standing 402 m |
+| 17 | event.performance.standing402m.end | Standing 402 m |
+| 18 | event.performance.customtimer.start | Custom timer |
+| 19 | event.performance.customtimer.end | Custom timer |
+
+> All event names use the `com.cosworth.` prefix (omitted in the table above
+> for brevity). Events 0–9 are imperial-unit performance tests; events 10–17
+> are their metric equivalents. The standing ¼ mile (events 8–9) and standing
+> 402 m (events 16–17) are the same physical test expressed in different units.
+> Events 18–19 provide a user-configurable custom timer.
+
+---
+
+## 16. Comparison with Older Marlin Format
 
 | Feature | AliveDrive PDR 2.5 | Marlin (C7/C8 Corvette) |
 |---------|-------------------|------------------------|
@@ -971,7 +1058,7 @@ data packets.
 
 ---
 
-## 15. Open Questions
+## 17. Open Questions
 
 1. ~~**Enum value mappings**~~: **Resolved.** All 9 enum channels have been
    fully decoded from the `adcp` binary descriptors. See §2.4 for the
@@ -985,12 +1072,17 @@ data packets.
    as lat/lon/altitude). The new scale (1.745329252e-7 rad) should be
    validated against known headings from GPS track data.
 
-3. **`advi` and `adeg` box contents**: These sub-boxes have been located but
-   their internal structure is not yet documented.
+3. ~~**`advi` and `adeg` box contents**~~: **Resolved.** `advi` (§14) contains
+   format version info and the source identifier string
+   `"com.cosworth.outing.source.pdr2_5"`. `adeg` (§15) defines 20 performance
+   timing events (10 categories × start/end), covering lap timing, acceleration
+   tests (0–60 mph, 0–100 mph, quarter mile), and their metric equivalents.
+   Some numeric fields in `advi` remain semantically unidentified with only one
+   sample file available.
 
 ---
 
-## 16. Reference Implementation
+## 18. Reference Implementation
 
 See `alivedrive_parser.py` in this directory for a working Python parser that
 extracts all decoded channels to CSV. It supports both direct MP4 parsing and
