@@ -12,7 +12,9 @@ In this project, we reverse-engineered the binary telemetry format and provide t
 
 All 59 channels defined in the `adcp` box have been identified with their
 authoritative Cosworth namespace names, scale factors, and offsets. Every rate
-group's byte layout is fully mapped.
+group's byte layout is fully mapped. All 9 enum channels (gear, drive mode,
+ABS, ESC, TCS, VSE, PTM, engine start/stop, e-motor axle) are fully decoded
+with human-readable labels in the CSV output.
 
 | Rate | Channels |
 |------|----------|
@@ -83,14 +85,12 @@ See [ALIVEDRIVE_FORMAT.md](ALIVEDRIVE_FORMAT.md) for the full reverse-engineered
 
 ## Known Limitations
 
-- **Enum channels** (gear, drive mode, ABS, ESC, TCS, VSE, PTM) have label strings in `adcp` but the full value-to-label mapping is not yet decoded
 - The **`advi` and `adeg`** sub-box structures are not yet documented
 
 ## Contributing
 
 Contributions are welcome, especially for:
 
-- Decoding enum value mappings from `adcp` descriptors (gear, drive mode, etc.)
 - Testing with other GM/PDR 2.5 vehicles (especially hybrids to validate e-motor/HV battery channels)
 - Adding export formats (GPX, MoTeC, etc.)
 

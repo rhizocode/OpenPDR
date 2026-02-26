@@ -149,9 +149,21 @@ Offset  Size  Type    Field
 Offset  Size  Type    Field
 0       2     u16 BE  unit_id (typically 6 = none.none)
 2       1     u8      type (0x02 = enum)
-3       1     u8      format/subtype indicator
-4       var   ---     null-terminated enum label strings with index bytes
+3       1     u8      format/subtype indicator (0x02 for u8 enum)
+4       1     u8      num_subfields (always 1 observed)
+
+For each subfield:
+  var   string    null-terminated ASCII subfield name (e.g., "status", "current", "mode")
+  1     u8        max_raw_value (domain range — largest defined value)
+  var   string    null-terminated default/unknown label
+  1     u8        default_value (raw value for the default state)
+  1     u8        num_values (count of non-default entries)
+  For each value:
+    var   string  null-terminated ASCII label
+    1     u8      raw value
 ```
+
+See §2.4 for the complete decoded value-to-label mappings for all 9 enum channels.
 
 ### 2.3 Unit Definitions (`adud`)
 
@@ -182,6 +194,146 @@ Observed unit mappings:
 | 9 | angularvelocity.si | rad/s |
 | 10 | torque.si | N·m |
 | 11 | power.si | Watts |
+
+### 2.4 Enum Channel Value-to-Label Mappings
+
+All 9 enum channels have been fully decoded from the `adcp` binary descriptors.
+Each enum channel stores a single `u8` raw value; the tables below give the
+complete label for every defined value.
+
+#### Ch 7 — ABS (Anti-Lock Braking System) — 10 Hz, subfield "status"
+
+| Raw | Label |
+|-----|-------|
+| 0 | inactive |
+| 1 | active |
+| 3 | unknown (default) |
+
+#### Ch 17 — Gear — 5 Hz, subfield "current"
+
+| Raw | Label |
+|-----|-------|
+| 0 | notsupported (default) |
+| 1 | first |
+| 2 | second |
+| 3 | third |
+| 4 | fourth |
+| 5 | fifth |
+| 6 | sixth |
+| 7 | seventh |
+| 8 | eighth |
+| 9 | ninth |
+| 10 | tenth |
+| 11 | unused |
+| 12 | cvtforward |
+| 13 | neutral |
+| 14 | reverse |
+| 15 | park |
+
+> Gear values 1–10 cover up to a 10-speed automatic (CT5-V Blackwing uses a
+> 10-speed 10L80). Values 13–15 are the non-drive gear positions (N/R/P).
+> Value 12 ("cvtforward") is defined for CVT-equipped vehicles.
+
+#### Ch 19 — Drive Performance Mode — 1 Hz, subfield "status"
+
+| Raw | Label |
+|-----|-------|
+| 0 | none (default) |
+| 1 | tour |
+| 2 | sport |
+| 3 | track |
+| 4 | winter |
+| 5 | offroad |
+| 6 | towhaul |
+| 7 | hold |
+| 8 | mountain |
+| 9 | personal |
+| 10 | custom |
+| 11 | awd |
+| 12 | economy |
+| 13 | automatic |
+| 14 | ev |
+| 15 | gradebraking |
+| 16 | exhaustbrake |
+| 17 | activerevmatch |
+| 18 | 2wd |
+| 19 | comfort |
+| 20 | startstopdisable |
+| 21 | crawl |
+| 22 | chargeplus |
+| 23 | baja |
+| 24 | maxpower |
+
+> This is a superset covering many GM platforms. The CT5-V Blackwing supports
+> tour (1), sport (2), track (3), snow/ice (4), and My Mode / custom (10).
+> Other values (offroad, towhaul, ev, baja, etc.) apply to trucks, SUVs, and
+> hybrid/EV platforms sharing the PDR 2.5 firmware.
+
+#### Ch 20 — E-Motor Axle Available — 1 Hz, subfield "status"
+
+| Raw | Label |
+|-----|-------|
+| 0 | notavailable |
+| 1 | available |
+| 3 | unknown (default) |
+
+> Always 0 ("notavailable") on purely ICE vehicles like the CT5-V Blackwing.
+
+#### Ch 30 — Engine Start/Stop — 5 Hz, subfield "state"
+
+| Raw | Label |
+|-----|-------|
+| 0 | engineoff |
+| 1 | enginerunning |
+| 2 | enginestarting |
+| 3 | enginestopping |
+| 7 | unknown (default) |
+
+> Note: The firmware label string for value 0 contains a typo ("engineofff"
+> with three f's); we normalise it to "engineoff" in the parser.
+
+#### Ch 33 — ESC (Electronic Stability Control) — 5 Hz, subfield "status"
+
+| Raw | Label |
+|-----|-------|
+| 0 | inactive |
+| 1 | active |
+| 3 | unknown (default) |
+
+#### Ch 39 — PTM (Performance Traction Management) — 1 Hz, subfield "mode"
+
+| Raw | Label |
+|-----|-------|
+| 0 | disabled |
+| 1 | wet |
+| 2 | dry |
+| 3 | sport1 |
+| 4 | sport2 |
+| 5 | race |
+| 6 | inactive |
+| 7 | unknown (default) |
+
+> PTM levels are specific to V-series vehicles. "sport1" through "race"
+> correspond to decreasing levels of electronic intervention.
+
+#### Ch 43 — TCS (Traction Control System) — 5 Hz, subfield "status"
+
+| Raw | Label |
+|-----|-------|
+| 0 | inactive |
+| 1 | active |
+| 3 | unknown (default) |
+
+#### Ch 53 — VSE (Vehicle Stability Enhancement) — 1 Hz, subfield "status"
+
+| Raw | Label |
+|-----|-------|
+| 0 | active |
+| 1 | inactive |
+| 3 | unknown (default) |
+
+> **Polarity note:** VSE uses the *opposite* polarity from ABS/ESC/TCS:
+> 0 = active, 1 = inactive (vs 0 = inactive for ABS/ESC/TCS).
 
 ---
 
@@ -658,7 +810,7 @@ Offset  Size  Type    Channel             Encoding
 14      4     i32 BE  gps.heading         × 1.745329252e-7 rad → degrees
 18      1     u8      gps.fixquality      3 = PPS fix
 19      1     u8      gps.satellites      count (typically 12–16)
-20      1     u8      ABS.status          enum (0 = inactive)
+20      1     u8      ABS.status          enum (see §2.4: 0=inactive, 1=active)
 21      1     u8      throttle.position   × 0.00392157 → proportion (0–1)
 22      2     u16 BE  boost.pressure      × 1000 → Pa
 24      2     u16 BE  emotor.power        × 500 → W (0 on ICE vehicles)
@@ -679,10 +831,10 @@ Present in even-numbered 10 Hz frames (indices 0, 2, 4, 6, 8).
 
 ```
 Offset  Size  Type  Channel           Encoding
-0       1     u8    gear              enum (see §2.2)
-1       1     u8    engine.startstop  enum
-2       1     u8    ESC.status        enum
-3       1     u8    TCS.status        enum
+0       1     u8    gear              enum (see §2.4: 1–10=first–tenth, 13=neutral, 14=reverse, 15=park)
+1       1     u8    engine.startstop  enum (see §2.4: 0=off, 1=running, 2=starting, 3=stopping)
+2       1     u8    ESC.status        enum (see §2.4: 0=inactive, 1=active)
+3       1     u8    TCS.status        enum (see §2.4: 0=inactive, 1=active)
 ```
 
 ---
@@ -708,8 +860,8 @@ confirmed via `adcp` channel order cross-referenced with observed data patterns.
 Offset  Size  Type    Ch  Channel                     Encoding
 0       1     u8      15  emotor.powerlevel           × 0.01 → proportion
 1       2     u16 BE  18  HV.battery.usablecharge     × 1.5259e-5 → proportion
-3       1     u8      19  drive.performance.mode      enum (10 = observed)
-4       1     u8      20  emotor.axle.available       enum (0 on ICE vehicles)
+3       1     u8      19  drive.performance.mode      enum (see §2.4: 10=custom observed on CT5-V BW)
+4       1     u8      20  emotor.axle.available       enum (see §2.4: 0=notavailable on ICE)
 5       1     u8      21  emotor.temp.rotor           raw - 40 → °C (0 on ICE)
 6       1     u8      22  emotor.temp.stator          raw - 40 → °C (0 on ICE)
 7       1     u8      23  engine.temp.coolant         raw - 40 → °C
@@ -722,7 +874,7 @@ Offset  Size  Type    Ch  Channel                     Encoding
 14      1     u8      36  HV.battery.temp.max         raw × 0.5 - 40 → °C
 15      1     u8      37  HV.battery.temp.min         raw × 0.5 - 40 → °C
 16      4     u32 BE  38  odometer.distance           × 15.625 → metres
-20      1     u8      39  PTM.mode                    enum (3 = observed)
+20      1     u8      39  PTM.mode                    enum (see §2.4: 3=sport1 observed)
 21      1     u8      44  trans.oil.temp              raw - 40 → °C
 22      1     u8      45  tire.pressure.FL            × 4000 → Pa
 23      1     u8      46  tire.pressure.FR            × 4000 → Pa
@@ -732,7 +884,7 @@ Offset  Size  Type    Ch  Channel                     Encoding
 27      1     u8      50  tire.temp.FR                raw - 20 → °C
 28      1     u8      51  tire.temp.RL                raw - 20 → °C
 29      1     u8      52  tire.temp.RR                raw - 20 → °C
-30      1     u8      53  VSE.status                  enum
+30      1     u8      53  VSE.status                  enum (see §2.4: 0=active, 1=inactive — opposite polarity!)
 ```
 
 ### 11.1 Observed Value Ranges (CT5-V Blackwing, ~11 min recording)
@@ -821,11 +973,12 @@ data packets.
 
 ## 15. Open Questions
 
-1. **Enum value mappings**: Several channels use enum encoding (gear, drive
-   mode, ABS, ESC, TCS, VSE, engine startstop, PTM mode, e-motor axle). The
-   `adcp` descriptor contains embedded enum label strings (e.g., gear has
-   labels "current", "notsupported", "forward", etc.) but the full mapping
-   of numeric values to labels is not yet decoded for all enum channels.
+1. ~~**Enum value mappings**~~: **Resolved.** All 9 enum channels have been
+   fully decoded from the `adcp` binary descriptors. See §2.4 for the
+   complete value-to-label tables covering gear (16 values including P/R/N
+   and 10-speed gears), drive mode (25 values covering multiple GM
+   platforms), PTM (8 modes), ABS/ESC/TCS/VSE status, engine start/stop
+   state, and e-motor axle availability.
 
 2. **10 Hz heading validation**: The heading field has been corrected from
    u16 (2 bytes) to i32 (4 bytes) based on `adcp` evidence (rateW=5, same
