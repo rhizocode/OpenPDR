@@ -12,6 +12,7 @@ import { initControls, controls, getIsScrubbing } from './controls'
 import { initFileOpen } from './file-open'
 import { initResizer } from './resizer'
 import { initOverlaySettings } from './overlay-settings'
+import { initEditMode } from './edit-mode'
 import { initChartPanel } from './strip-chart'
 
 const BUILD_ID = 'phase2-v1'
@@ -23,6 +24,7 @@ initControls()
 initFileOpen()
 initResizer()
 initOverlaySettings()
+initEditMode()
 initChartPanel()
 
 // ── FPS counter (only active when debug panel is visible via F2) ──

@@ -118,3 +118,16 @@ export interface RpmConfig {
   redline: number
   maxRpm: number
 }
+
+/** Overlay key — matches keys of OverlayConfig */
+export type OverlayKey = keyof OverlayConfig
+
+/** Position + scale for a single overlay element (% of video-container) */
+export interface OverlayPosition {
+  left: number
+  top: number
+  scale: number
+}
+
+/** Stored layout for all overlay elements */
+export type OverlayLayout = Record<OverlayKey, OverlayPosition>

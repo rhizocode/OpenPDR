@@ -1,62 +1,24 @@
 /**
  * OpenPDR Viewer — Overlay settings dropdown
  *
- * Settings panel for toggling HUD overlay elements and configuring
- * RPM gauge zones. Persists to localStorage.
+ * Settings panel for configuring RPM gauge zones.
+ * HUD overlay toggles have moved to the Edit panel (edit-mode.ts).
  */
 
 import type { OverlayConfig, RpmConfig } from './types'
-import { applyOverlayConfig } from './hud'
+import { applyOverlayConfig, getOverlayConfig, setOverlayConfig } from './hud'
 import { saveRpmConfig, getRpmConfig, loadRpmConfig } from './rpm-gauge'
 
 const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
 
-const DEFAULT_OVERLAY: OverlayConfig = {
-  speed: true,
-  rpmGauge: true,
-  gear: true,
-  gforce: true,
-  pedals: true,
-  steering: true,
-  gps: true,
-}
-
-const OVERLAY_LABELS: Record<keyof OverlayConfig, string> = {
-  speed: 'Speed',
-  rpmGauge: 'RPM Gauge',
-  gear: 'Gear',
-  gforce: 'G-Force',
-  pedals: 'Pedals',
-  steering: 'Steering',
-  gps: 'GPS',
-}
-
-let config: OverlayConfig
-
-function loadOverlayConfig(): OverlayConfig {
-  const saved = localStorage.getItem(OVERLAY_STORAGE_KEY)
-  if (saved) {
-    try {
-      return { ...DEFAULT_OVERLAY, ...JSON.parse(saved) }
-    } catch {
-      return { ...DEFAULT_OVERLAY }
-    }
-  }
-  return { ...DEFAULT_OVERLAY }
-}
-
-function saveOverlayConfig(): void {
-  localStorage.setItem(OVERLAY_STORAGE_KEY, JSON.stringify(config))
-}
-
 export function initOverlaySettings(): void {
-  config = loadOverlayConfig()
+  const config = getOverlayConfig()
   const rpmConfig = loadRpmConfig()
 
   const btnSettings = document.getElementById('btn-settings') as HTMLButtonElement
   const panel = document.getElementById('overlay-settings-panel') as HTMLDivElement
 
-  // Build settings panel content
+  // Build settings panel content (RPM zones only)
   buildPanel(panel, rpmConfig)
 
   // Apply initial config
@@ -66,6 +28,8 @@ export function initOverlaySettings(): void {
   btnSettings.addEventListener('click', (e) => {
     e.stopPropagation()
     panel.classList.toggle('visible')
+    // Close edit panel when opening settings
+    document.getElementById('edit-panel')?.classList.remove('visible')
   })
 
   // Close panel when clicking outside
@@ -80,16 +44,17 @@ export function initOverlaySettings(): void {
     if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'SELECT') return
 
     if (e.code === 'KeyH') {
-      // Toggle all overlays
+      const config = getOverlayConfig()
       const allOn = Object.values(config).every(v => v)
       const keys = Object.keys(config) as (keyof OverlayConfig)[]
       for (const key of keys) {
         config[key] = !allOn
       }
+      setOverlayConfig(config)
       applyOverlayConfig(config)
-      saveOverlayConfig()
-      // Update checkboxes
-      for (const cb of panel.querySelectorAll<HTMLInputElement>('input[data-overlay-key]')) {
+      localStorage.setItem(OVERLAY_STORAGE_KEY, JSON.stringify(config))
+      // Update edit panel checkboxes if they exist
+      for (const cb of document.querySelectorAll<HTMLInputElement>('input[data-edit-overlay-key]')) {
         cb.checked = !allOn
       }
     }
@@ -97,33 +62,6 @@ export function initOverlaySettings(): void {
 }
 
 function buildPanel(panel: HTMLDivElement, rpmConfig: RpmConfig): void {
-  // HUD toggles section
-  const hudSection = document.createElement('div')
-  hudSection.className = 'settings-section'
-  hudSection.innerHTML = '<div class="settings-section-title">HUD Overlays</div>'
-
-  for (const [key, label] of Object.entries(OVERLAY_LABELS)) {
-    const row = document.createElement('div')
-    row.className = 'settings-row'
-
-    const lbl = document.createElement('label')
-    const cb = document.createElement('input')
-    cb.type = 'checkbox'
-    cb.checked = config[key as keyof OverlayConfig]
-    cb.setAttribute('data-overlay-key', key)
-    cb.addEventListener('change', () => {
-      config[key as keyof OverlayConfig] = cb.checked
-      applyOverlayConfig(config)
-      saveOverlayConfig()
-    })
-
-    lbl.appendChild(cb)
-    lbl.appendChild(document.createTextNode(label))
-    row.appendChild(lbl)
-    hudSection.appendChild(row)
-  }
-  panel.appendChild(hudSection)
-
   // RPM zones section
   const rpmSection = document.createElement('div')
   rpmSection.className = 'settings-section'

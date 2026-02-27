@@ -4,29 +4,55 @@
  * Coordinates all HUD overlay elements: speed, RPM gauge, gear, g-force,
  * pedals, steering, GPS. Handles carry-forward for sparse-rate channels
  * and applies overlay visibility config.
+ *
+ * Each overlay is an independent absolutely-positioned .hud-element
+ * inside #video-container (no flex wrapper).
  */
 
-import type { TelemetryRow, OverlayConfig } from './types'
+import type { TelemetryRow, OverlayConfig, OverlayKey } from './types'
 import { onRowUpdate, onFrameTick, currentRow } from './state'
 import { initGForceBall, drawGForce } from './gforce-ball'
 import { initRpmGauge, drawRpmGauge } from './rpm-gauge'
 import { initSteeringIndicator, drawSteering } from './steering'
+
+const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
+
+const DEFAULT_OVERLAY: OverlayConfig = {
+  speed: true, rpmGauge: true, gear: true, gforce: true,
+  pedals: true, steering: true, gps: true,
+}
 
 // ── DOM refs ──
 const hudSpeedValue = document.getElementById('hud-speed-value') as HTMLSpanElement
 const hudGearValue = document.getElementById('hud-gear-value') as HTMLSpanElement
 const throttleFill = document.getElementById('throttle-fill') as HTMLDivElement
 const brakeFill = document.getElementById('brake-fill') as HTMLDivElement
-const hud = document.getElementById('hud') as HTMLDivElement
-const hudGps = document.getElementById('hud-gps') as HTMLDivElement
+const videoContainer = document.getElementById('video-container') as HTMLDivElement
 const gpsLat = document.getElementById('hud-gps-lat') as HTMLSpanElement
 const gpsLon = document.getElementById('hud-gps-lon') as HTMLSpanElement
 const gpsAlt = document.getElementById('hud-gps-alt') as HTMLSpanElement
 
 // ── Overlay config (cached for skipping disabled canvas draws) ──
-let overlayConfig: OverlayConfig = {
-  speed: true, rpmGauge: true, gear: true, gforce: true,
-  pedals: true, steering: true, gps: true,
+let overlayConfig: OverlayConfig = loadOverlayConfig()
+
+function loadOverlayConfig(): OverlayConfig {
+  const saved = localStorage.getItem(OVERLAY_STORAGE_KEY)
+  if (saved) {
+    try {
+      return { ...DEFAULT_OVERLAY, ...JSON.parse(saved) }
+    } catch {
+      return { ...DEFAULT_OVERLAY }
+    }
+  }
+  return { ...DEFAULT_OVERLAY }
+}
+
+export function getOverlayConfig(): OverlayConfig {
+  return { ...overlayConfig }
+}
+
+export function setOverlayConfig(config: OverlayConfig): void {
+  overlayConfig = { ...config }
 }
 
 // ── Smoothing for canvas-drawn indicators ──
@@ -127,21 +153,22 @@ function smoothAndDraw(): void {
 // ── Overlay visibility ──
 export function applyOverlayConfig(config: OverlayConfig): void {
   overlayConfig = { ...config }
-  for (const el of hud.querySelectorAll<HTMLElement>('[data-overlay]')) {
-    const key = el.dataset.overlay as keyof OverlayConfig
+  // Each .hud-element has data-overlay matching a config key
+  for (const el of videoContainer.querySelectorAll<HTMLElement>('.hud-element[data-overlay]')) {
+    const key = el.dataset.overlay as OverlayKey
     if (key in config) {
-      el.style.display = config[key] ? '' : 'none'
+      if (config[key]) {
+        el.classList.add('active')
+      } else {
+        el.classList.remove('active')
+      }
     }
-  }
-  // GPS is outside the bottom HUD bar but still controlled by config
-  if (hudGps) {
-    hudGps.style.display = config.gps ? '' : 'none'
   }
 }
 
 export function showHud(): void {
-  hud.classList.add('active')
-  hudGps.classList.add('active')
+  // Activate all overlays that are enabled in config
+  applyOverlayConfig(overlayConfig)
 }
 
 // ── Initialize ──
