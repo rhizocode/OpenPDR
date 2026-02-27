@@ -21,6 +21,22 @@ type Callback = () => void
 const rowListeners: Callback[] = []
 const telemetryLoadListeners: Callback[] = []
 const frameTickListeners: Callback[] = []
+const editModeListeners: Callback[] = []
+
+// ── Edit mode ──
+let editMode = false
+
+export function getEditMode(): boolean { return editMode }
+
+export function setEditMode(on: boolean): void {
+  if (on === editMode) return
+  editMode = on
+  for (const fn of editModeListeners) fn()
+}
+
+export function onEditModeChange(fn: Callback): void {
+  editModeListeners.push(fn)
+}
 
 export function onRowUpdate(fn: Callback): void {
   rowListeners.push(fn)

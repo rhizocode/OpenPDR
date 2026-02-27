@@ -2,7 +2,7 @@
  * OpenPDR Viewer — File open, drag-and-drop, parse flow
  */
 
-import { video, setTelemetry, dbg } from './state'
+import { video, setTelemetry, dbg, getEditMode } from './state'
 import { showHud, resetCarryForward } from './hud'
 import { showChartPanel } from './resizer'
 
@@ -110,7 +110,9 @@ export function initFileOpen(): void {
 
   // Click on video area to toggle play/pause
   videoContainer.addEventListener('click', (e) => {
+    if (getEditMode()) return  // Don't toggle play in edit mode
     if ((e.target as HTMLElement).closest('#no-file-prompt')) return
+    if ((e.target as HTMLElement).closest('.hud-element')) return
     if (!video.src) return
     btnPlay.click()
   })

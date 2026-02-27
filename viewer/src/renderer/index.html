@@ -14,8 +14,12 @@
       <span id="file-name">No file loaded</span>
       <div id="toolbar-spacer"></div>
       <span id="fps-counter" title="Render FPS"></span>
+      <button id="btn-edit" title="Edit overlay layout">&#9998;</button>
       <button id="btn-settings" title="Overlay settings">&#9881;</button>
     </header>
+
+    <!-- Edit panel dropdown (hidden by default) -->
+    <div id="edit-panel"></div>
 
     <!-- Settings dropdown (hidden by default) -->
     <div id="overlay-settings-panel"></div>
@@ -27,38 +31,34 @@
         <video id="video" preload="auto"></video>
         <canvas id="overlay-canvas"></canvas>
 
-        <!-- HUD overlay (bottom bar) -->
-        <div id="hud">
-          <div id="hud-speed" data-overlay="speed">
-            <span id="hud-speed-value">--</span>
-            <span id="hud-speed-unit">mph</span>
+        <!-- HUD overlays (independently positioned) -->
+        <div class="hud-element" id="hud-speed" data-overlay="speed">
+          <span id="hud-speed-value">--</span>
+          <span id="hud-speed-unit">mph</span>
+        </div>
+        <div class="hud-element" id="hud-rpm-gauge" data-overlay="rpmGauge">
+          <canvas id="rpm-gauge-canvas" width="160" height="90"></canvas>
+        </div>
+        <div class="hud-element" id="hud-gear" data-overlay="gear">
+          <span id="hud-gear-value">-</span>
+        </div>
+        <div class="hud-element" id="hud-steering" data-overlay="steering">
+          <canvas id="steering-canvas" width="80" height="94"></canvas>
+        </div>
+        <div class="hud-element" id="hud-gforce" data-overlay="gforce">
+          <canvas id="gforce-canvas" width="120" height="120"></canvas>
+        </div>
+        <div class="hud-element" id="hud-pedals" data-overlay="pedals">
+          <div class="pedal-bar">
+            <div id="throttle-fill" class="pedal-fill throttle"></div>
+            <span class="pedal-label">THR</span>
           </div>
-          <div id="hud-rpm-gauge" data-overlay="rpmGauge">
-            <canvas id="rpm-gauge-canvas" width="160" height="90"></canvas>
-          </div>
-          <div id="hud-gear" data-overlay="gear">
-            <span id="hud-gear-value">-</span>
-          </div>
-          <div id="hud-steering" data-overlay="steering">
-            <canvas id="steering-canvas" width="80" height="94"></canvas>
-          </div>
-          <div id="hud-gforce" data-overlay="gforce">
-            <canvas id="gforce-canvas" width="120" height="120"></canvas>
-          </div>
-          <div id="hud-pedals" data-overlay="pedals">
-            <div class="pedal-bar">
-              <div id="throttle-fill" class="pedal-fill throttle"></div>
-              <span class="pedal-label">THR</span>
-            </div>
-            <div class="pedal-bar">
-              <div id="brake-fill" class="pedal-fill brake"></div>
-              <span class="pedal-label">BRK</span>
-            </div>
+          <div class="pedal-bar">
+            <div id="brake-fill" class="pedal-fill brake"></div>
+            <span class="pedal-label">BRK</span>
           </div>
         </div>
-
-        <!-- GPS display (top-right, separate from HUD bar) -->
-        <div id="hud-gps" data-overlay="gps">
+        <div class="hud-element" id="hud-gps" data-overlay="gps">
           <span id="hud-gps-lat">--</span>
           <span id="hud-gps-lon">--</span>
           <span id="hud-gps-alt">--</span>
