@@ -1,10 +1,10 @@
 # OpenPDR
 
-OpenPDR is an open-source parser for the **AliveDrive PDR 2.5** telemetry format found in modern GM vehicles equipped with the Cosworth Performance Data Recorder (PDR 2.5), such as the 2025–2026 Cadillac CT5-V Blackwing.
+OpenPDR is an open-source parser for the **AliveDrive PDR 2.5** telemetry format found in modern GM vehicles equipped with the Cosworth Performance Data Recorder (PDR 2.5), including the 2025–2026 Cadillac CT5-V Blackwing, Corvette Z06, and Corvette Stingray.
 
 The PDR records high-rate vehicle telemetry (GPS, accelerometer, engine, steering, wheel speeds, etc.) into an MP4 file alongside video. This data is normally only accessible through proprietary software (Cosworth Toolbox / AliveDrive app).
 
-In this project, we reverse-engineered the binary telemetry format and provide tools to extract the data to CSV.
+In this project, we reverse-engineered the binary telemetry format and provide tools to extract the data to CSV. Both format variants (legacy 3247-byte packets and MMP v4+ 4050-byte packets) are automatically detected and supported.
 
 > **Note:** This covers the **AliveDrive PDR 2.5** format (`adrv`/`adco` codec), which is distinct from the older **Marlin** format (`ctbx`/`mrld`) used in Corvette C7/C8 PDR systems.
 
@@ -104,7 +104,7 @@ See [ALIVEDRIVE_FORMAT.md](ALIVEDRIVE_FORMAT.md) for the full reverse-engineered
 Contributions are welcome, especially for:
 
 - Testing with other GM/PDR 2.5 vehicles (especially hybrids to validate e-motor/HV battery channels)
-- Identifying the remaining numeric fields in the `advi` header (requires multiple sample files)
+- Identifying the remaining numeric fields in the `advi` header (offsets 16–28; generation and MMP version at offsets 12–15 are now identified)
 - Adding export formats (GPX, MoTeC, etc.)
 
 ## License
