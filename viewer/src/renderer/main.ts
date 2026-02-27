@@ -13,7 +13,7 @@ import { initFileOpen } from './file-open'
 import { initResizer } from './resizer'
 import { initOverlaySettings } from './overlay-settings'
 import { initEditMode } from './edit-mode'
-import { initChartPanel } from './strip-chart'
+import { initChartPanel, getIsChartScrubbing } from './strip-chart'
 
 const BUILD_ID = 'phase2-v1'
 dbg(`Renderer loaded [${BUILD_ID}], pdr API: ${window.pdr ? 'OK' : 'MISSING'}`)
@@ -56,7 +56,7 @@ let lastVideoTime = -1
 
 function onAnimationFrame(): void {
   const t = video.currentTime
-  if (!video.paused || getIsScrubbing() || t !== lastVideoTime) {
+  if (!video.paused || getIsScrubbing() || getIsChartScrubbing() || t !== lastVideoTime) {
     lastVideoTime = t
     setCurrentRow(findRowAtTime(t))  // Only fires listeners if row changed
     controls.updateScrubBar(t)

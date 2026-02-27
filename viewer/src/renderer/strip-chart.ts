@@ -60,6 +60,11 @@ let container: HTMLDivElement
 let chartEmpty: HTMLDivElement
 let toolbar: HTMLDivElement
 let dpr = 1
+let chartScrubActive = false
+
+export function getIsChartScrubbing(): boolean {
+  return chartScrubActive
+}
 
 // Frame cache: holds composited data traces + labels (everything except playhead).
 // Rebuilt only on row change or resize. Per-frame work is just blit + playhead line.
@@ -113,14 +118,29 @@ export function initChartPanel(): void {
   })
   ro.observe(container)
 
-  // Click-to-seek — also forces a full state update so scrub bar + HUD refresh
-  canvas.addEventListener('pointerdown', (e) => {
+  // Click-to-seek + drag-to-scrub
+  function seekToPointer(e: PointerEvent): void {
     const rect = canvas.getBoundingClientRect()
     const xPct = (e.clientX - rect.left - LABEL_WIDTH) / (rect.width - LABEL_WIDTH)
     if (xPct >= 0 && xPct <= 1 && video.duration && isFinite(video.duration)) {
       video.currentTime = xPct * video.duration
       setCurrentRow(findRowAtTime(video.currentTime))
     }
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault()
+    chartScrubActive = true
+    canvas.setPointerCapture(e.pointerId)
+    seekToPointer(e)
+  })
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (chartScrubActive) seekToPointer(e)
+  })
+
+  canvas.addEventListener('pointerup', () => {
+    chartScrubActive = false
   })
 }
 
