@@ -62,12 +62,22 @@ export function findAdcoTrack(moovBuf: Buffer): TrackInfo | null {
 
 /**
  * Parse version info from advi box data (payload after box header).
+ *
+ * Key fields:
+ *   [0:2]  formatVersion (u16 BE)
+ *   [4:6]  generation (u16 BE) — 1=gen1, 2=gen2
+ *   [6:8]  mmpVersion (u16 BE) — MMP firmware version
+ *          MMP ≤ 3: 17-byte 100Hz frames (u16 wheel speeds)
+ *          MMP ≥ 4: 25-byte 100Hz frames (float32 wheel speeds)
+ *   [22:]  null-terminated source identifier string
  */
 export function parseAdvi(data: Buffer): AdviInfo {
   const info: AdviInfo = { formatVersion: 0 }
   if (data.length < 24) return info
 
   info.formatVersion = data.readUInt16BE(0)
+  info.generation = data.readUInt16BE(4)
+  info.mmpVersion = data.readUInt16BE(6)
 
   // Find null-terminated source identifier string after 22 bytes of numeric header
   const strStart = 22

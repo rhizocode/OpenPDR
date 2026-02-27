@@ -1,8 +1,15 @@
 # AliveDrive PDR 2.5 Telemetry Format
 
 Reverse-engineered from the `adco` data track in MP4 files produced by the
-AliveDrive / Cosworth Performance Data Recorder found in the 2025-2026 Cadillac
-CT5-V Blackwing (and likely other GM vehicles with the PDR 2.5 hardware).
+AliveDrive / Cosworth Performance Data Recorder found in 2025-2026 GM vehicles
+including Cadillac CT5-V Blackwing, Corvette Z06, and Corvette Stingray.
+
+Two format variants exist, determined by the MMP firmware version (see §14.2):
+
+| Variant | MMP Version | Packet Size | 100 Hz Frame | 1 Hz Frame | Wheel Speed Type |
+|---------|-------------|-------------|--------------|------------|-----------------|
+| Legacy  | gen 1 (any) or gen 2 MMP ≤ 3 | 3247 bytes | 17 bytes | 31 bytes | u16 angular velocity |
+| MMP v4+ | gen 2 MMP ≥ 4 | 4050 bytes | 25 bytes | 34 bytes | float32 m/s |
 
 This document covers the **AliveDrive PDR 2.5** format, which is distinct from
 the older **Marlin** format (handler `ctbx`, codec `mrld`/`mrlv`/`marl`) used
@@ -367,6 +374,8 @@ Offset  Size  Field
 
 ### 3.3 Rate Groups
 
+**Legacy format** (MMP ≤ 3 / gen 1):
+
 | Group | Period (100 ns ticks) | Frequency | Channels | Rate-Table Width | Actual Width |
 |-------|----------------------|-----------|----------|-----------------|--------------|
 | 0 | 100,000 | 100 Hz | 9 | 32 bytes | **17 bytes** |
@@ -375,6 +384,15 @@ Offset  Size  Field
 | 3 | 2,000,000 | 5 Hz | 4 | 8 bytes | **4 bytes** |
 | 4 | 5,000,000 | 2 Hz | 1 | 2 bytes | **1 byte** |
 | 5 | 10,000,000 | 1 Hz | 27 | 59 bytes | **31 bytes** |
+
+**MMP v4+ format** (gen 2 MMP ≥ 4) — Groups 0 and 5 change:
+
+| Group | Frequency | Actual Width | Change |
+|-------|-----------|-------------|--------|
+| 0 | 100 Hz | **25 bytes** | wheel speed channels widen from u16 (2 bytes) to float32 (4 bytes), +8 bytes |
+| 5 | 1 Hz | **34 bytes** | drive.performance.mode widens from u8 (1 byte) to u32 (4 bytes), +3 bytes |
+
+Groups 1–4 are unchanged between format versions.
 
 > **Critical finding:** The `width` values in the rate table do NOT represent
 > the actual byte count stored in the data stream. Each channel's rate-table
@@ -391,7 +409,9 @@ Offset  Size  Field
 > | u32 odometer | 6 | 4 | 2 |
 > | float32 (accelerometer) | 9 | 4 | 5 |
 
-### 3.4 Group 0 Channels (100 Hz, 17 bytes actual)
+### 3.4 Group 0 Channels (100 Hz)
+
+**Legacy format (17 bytes):**
 
 | Ch | Name | Rate-Table Width | Actual Bytes |
 |----|------|-----------------|--------------|
@@ -399,11 +419,30 @@ Offset  Size  Field
 | 29 | engine.speed | 4 | 2 |
 | 31 | engine.torque | 4 | 2 |
 | 42 | steering.angle | 3 | 2 |
-| 54 | wheel.speed.FL | 4 | 2 |
-| 55 | wheel.speed.FR | 4 | 2 |
-| 56 | wheel.speed.RL | 4 | 2 |
-| 57 | wheel.speed.RR | 4 | 2 |
+| 54 | wheel.speed.FL | 4 | 2 (u16) |
+| 55 | wheel.speed.FR | 4 | 2 (u16) |
+| 56 | wheel.speed.RL | 4 | 2 (u16) |
+| 57 | wheel.speed.RR | 4 | 2 (u16) |
 | 58 | gyro.yaw | 3 | 2 |
+
+**MMP v4+ format (25 bytes):** Wheel speed channels change from u16 (2 bytes)
+to float32 (4 bytes each), adding 8 bytes total:
+
+| Ch | Name | Rate-Table Width | Actual Bytes |
+|----|------|-----------------|--------------|
+| 16 | brake.position | 2 | 1 |
+| 29 | engine.speed | 4 | 2 |
+| 31 | engine.torque | 4 | 2 |
+| 42 | steering.angle | 3 | 2 |
+| 54 | wheel.speed.FL | **9** | **4 (float32)** |
+| 55 | wheel.speed.FR | **9** | **4 (float32)** |
+| 56 | wheel.speed.RL | **9** | **4 (float32)** |
+| 57 | wheel.speed.RR | **9** | **4 (float32)** |
+| 58 | gyro.yaw | 3 | 2 |
+
+> The `adcr` rate table encodes this difference: wheel speed channels have
+> width byte 0x04 (u16) in legacy files vs 0x09 (float32) in MMP v4+ files.
+> This can be used to detect the format variant from the adcr box alone.
 
 ### 3.5 Group 1 Channels (50 Hz, 24 bytes actual)
 
@@ -450,16 +489,20 @@ Six channels, each stored as an IEEE 754 big-endian float32 (4 bytes):
 |----|------|-----------------|--------------|
 | 26 | oil.pressure | 2 | 1 |
 
-### 3.9 Group 5 Channels (1 Hz, 31 bytes actual)
+### 3.9 Group 5 Channels (1 Hz, 31 or 34 bytes actual)
 
-27 channels packed into 31 bytes. Full byte-level mapping in §11.
+27 channels packed into 31 bytes (legacy) or 34 bytes (MMP v4+). Full
+byte-level mapping in §11.
 
-| Ch | Name | Rate-Table Width | Actual Bytes |
-|----|------|-----------------|--------------|
-| 15 | emotor.powerlevel | 1 | 1 |
-| 18 | HV.battery.usablecharge | 4 | 2 |
-| 19 | drive.performance.mode | 2 | 1 |
-| 20 | emotor.axle.available | 2 | 1 |
+In MMP v4+, ch 19 (drive.performance.mode) widens from u8 (1 byte, rateW=2)
+to u32 (4 bytes, rateW=6), adding 3 bytes and shifting all subsequent channels.
+
+| Ch | Name | Rate-Table Width | Actual Bytes (legacy) | Actual Bytes (MMP v4+) |
+|----|------|-----------------|----------------------|----------------------|
+| 15 | emotor.powerlevel | 1 | 1 | 1 |
+| 18 | HV.battery.usablecharge | 4 | 2 | 2 |
+| 19 | drive.performance.mode | 2 / **6** | 1 (u8) | **4 (u32)** |
+| 20 | emotor.axle.available | 2 | 1 | 1 |
 | 21 | emotor.temp.rotor | 2 | 1 |
 | 22 | emotor.temp.stator | 2 | 1 |
 | 23 | engine.temp.coolant | 2 | 1 |
@@ -492,8 +535,12 @@ Six channels, each stored as an IEEE 754 big-endian float32 (4 bytes):
 
 The data track's sample table (`stsz`) typically contains:
 
-- 1 init sample of 14 bytes
-- ~660 data samples, mostly 3247 bytes each (some slightly larger)
+- 1–2 init samples of 14 bytes
+- ~400–660 data samples at a uniform size (some slightly larger due to embedded events)
+
+The dominant data sample size indicates the format variant:
+- **3247 bytes** — legacy format (MMP ≤ 3 / gen 1)
+- **4050 bytes** — MMP v4+ format
 
 Each data sample represents **1 second** of telemetry.
 
@@ -502,10 +549,11 @@ Each data sample represents **1 second** of telemetry.
 The first sample is a 14-byte initialisation packet containing a format version
 and timing reference for the recording session.
 
-### 4.3 Data Packet (3247 bytes, nominal)
+### 4.3 Data Packet (3247 or 4050 bytes, nominal)
 
 Each data packet contains 1 second of time-interleaved multi-rate data
-organised into **10 frames** (one per 100 ms GPS epoch).
+organised into **10 frames** (one per 100 ms GPS epoch). The packet size
+depends on the format variant (see §3.3).
 
 ### 4.4 Frame Interleaving Pattern
 
@@ -518,11 +566,11 @@ For frame_idx in 0..9:
   [Group 2: 10 Hz base]           28 bytes (GPS/vehicle)
   [Group 3: 5 Hz, if even frame]   4 bytes (frames 0, 2, 4, 6, 8)
   [Group 4: 2 Hz, if frame 0 or 5] 1 byte
-  [Group 5: 1 Hz, if frame 0]     31 bytes
+  [Group 5: 1 Hz, if frame 0]     31 bytes (legacy) / 34 bytes (MMP v4+)
 
   Repeated 5 times:
-    [Group 0: 100 Hz sub-frame]   17 bytes
-    [Group 0: 100 Hz sub-frame]   17 bytes
+    [Group 0: 100 Hz sub-frame]   17 bytes (legacy) / 25 bytes (MMP v4+)
+    [Group 0: 100 Hz sub-frame]   17 bytes (legacy) / 25 bytes (MMP v4+)
     [Group 1: 50 Hz sub-frame]    24 bytes
 ```
 
@@ -554,7 +602,7 @@ the previous second's timing boundary. This gives a total preamble region of
 
 ### 4.6 Byte Budget Verification
 
-Per 1-second packet:
+**Legacy format** (3247 bytes):
 ```
 Preamble:      14 bytes (header + partial sub-frames)
 10 Hz base:   10 × 28  = 280
@@ -565,6 +613,19 @@ Preamble:      14 bytes (header + partial sub-frames)
 50 Hz frames:  50 × 24  = 1200
                          ------
 Total:                    3247
+```
+
+**MMP v4+ format** (4050 bytes):
+```
+Preamble:      14 bytes (header + partial sub-frames)
+10 Hz base:   10 × 28  = 280
+5 Hz data:     5 × 4   =  20
+2 Hz data:     2 × 1   =   2
+1 Hz data:     1 × 34  =  34
+100 Hz frames: 100 × 25 = 2500
+50 Hz frames:  50 × 24  = 1200
+                         ------
+Total:                    4050
 ```
 
 ### 4.7 GPS Offset Within Packets
@@ -640,6 +701,8 @@ angle_deg = angle_rad × (180 / π)
 
 ### 5.6 Wheel Speed Encoding
 
+**Legacy format (u16 angular velocity):**
+
 Wheel speeds use a **slightly different angular velocity scale** from engine
 speed:
 
@@ -658,6 +721,16 @@ speed_mps = wheel_rad_s × tire_radius
 
 A best-fit effective radius of ~0.321 m (vs 0.337 m nominal) gives
 GPS-matching speeds. The ~5% difference is due to tire compression under load.
+
+**MMP v4+ format (float32 m/s):**
+
+Wheel speeds are stored directly as IEEE 754 big-endian float32 values in
+metres per second — no angular velocity conversion or tire radius needed:
+
+```
+speed_mps = raw_float32     (direct value)
+speed_kph = raw_float32 × 3.6
+```
 
 ### 5.7 Engine Torque Encoding
 
@@ -746,7 +819,9 @@ yaw_deg_s = yaw_rad_s × (180 / π)
 
 ---
 
-## 6. 100 Hz Sub-Frame Layout (17 bytes)
+## 6. 100 Hz Sub-Frame Layout
+
+### 6.1 Legacy Format (17 bytes)
 
 ```
 Offset  Size  Type    Channel             Encoding
@@ -760,6 +835,31 @@ Offset  Size  Type    Channel             Encoding
 13      2     u16 BE  wheel.speed.RR      × 0.0251327412 rad/s
 15      2     i16 BE  gyro.yaw            × 0.00041887902 rad/s
 ```
+
+### 6.2 MMP v4+ Format (25 bytes)
+
+The first 7 bytes (brake, engine speed, torque, steering) are identical. Wheel
+speeds change from u16 angular velocity to float32 m/s, and gyro moves to
+offset 23:
+
+```
+Offset  Size  Type       Channel             Encoding
+0       1     u8         brake.position      × 0.00392157 → proportion (0–1)
+1       2     u16 BE     engine.speed        × 0.0261799388 rad/s → RPM
+3       2     u16 BE     engine.torque       × 0.5 - 848 → N·m
+5       2     i16 BE     steering.angle      × 0.001090831 rad → degrees
+7       4     float32 BE wheel.speed.FL      direct m/s → × 3.6 for kph
+11      4     float32 BE wheel.speed.FR      direct m/s → × 3.6 for kph
+15      4     float32 BE wheel.speed.RL      direct m/s → × 3.6 for kph
+19      4     float32 BE wheel.speed.RR      direct m/s → × 3.6 for kph
+23      2     i16 BE     gyro.yaw            × 0.00041887902 rad/s
+```
+
+> **Parser note:** In MMP v4+ packets, the float32 wheel speed values at low
+> vehicle speeds (< 5 kph, values near zero) can create false matches in the
+> 50 Hz float block scanner, since near-zero floats look like valid IEEE 754
+> values. Decoded 100 Hz frames should be validated: reject any frame with
+> RPM > 12,000 or any wheel speed > 400 kph.
 
 ---
 
@@ -850,11 +950,13 @@ Offset  Size  Type  Channel        Encoding
 
 ---
 
-## 11. 1 Hz Frame Layout (31 bytes)
+## 11. 1 Hz Frame Layout
 
 Present only in 10 Hz frame 0. Contains 27 channels with engine temperatures,
 tire data, odometer, and other slowly-changing vehicle parameters. Full mapping
 confirmed via `adcp` channel order cross-referenced with observed data patterns.
+
+### 11.0 Legacy Format (31 bytes)
 
 ```
 Offset  Size  Type    Ch  Channel                     Encoding
@@ -887,6 +989,43 @@ Offset  Size  Type    Ch  Channel                     Encoding
 30      1     u8      53  VSE.status                  enum (see §2.4: 0=active, 1=inactive — opposite polarity!)
 ```
 
+### 11.0b MMP v4+ Format (34 bytes)
+
+In MMP v4+, ch 19 (`drive.performance.mode`) widens from u8 (1 byte) to u32
+(4 bytes), adding 3 bytes and shifting all subsequent channel offsets by +3.
+Only the low byte of the u32 is used for the enum value lookup:
+
+```
+Offset  Size  Type    Ch  Channel                     Encoding
+0       1     u8      15  emotor.powerlevel           × 0.01 → proportion
+1       2     u16 BE  18  HV.battery.usablecharge     × 1.5259e-5 → proportion
+3       4     u32 BE  19  drive.performance.mode      low byte → enum (see §2.4)
+7       1     u8      20  emotor.axle.available       enum
+8       1     u8      21  emotor.temp.rotor           raw - 40 → °C
+9       1     u8      22  emotor.temp.stator          raw - 40 → °C
+10      1     u8      23  engine.temp.coolant         raw - 40 → °C
+11      1     u8      25  engine.temp.airintake       raw - 40 → °C
+12      1     u8      27  engine.temp.oil             raw - 40 → °C
+13      1     u8      28  engine.powerlevel           × 0.01 → proportion
+14      1     u8      32  outside.air.temp            raw × 0.5 - 40 → °C
+15      1     u8      34  fuel.level                  × 0.003921 → proportion
+16      1     u8      35  HV.battery.temp.avg         raw - 40 → °C
+17      1     u8      36  HV.battery.temp.max         raw × 0.5 - 40 → °C
+18      1     u8      37  HV.battery.temp.min         raw × 0.5 - 40 → °C
+19      4     u32 BE  38  odometer.distance           × 15.625 → metres
+23      1     u8      39  PTM.mode                    enum (see §2.4)
+24      1     u8      44  trans.oil.temp              raw - 40 → °C
+25      1     u8      45  tire.pressure.FL            × 4000 → Pa
+26      1     u8      46  tire.pressure.FR            × 4000 → Pa
+27      1     u8      47  tire.pressure.RL            × 4000 → Pa
+28      1     u8      48  tire.pressure.RR            × 4000 → Pa
+29      1     u8      49  tire.temp.FL                raw - 20 → °C
+30      1     u8      50  tire.temp.FR                raw - 20 → °C
+31      1     u8      51  tire.temp.RL                raw - 20 → °C
+32      1     u8      52  tire.temp.RR                raw - 20 → °C
+33      1     u8      53  VSE.status                  enum (see §2.4)
+```
+
 ### 11.1 Observed Value Ranges (CT5-V Blackwing, ~11 min recording)
 
 | Offset | Channel | Raw Range | Physical Range |
@@ -912,7 +1051,8 @@ ffmpeg -v quiet -i input.mp4 -map 0:1 -c copy -f data telemetry_raw.bin
 ```
 
 This extracts the raw data track. The resulting file contains a 14-byte init
-packet followed by uniform-sized data packets (typically 3247 bytes).
+packet followed by uniform-sized data packets (3247 bytes for legacy format,
+4050 bytes for MMP v4+).
 
 ### 12.2 Direct MP4 Parsing
 
@@ -959,8 +1099,8 @@ data packets.
 
 ## 14. Version Info (`advi`)
 
-The `advi` box (64 bytes) contains format version information and a Cosworth
-namespace source identifier string.
+The `advi` box (64 bytes) contains format version information, hardware/firmware
+identifiers, and a Cosworth namespace source identifier string.
 
 ### 14.1 Structure
 
@@ -970,8 +1110,8 @@ Offset  Size  Type    Field
 4       4     ascii   box type ("advi")
 8       2     u16 BE  format_version (5 = PDR 2.5)
 10      2     u16 BE  reserved (0)
-12      2     u16 BE  field_1 (observed: 1)
-14      2     u16 BE  field_2 (observed: 8)
+12      2     u16 BE  generation — hardware generation (1 = gen 1, 2 = gen 2)
+14      2     u16 BE  mmp_version — MMP firmware version (see §14.2)
 16      2     u16 BE  field_3 (observed: 110)
 18      2     u16 BE  field_4 (observed: 30)
 20      4     u32 BE  field_5 (observed: 384063)
@@ -984,10 +1124,23 @@ Offset  Size  Type    Field
 The source identifier string is `"com.cosworth.outing.source.pdr2_5"`,
 which identifies the data format as AliveDrive PDR 2.5.
 
-> **Note:** The format_version value 5 corresponds to the "pdr2_5" suffix in
-> the source identifier. The semantic meaning of fields 1–8 has not been
-> determined from a single sample file; additional recordings from different
-> vehicle platforms would help clarify these values.
+### 14.2 Generation and MMP Version
+
+The `generation` field at offset 12 identifies the hardware generation, and the
+`mmp_version` field at offset 14 identifies the MMP firmware version. Together
+they determine the data format variant:
+
+| Generation | MMP Version | Packet Size | Format |
+|------------|-------------|-------------|--------|
+| 1 | 8 | 3247 | Legacy (17-byte 100 Hz) |
+| 2 | 3 | 3247 | Legacy (17-byte 100 Hz) |
+| 2 | 4+ | 4050 | MMP v4+ (25-byte 100 Hz) |
+
+> **Important:** MMP version numbering differs across hardware generations.
+> Gen 1 devices report MMP version 8 but use the legacy 3247-byte packet format.
+> The MMP version alone is **not** a reliable indicator of the data format.
+> Use the dominant packet size from the sample table (`stsz`) instead:
+> sizes > 3500 indicate MMP v4+ format. See §4.1.
 
 ---
 
@@ -1073,12 +1226,12 @@ Events come in start/end pairs, defining 10 performance timing categories:
    validated against known headings from GPS track data.
 
 3. ~~**`advi` and `adeg` box contents**~~: **Resolved.** `advi` (§14) contains
-   format version info and the source identifier string
-   `"com.cosworth.outing.source.pdr2_5"`. `adeg` (§15) defines 20 performance
-   timing events (10 categories × start/end), covering lap timing, acceleration
-   tests (0–60 mph, 0–100 mph, quarter mile), and their metric equivalents.
-   Some numeric fields in `advi` remain semantically unidentified with only one
-   sample file available.
+   format version, hardware generation, MMP firmware version, and the source
+   identifier string `"com.cosworth.outing.source.pdr2_5"`. Generation (offset
+   12) and MMP version (offset 14) have been identified from cross-referencing
+   four sample files across gen 1 and gen 2 hardware. `adeg` (§15) defines 20
+   performance timing events (10 categories × start/end). Some numeric fields
+   in `advi` (offsets 16–28) remain semantically unidentified.
 
 ---
 
@@ -1086,7 +1239,8 @@ Events come in start/end pairs, defining 10 performance timing categories:
 
 See `alivedrive_parser.py` in this directory for a working Python parser that
 extracts all decoded channels to CSV. It supports both direct MP4 parsing and
-pre-extracted raw binary files.
+pre-extracted raw binary files, and automatically detects the format variant
+(legacy vs MMP v4+) from the dominant packet size.
 
 ```bash
 # Direct from MP4
@@ -1097,5 +1251,9 @@ python alivedrive_parser.py telemetry_raw.bin --raw --csv output.csv
 ```
 
 > The parser implements all channel definitions, scale factors, and frame
-> layouts documented in this specification, including the full 1 Hz frame
+> layouts documented in this specification, including dual-format support
+> (17/25-byte 100 Hz frames, 31/34-byte 1 Hz frames), the full 1 Hz frame
 > decode (27 channels), corrected 4-byte heading, and confirmed torque formula.
+
+A TypeScript implementation is also available in `viewer/src/main/parser/` as
+part of the OpenPDR Electron viewer application.

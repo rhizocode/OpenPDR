@@ -741,38 +741,68 @@ def find_float_blocks(packet, packet_size=3247):
     return float_offsets
 
 
-def decode_100hz_frame(packet, offset):
-    """Decode a 100Hz sub-frame (17 bytes).
+def decode_100hz_frame(packet, offset, hz100_size=17):
+    """Decode a 100Hz sub-frame.
 
-    Layout: brake(1) engine_speed(2) torque(2) steering(2)
-            wheel_FL(2) wheel_FR(2) wheel_RL(2) wheel_RR(2) gyro_yaw(2)
+    MMP ≤ 3 (17 bytes):
+      brake(1) engine_speed(2) torque(2) steering(2)
+      wheel_FL(2) wheel_FR(2) wheel_RL(2) wheel_RR(2) gyro_yaw(2)
+      — wheel speeds are u16 angular velocity (rad/s scale + tire radius)
+
+    MMP ≥ 4 (25 bytes):
+      brake(1) engine_speed(2) torque(2) steering(2)
+      wheel_FL(4) wheel_FR(4) wheel_RL(4) wheel_RR(4) gyro_yaw(2)
+      — wheel speeds are float32 BE in m/s (direct)
     """
-    if offset < 0 or offset + 17 > len(packet):
+    if offset < 0 or offset + hz100_size > len(packet):
         return None
 
-    frame = packet[offset:offset+17]
-    if len(frame) < 17:
+    frame = packet[offset:offset + hz100_size]
+    if len(frame) < hz100_size:
         return None
 
     torque_raw = struct.unpack('>H', frame[3:5])[0]
-    ws_fl_raw = struct.unpack('>H', frame[7:9])[0]
-    ws_fr_raw = struct.unpack('>H', frame[9:11])[0]
-    ws_rl_raw = struct.unpack('>H', frame[11:13])[0]
-    ws_rr_raw = struct.unpack('>H', frame[13:15])[0]
-    gyro_raw = struct.unpack('>h', frame[15:17])[0]
 
-    return {
-        'brake_position': frame[0] * PROPORTION_SCALE,
-        'engine_rpm': struct.unpack('>H', frame[1:3])[0] * ENGINE_SPEED_SCALE * RAD_TO_RPM,
-        'engine_torque_raw': torque_raw,
-        'engine_torque_nm': torque_raw * TORQUE_SCALE + TORQUE_OFFSET,
-        'steering_angle_deg': struct.unpack('>h', frame[5:7])[0] * STEERING_SCALE * RAD_TO_DEG,
-        'wheel_speed_fl_kph': ws_fl_raw * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
-        'wheel_speed_fr_kph': ws_fr_raw * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
-        'wheel_speed_rl_kph': ws_rl_raw * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
-        'wheel_speed_rr_kph': ws_rr_raw * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
-        'gyro_yaw_deg_s': gyro_raw * GYRO_YAW_SCALE * RAD_TO_DEG,
-    }
+    if hz100_size == 25:
+        # MMP v4: float32 wheel speeds in m/s
+        ws_fl_mps = struct.unpack('>f', frame[7:11])[0]
+        ws_fr_mps = struct.unpack('>f', frame[11:15])[0]
+        ws_rl_mps = struct.unpack('>f', frame[15:19])[0]
+        ws_rr_mps = struct.unpack('>f', frame[19:23])[0]
+        gyro_raw = struct.unpack('>h', frame[23:25])[0]
+
+        return {
+            'brake_position': frame[0] * PROPORTION_SCALE,
+            'engine_rpm': struct.unpack('>H', frame[1:3])[0] * ENGINE_SPEED_SCALE * RAD_TO_RPM,
+            'engine_torque_raw': torque_raw,
+            'engine_torque_nm': torque_raw * TORQUE_SCALE + TORQUE_OFFSET,
+            'steering_angle_deg': struct.unpack('>h', frame[5:7])[0] * STEERING_SCALE * RAD_TO_DEG,
+            'wheel_speed_fl_kph': ws_fl_mps * MPS_TO_KPH,
+            'wheel_speed_fr_kph': ws_fr_mps * MPS_TO_KPH,
+            'wheel_speed_rl_kph': ws_rl_mps * MPS_TO_KPH,
+            'wheel_speed_rr_kph': ws_rr_mps * MPS_TO_KPH,
+            'gyro_yaw_deg_s': gyro_raw * GYRO_YAW_SCALE * RAD_TO_DEG,
+        }
+    else:
+        # MMP v3: u16 angular velocity wheel speeds
+        ws_fl_raw = struct.unpack('>H', frame[7:9])[0]
+        ws_fr_raw = struct.unpack('>H', frame[9:11])[0]
+        ws_rl_raw = struct.unpack('>H', frame[11:13])[0]
+        ws_rr_raw = struct.unpack('>H', frame[13:15])[0]
+        gyro_raw = struct.unpack('>h', frame[15:17])[0]
+
+        return {
+            'brake_position': frame[0] * PROPORTION_SCALE,
+            'engine_rpm': struct.unpack('>H', frame[1:3])[0] * ENGINE_SPEED_SCALE * RAD_TO_RPM,
+            'engine_torque_raw': torque_raw,
+            'engine_torque_nm': torque_raw * TORQUE_SCALE + TORQUE_OFFSET,
+            'steering_angle_deg': struct.unpack('>h', frame[5:7])[0] * STEERING_SCALE * RAD_TO_DEG,
+            'wheel_speed_fl_kph': ws_fl_raw * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+            'wheel_speed_fr_kph': ws_fr_raw * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+            'wheel_speed_rl_kph': ws_rl_raw * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+            'wheel_speed_rr_kph': ws_rr_raw * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+            'gyro_yaw_deg_s': gyro_raw * GYRO_YAW_SCALE * RAD_TO_DEG,
+        }
 
 
 def decode_50hz_frame(packet, offset):
@@ -864,64 +894,104 @@ def decode_5hz_frame(packet, offset):
     }
 
 
-def decode_1hz_frame(packet, lat_offset):
-    """Decode the full 1 Hz frame (31 bytes, 27 channels).
+def decode_1hz_frame(packet, lat_offset, hz1_size=31):
+    """Decode the full 1 Hz frame.
 
     The 1 Hz block starts after the 10 Hz frame (26 bytes), 5 Hz frame (4 bytes),
     and 2 Hz frame (1 byte) in frame 0: lat_offset + 26 + 4 + 1 = lat_offset + 31.
+
+    MMP ≤ 3 (31 bytes): drive_mode is u8 at b[3]
+    MMP ≥ 4 (34 bytes): drive_mode is u32 at b[3:7], shifting everything after by 3
     """
     hz1_offset = lat_offset + 26 + 4 + 1  # after group2 + group3 + group4
-    if hz1_offset + 31 > len(packet):
+    if hz1_offset + hz1_size > len(packet):
         return None
 
-    b = packet[hz1_offset:hz1_offset + 31]
-    odometer_raw = struct.unpack('>I', b[16:20])[0]
+    b = packet[hz1_offset:hz1_offset + hz1_size]
+
     hv_charge_raw = struct.unpack('>H', b[1:3])[0]
+
+    if hz1_size == 34:
+        # MMP v4: drive_mode is u32 (4 bytes) — use low byte for enum lookup
+        dm_raw = struct.unpack('>I', b[3:7])[0]
+        s = 3  # shift: all fields after drive_mode are offset by 3 extra bytes
+    else:
+        dm_raw = b[3]
+        s = 0
+
+    odometer_raw = struct.unpack('>I', b[16+s:20+s])[0]
 
     return {
         'emotor_powerlevel': b[0] * 0.01,
         'hv_battery_charge': hv_charge_raw * 1.5259e-5,
-        'drive_mode': b[3],
-        'drive_mode_label': enum_label('drive_mode', b[3]),
-        'emotor_axle_available': b[4],
-        'emotor_axle_available_label': enum_label('emotor_axle_available', b[4]),
-        'emotor_temp_rotor_c': b[5] - 40 if b[5] > 0 else None,
-        'emotor_temp_stator_c': b[6] - 40 if b[6] > 0 else None,
-        'engine_temp_coolant_c': b[7] - 40,
-        'engine_temp_airintake_c': b[8] - 40,
-        'engine_temp_oil_c': b[9] - 40,
-        'engine_powerlevel': b[10] * 0.01,
-        'outside_air_temp_c': b[11] * 0.5 - 40,
-        'fuel_level_pct': b[12] * FUEL_LEVEL_SCALE * 100.0,
-        'hv_battery_temp_avg_c': b[13] - 40 if b[13] > 0 else None,
-        'hv_battery_temp_max_c': b[14] * 0.5 - 40 if b[14] > 0 else None,
-        'hv_battery_temp_min_c': b[15] * 0.5 - 40 if b[15] > 0 else None,
+        'drive_mode': dm_raw & 0xFF,
+        'drive_mode_label': enum_label('drive_mode', dm_raw & 0xFF),
+        'emotor_axle_available': b[4+s],
+        'emotor_axle_available_label': enum_label('emotor_axle_available', b[4+s]),
+        'emotor_temp_rotor_c': b[5+s] - 40 if b[5+s] > 0 else None,
+        'emotor_temp_stator_c': b[6+s] - 40 if b[6+s] > 0 else None,
+        'engine_temp_coolant_c': b[7+s] - 40,
+        'engine_temp_airintake_c': b[8+s] - 40,
+        'engine_temp_oil_c': b[9+s] - 40,
+        'engine_powerlevel': b[10+s] * 0.01,
+        'outside_air_temp_c': b[11+s] * 0.5 - 40,
+        'fuel_level_pct': b[12+s] * FUEL_LEVEL_SCALE * 100.0,
+        'hv_battery_temp_avg_c': b[13+s] - 40 if b[13+s] > 0 else None,
+        'hv_battery_temp_max_c': b[14+s] * 0.5 - 40 if b[14+s] > 0 else None,
+        'hv_battery_temp_min_c': b[15+s] * 0.5 - 40 if b[15+s] > 0 else None,
         'odometer_km': odometer_raw * ODOMETER_SCALE / 1000.0,
-        'ptm_mode': b[20],
-        'ptm_mode_label': enum_label('ptm_mode', b[20]),
-        'trans_oil_temp_c': b[21] - 40,
-        'tire_pressure_fl_kpa': b[22] * TIRE_PRESSURE_SCALE / 1000.0,
-        'tire_pressure_fr_kpa': b[23] * TIRE_PRESSURE_SCALE / 1000.0,
-        'tire_pressure_rl_kpa': b[24] * TIRE_PRESSURE_SCALE / 1000.0,
-        'tire_pressure_rr_kpa': b[25] * TIRE_PRESSURE_SCALE / 1000.0,
-        'tire_temp_fl_c': b[26] - 20,
-        'tire_temp_fr_c': b[27] - 20,
-        'tire_temp_rl_c': b[28] - 20,
-        'tire_temp_rr_c': b[29] - 20,
-        'vse_status': b[30],
-        'vse_status_label': enum_label('vse_status', b[30]),
+        'ptm_mode': b[20+s],
+        'ptm_mode_label': enum_label('ptm_mode', b[20+s]),
+        'trans_oil_temp_c': b[21+s] - 40,
+        'tire_pressure_fl_kpa': b[22+s] * TIRE_PRESSURE_SCALE / 1000.0,
+        'tire_pressure_fr_kpa': b[23+s] * TIRE_PRESSURE_SCALE / 1000.0,
+        'tire_pressure_rl_kpa': b[24+s] * TIRE_PRESSURE_SCALE / 1000.0,
+        'tire_pressure_rr_kpa': b[25+s] * TIRE_PRESSURE_SCALE / 1000.0,
+        'tire_temp_fl_c': b[26+s] - 20,
+        'tire_temp_fr_c': b[27+s] - 20,
+        'tire_temp_rl_c': b[28+s] - 20,
+        'tire_temp_rr_c': b[29+s] - 20,
+        'vse_status': b[30+s],
+        'vse_status_label': enum_label('vse_status', b[30+s]),
     }
 
 
-def decode_packet(packet, packet_idx, reference_lat_range=None):
+def _validate_100hz(frame):
+    """Sanity-check a decoded 100Hz frame.
+
+    In MMP v4, the float block scanner can find false matches due to float32
+    wheel speeds at low vehicle speeds.  This rejects obviously-wrong frames
+    where the float block offset was misaligned.
+    """
+    if abs(frame['engine_rpm']) > 12000:
+        return False
+    for key in ('wheel_speed_fl_kph', 'wheel_speed_fr_kph',
+                'wheel_speed_rl_kph', 'wheel_speed_rr_kph'):
+        if abs(frame[key]) > 400:
+            return False
+    return True
+
+
+def decode_packet(packet, packet_idx, reference_lat_range=None, hz100_size=17):
     """
     Decode a complete telemetry packet.
+
+    Args:
+        packet: Raw packet bytes
+        packet_idx: Packet index (used for timestamp calculation)
+        reference_lat_range: GPS bounding box for search narrowing
+        hz100_size: 100Hz sub-frame size (17 for MMP ≤ 3, 25 for MMP ≥ 4)
 
     Returns a list of decoded records at various rates.
     """
     PACKET_SIZE = len(packet)
     if PACKET_SIZE < 100:
         return []  # Skip init packet
+
+    # Derive 1Hz frame size from 100Hz frame size
+    # MMP ≤ 3: hz100=17, hz1=31 (drive_mode is u8)
+    # MMP ≥ 4: hz100=25, hz1=34 (drive_mode is u32, +3 bytes)
+    hz1_size = 34 if hz100_size == 25 else 31
 
     # Find GPS offsets by searching for valid coordinate patterns
     gps_offsets = find_gps_in_packet(packet, reference_lat_range)
@@ -948,20 +1018,19 @@ def decode_packet(packet, packet_idx, reference_lat_range=None):
         next_lat = gps_offsets[frame_idx + 1] if frame_idx < len(gps_offsets) - 1 else PACKET_SIZE
         frame_floats = [f for f in float_offsets if lat_off < f < next_lat]
 
-        # Decode 100Hz sub-frames (between group2 end and next lat)
-        # Group 2 without speed = 26 bytes. Plus variable low-rate data.
-        # 100Hz frames are 34 bytes before each float block (2 × 17)
+        # Decode 100Hz sub-frames (two frames before each float block)
+        # Each float block is preceded by 2 × hz100_size bytes of 100Hz data
         hz100_frames = []
         for fidx, foff in enumerate(frame_floats):
             # Two 100Hz frames before each float
-            f1_off = foff - 34
-            f2_off = foff - 17
+            f1_off = foff - 2 * hz100_size
+            f2_off = foff - hz100_size
             if f1_off >= lat_off:
-                f1 = decode_100hz_frame(packet, f1_off)
-                if f1:
+                f1 = decode_100hz_frame(packet, f1_off, hz100_size)
+                if f1 and _validate_100hz(f1):
                     hz100_frames.append(f1)
-            f2 = decode_100hz_frame(packet, f2_off)
-            if f2:
+            f2 = decode_100hz_frame(packet, f2_off, hz100_size)
+            if f2 and _validate_100hz(f2):
                 hz100_frames.append(f2)
 
         # Decode 50Hz sub-frames
@@ -1034,7 +1103,7 @@ def decode_packet(packet, packet_idx, reference_lat_range=None):
 
         # Add 1Hz data (only in frame 0)
         if frame_idx == 0:
-            hz1_data = decode_1hz_frame(packet, lat_off)
+            hz1_data = decode_1hz_frame(packet, lat_off, hz1_size)
             if hz1_data:
                 record.update(hz1_data)
 
@@ -1134,13 +1203,24 @@ def parse_adop(data):
 def parse_advi(data):
     """Parse version info from advi box.
 
-    Returns a dict with format_version and source identifier string.
+    Returns a dict with format_version, generation, mmp_version,
+    and source identifier string.
+
+    Key fields:
+      [0:2]  format_version (u16 BE)
+      [4:6]  generation (u16 BE) — 1=gen1, 2=gen2
+      [6:8]  mmp_version (u16 BE) — MMP firmware version
+             MMP ≤ 3: 17-byte 100Hz frames (u16 wheel speeds)
+             MMP ≥ 4: 25-byte 100Hz frames (float32 wheel speeds)
+      [22:]  null-terminated source identifier string
     """
     info = {}
     if len(data) < 24:
         return info
 
     info['format_version'] = struct.unpack('>H', data[0:2])[0]
+    info['generation'] = struct.unpack('>H', data[4:6])[0]
+    info['mmp_version'] = struct.unpack('>H', data[6:8])[0]
 
     # Find null-terminated source identifier string
     # It follows 22 bytes of numeric header fields
@@ -1229,13 +1309,25 @@ def extract_telemetry(mp4_path, csv_path=None, verbose=False):
         print(f"Sample sizes: {dict(sorted(sizes.items()))}")
 
     # Parse version info (advi) and event definitions (adeg)
+    mmp_version = 3  # default to v3 (legacy format)
     advi_box = scan_for_box(mp4_data, 'advi')
     if advi_box:
         advi_data = mp4_data[advi_box[2]:advi_box[0]+advi_box[1]]
         advi_info = parse_advi(advi_data)
-        if verbose and advi_info:
-            print(f"Format version: {advi_info.get('format_version', '?')}")
-            print(f"Source: {advi_info.get('source', '?')}")
+        if advi_info:
+            mmp_version = advi_info.get('mmp_version', 3)
+            if verbose:
+                print(f"Format version: {advi_info.get('format_version', '?')}")
+                print(f"MMP version: {mmp_version} (gen {advi_info.get('generation', '?')})")
+                print(f"Source: {advi_info.get('source', '?')}")
+
+    # Determine 100Hz frame size from dominant packet size.
+    # MMP version alone isn't reliable across generations (gen1 MMP v8 uses old format).
+    # Packet size is the direct indicator: ~4050 = MMP v4+ format, ~3247 = legacy format.
+    dominant_pkt_size = max(set(sample_sizes), key=sample_sizes.count) if sample_sizes else 0
+    hz100_size = 25 if dominant_pkt_size > 3500 else 17
+    print(f"Dominant packet size {dominant_pkt_size}: using {hz100_size}-byte 100Hz frames"
+          f" (MMP v{mmp_version}, gen {advi_info.get('generation', '?') if advi_box else '?'})")
 
     adeg_box = scan_for_box(mp4_data, 'adeg')
     if adeg_box:
@@ -1292,7 +1384,7 @@ def extract_telemetry(mp4_path, csv_path=None, verbose=False):
         if sz < 100:
             continue  # Skip init packet
 
-        records = decode_packet(packet, pkt_idx, ref_lat_range)
+        records = decode_packet(packet, pkt_idx, ref_lat_range, hz100_size)
         if records:
             all_records.extend(records)
             decoded_packets += 1
@@ -1402,8 +1494,8 @@ def decode_raw_file(raw_path, csv_path=None, ref_lat=None, ref_lon=None, verbose
     INIT_SIZE = 14
     # Find the common packet size
     remaining = len(data) - INIT_SIZE
-    # Try common sizes
-    for pkt_size in [3247, 3248, 3200, 3000, 2500, 2000]:
+    # Try common sizes (MMP v4 = 4050, MMP v3 = 3247)
+    for pkt_size in [4050, 3247, 3248, 3200, 3000, 2500, 2000]:
         if remaining % pkt_size == 0 or (remaining % pkt_size) < 20:
             num_packets = remaining // pkt_size
             print(f"Detected: {INIT_SIZE}-byte init + {num_packets} × {pkt_size}-byte packets")
@@ -1414,6 +1506,10 @@ def decode_raw_file(raw_path, csv_path=None, ref_lat=None, ref_lon=None, verbose
         pkt_size = 3247
         num_packets = remaining // pkt_size
         print(f"Assuming: {INIT_SIZE}-byte init + {num_packets} × {pkt_size}-byte packets")
+
+    # Determine format version from packet size
+    hz100_size = 25 if pkt_size > 3500 else 17
+    print(f"Packet size {pkt_size}: using {hz100_size}-byte 100Hz frames")
 
     # Set up reference GPS range
     ref_lat_range = None
@@ -1450,7 +1546,7 @@ def decode_raw_file(raw_path, csv_path=None, ref_lat=None, ref_lon=None, verbose
         pkt_start = INIT_SIZE + pkt_idx * pkt_size
         packet = data[pkt_start:pkt_start + pkt_size]
 
-        records = decode_packet(packet, pkt_idx, ref_lat_range)
+        records = decode_packet(packet, pkt_idx, ref_lat_range, hz100_size)
         if records:
             all_records.extend(records)
             decoded += 1

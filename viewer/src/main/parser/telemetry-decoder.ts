@@ -104,30 +104,61 @@ interface Hz1Frame {
 // ── Frame decoders ──
 
 /**
- * Decode a 100Hz sub-frame (17 bytes).
- * Layout: brake(1) engine_speed(2) torque(2) steering(2)
- *         wheel_FL(2) wheel_FR(2) wheel_RL(2) wheel_RR(2) gyro_yaw(2)
+ * Decode a 100Hz sub-frame.
+ *
+ * MMP ≤ 3 (17 bytes):
+ *   brake(1) engine_speed(2) torque(2) steering(2)
+ *   wheel_FL(2) wheel_FR(2) wheel_RL(2) wheel_RR(2) gyro_yaw(2)
+ *   — wheel speeds are u16 angular velocity (rad/s scale + tire radius)
+ *
+ * MMP ≥ 4 (25 bytes):
+ *   brake(1) engine_speed(2) torque(2) steering(2)
+ *   wheel_FL(4) wheel_FR(4) wheel_RL(4) wheel_RR(4) gyro_yaw(2)
+ *   — wheel speeds are float32 BE in m/s (direct)
  */
-function decode100HzFrame(packet: Buffer, offset: number): Hz100Frame | null {
-  if (offset < 0 || offset + 17 > packet.length) return null
+function decode100HzFrame(packet: Buffer, offset: number, hz100Size: number = 17): Hz100Frame | null {
+  if (offset < 0 || offset + hz100Size > packet.length) return null
 
   const torqueRaw = packet.readUInt16BE(offset + 3)
-  const wsFl = packet.readUInt16BE(offset + 7)
-  const wsFr = packet.readUInt16BE(offset + 9)
-  const wsRl = packet.readUInt16BE(offset + 11)
-  const wsRr = packet.readUInt16BE(offset + 13)
-  const gyroRaw = packet.readInt16BE(offset + 15)
 
-  return {
-    brake_position: packet[offset] * PROPORTION_SCALE,
-    engine_rpm: packet.readUInt16BE(offset + 1) * ENGINE_SPEED_SCALE * RAD_TO_RPM,
-    engine_torque_nm: torqueRaw * TORQUE_SCALE + TORQUE_OFFSET,
-    steering_angle_deg: packet.readInt16BE(offset + 5) * STEERING_SCALE * RAD_TO_DEG,
-    wheel_speed_fl_kph: wsFl * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
-    wheel_speed_fr_kph: wsFr * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
-    wheel_speed_rl_kph: wsRl * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
-    wheel_speed_rr_kph: wsRr * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
-    gyro_yaw_deg_s: gyroRaw * GYRO_YAW_SCALE * RAD_TO_DEG,
+  if (hz100Size === 25) {
+    // MMP v4: float32 wheel speeds in m/s
+    const wsFlMps = packet.readFloatBE(offset + 7)
+    const wsFrMps = packet.readFloatBE(offset + 11)
+    const wsRlMps = packet.readFloatBE(offset + 15)
+    const wsRrMps = packet.readFloatBE(offset + 19)
+    const gyroRaw = packet.readInt16BE(offset + 23)
+
+    return {
+      brake_position: packet[offset] * PROPORTION_SCALE,
+      engine_rpm: packet.readUInt16BE(offset + 1) * ENGINE_SPEED_SCALE * RAD_TO_RPM,
+      engine_torque_nm: torqueRaw * TORQUE_SCALE + TORQUE_OFFSET,
+      steering_angle_deg: packet.readInt16BE(offset + 5) * STEERING_SCALE * RAD_TO_DEG,
+      wheel_speed_fl_kph: wsFlMps * MPS_TO_KPH,
+      wheel_speed_fr_kph: wsFrMps * MPS_TO_KPH,
+      wheel_speed_rl_kph: wsRlMps * MPS_TO_KPH,
+      wheel_speed_rr_kph: wsRrMps * MPS_TO_KPH,
+      gyro_yaw_deg_s: gyroRaw * GYRO_YAW_SCALE * RAD_TO_DEG,
+    }
+  } else {
+    // MMP v3: u16 angular velocity wheel speeds
+    const wsFl = packet.readUInt16BE(offset + 7)
+    const wsFr = packet.readUInt16BE(offset + 9)
+    const wsRl = packet.readUInt16BE(offset + 11)
+    const wsRr = packet.readUInt16BE(offset + 13)
+    const gyroRaw = packet.readInt16BE(offset + 15)
+
+    return {
+      brake_position: packet[offset] * PROPORTION_SCALE,
+      engine_rpm: packet.readUInt16BE(offset + 1) * ENGINE_SPEED_SCALE * RAD_TO_RPM,
+      engine_torque_nm: torqueRaw * TORQUE_SCALE + TORQUE_OFFSET,
+      steering_angle_deg: packet.readInt16BE(offset + 5) * STEERING_SCALE * RAD_TO_DEG,
+      wheel_speed_fl_kph: wsFl * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+      wheel_speed_fr_kph: wsFr * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+      wheel_speed_rl_kph: wsRl * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+      wheel_speed_rr_kph: wsRr * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+      gyro_yaw_deg_s: gyroRaw * GYRO_YAW_SCALE * RAD_TO_DEG,
+    }
   }
 }
 
@@ -220,51 +251,82 @@ function decode5HzFrame(packet: Buffer, offset: number): Hz5Frame | null {
 }
 
 /**
- * Decode the full 1 Hz frame (31 bytes, 27 channels).
+ * Decode the full 1 Hz frame.
  * The 1 Hz block starts after: 10 Hz (26 bytes) + 5 Hz (4 bytes) + 2 Hz (1 byte)
  * = latOffset + 31.
+ *
+ * MMP ≤ 3 (31 bytes): drive_mode is u8 at b[3]
+ * MMP ≥ 4 (34 bytes): drive_mode is u32 at b[3:7], shifting everything after by 3
  */
-function decode1HzFrame(packet: Buffer, latOffset: number): Hz1Frame | null {
+function decode1HzFrame(packet: Buffer, latOffset: number, hz1Size: number = 31): Hz1Frame | null {
   const hz1Offset = latOffset + 26 + 4 + 1 // after group2 + group3 + group4
-  if (hz1Offset + 31 > packet.length) return null
+  if (hz1Offset + hz1Size > packet.length) return null
 
-  const b = packet.subarray(hz1Offset, hz1Offset + 31)
-  const odometerRaw = b.readUInt32BE(16)
+  const b = packet.subarray(hz1Offset, hz1Offset + hz1Size)
   const hvChargeRaw = b.readUInt16BE(1)
+
+  // MMP v4: drive_mode is u32 (4 bytes) — use low byte for enum lookup
+  let dmRaw: number
+  let s: number // shift for all fields after drive_mode
+  if (hz1Size === 34) {
+    dmRaw = b.readUInt32BE(3) & 0xFF
+    s = 3
+  } else {
+    dmRaw = b[3]
+    s = 0
+  }
+
+  const odometerRaw = b.readUInt32BE(16 + s)
 
   return {
     emotor_powerlevel: b[0] * 0.01,
     hv_battery_charge: hvChargeRaw * 1.5259e-5,
-    drive_mode: b[3],
-    drive_mode_label: enumLabel('drive_mode', b[3]),
-    emotor_axle_available: b[4],
-    emotor_axle_available_label: enumLabel('emotor_axle_available', b[4]),
-    emotor_temp_rotor_c: b[5] > 0 ? b[5] - 40 : null,
-    emotor_temp_stator_c: b[6] > 0 ? b[6] - 40 : null,
-    engine_temp_coolant_c: b[7] - 40,
-    engine_temp_airintake_c: b[8] - 40,
-    engine_temp_oil_c: b[9] - 40,
-    engine_powerlevel: b[10] * 0.01,
-    outside_air_temp_c: b[11] * 0.5 - 40,
-    fuel_level_pct: b[12] * FUEL_LEVEL_SCALE * 100.0,
-    hv_battery_temp_avg_c: b[13] > 0 ? b[13] - 40 : null,
-    hv_battery_temp_max_c: b[14] > 0 ? b[14] * 0.5 - 40 : null,
-    hv_battery_temp_min_c: b[15] > 0 ? b[15] * 0.5 - 40 : null,
+    drive_mode: dmRaw,
+    drive_mode_label: enumLabel('drive_mode', dmRaw),
+    emotor_axle_available: b[4 + s],
+    emotor_axle_available_label: enumLabel('emotor_axle_available', b[4 + s]),
+    emotor_temp_rotor_c: b[5 + s] > 0 ? b[5 + s] - 40 : null,
+    emotor_temp_stator_c: b[6 + s] > 0 ? b[6 + s] - 40 : null,
+    engine_temp_coolant_c: b[7 + s] - 40,
+    engine_temp_airintake_c: b[8 + s] - 40,
+    engine_temp_oil_c: b[9 + s] - 40,
+    engine_powerlevel: b[10 + s] * 0.01,
+    outside_air_temp_c: b[11 + s] * 0.5 - 40,
+    fuel_level_pct: b[12 + s] * FUEL_LEVEL_SCALE * 100.0,
+    hv_battery_temp_avg_c: b[13 + s] > 0 ? b[13 + s] - 40 : null,
+    hv_battery_temp_max_c: b[14 + s] > 0 ? b[14 + s] * 0.5 - 40 : null,
+    hv_battery_temp_min_c: b[15 + s] > 0 ? b[15 + s] * 0.5 - 40 : null,
     odometer_km: odometerRaw * ODOMETER_SCALE / 1000.0,
-    ptm_mode: b[20],
-    ptm_mode_label: enumLabel('ptm_mode', b[20]),
-    trans_oil_temp_c: b[21] - 40,
-    tire_pressure_fl_kpa: b[22] * TIRE_PRESSURE_SCALE / 1000.0,
-    tire_pressure_fr_kpa: b[23] * TIRE_PRESSURE_SCALE / 1000.0,
-    tire_pressure_rl_kpa: b[24] * TIRE_PRESSURE_SCALE / 1000.0,
-    tire_pressure_rr_kpa: b[25] * TIRE_PRESSURE_SCALE / 1000.0,
-    tire_temp_fl_c: b[26] - 20,
-    tire_temp_fr_c: b[27] - 20,
-    tire_temp_rl_c: b[28] - 20,
-    tire_temp_rr_c: b[29] - 20,
-    vse_status: b[30],
-    vse_status_label: enumLabel('vse_status', b[30]),
+    ptm_mode: b[20 + s],
+    ptm_mode_label: enumLabel('ptm_mode', b[20 + s]),
+    trans_oil_temp_c: b[21 + s] - 40,
+    tire_pressure_fl_kpa: b[22 + s] * TIRE_PRESSURE_SCALE / 1000.0,
+    tire_pressure_fr_kpa: b[23 + s] * TIRE_PRESSURE_SCALE / 1000.0,
+    tire_pressure_rl_kpa: b[24 + s] * TIRE_PRESSURE_SCALE / 1000.0,
+    tire_pressure_rr_kpa: b[25 + s] * TIRE_PRESSURE_SCALE / 1000.0,
+    tire_temp_fl_c: b[26 + s] - 20,
+    tire_temp_fr_c: b[27 + s] - 20,
+    tire_temp_rl_c: b[28 + s] - 20,
+    tire_temp_rr_c: b[29 + s] - 20,
+    vse_status: b[30 + s],
+    vse_status_label: enumLabel('vse_status', b[30 + s]),
   }
+}
+
+// ── Validation ──
+
+/**
+ * Sanity-check a decoded 100Hz frame.
+ * In MMP v4, the float block scanner can find false matches due to float32
+ * wheel speeds at low vehicle speeds.  This rejects obviously-wrong frames.
+ */
+function validate100Hz(f: Hz100Frame): boolean {
+  if (Math.abs(f.engine_rpm) > 12000) return false
+  if (Math.abs(f.wheel_speed_fl_kph) > 400) return false
+  if (Math.abs(f.wheel_speed_fr_kph) > 400) return false
+  if (Math.abs(f.wheel_speed_rl_kph) > 400) return false
+  if (Math.abs(f.wheel_speed_rr_kph) > 400) return false
+  return true
 }
 
 // ── Helper: average an array of sub-frames ──
@@ -307,15 +369,21 @@ function avg50Hz(frames: Hz50Frame[]): { lat: number; lon: number; vert: number 
 // ── Main packet decoder ──
 
 /**
- * Decode a complete telemetry packet (one second of data, ~3247 bytes).
+ * Decode a complete telemetry packet (one second of data).
+ * MMP ≤ 3: ~3247 bytes, 17-byte 100Hz frames
+ * MMP ≥ 4: ~4050 bytes, 25-byte 100Hz frames
  * Returns up to 10 TelemetryRow records (one per 100ms frame at 10 Hz).
  */
 export function decodePacket(
   packet: Buffer,
   packetIdx: number,
-  refLatRange?: GpsRefRange
+  refLatRange?: GpsRefRange,
+  hz100Size: number = 17
 ): TelemetryRow[] {
   if (packet.length < 100) return [] // Skip init packet
+
+  // Derive 1Hz frame size from 100Hz frame size
+  const hz1Size = hz100Size === 25 ? 34 : 31
 
   // Find GPS offsets by searching for valid coordinate patterns
   const gpsOffsets = findGpsInPacket(packet, refLatRange)
@@ -342,17 +410,17 @@ export function decodePacket(
 
     const frameFloats = floatOffsets.filter(f => f > latOff && f < nextLat)
 
-    // Decode 100Hz sub-frames (two 17-byte frames before each float block)
+    // Decode 100Hz sub-frames (two frames before each float block)
     const hz100Frames: Hz100Frame[] = []
     for (const foff of frameFloats) {
-      const f1Off = foff - 34
-      const f2Off = foff - 17
+      const f1Off = foff - 2 * hz100Size
+      const f2Off = foff - hz100Size
       if (f1Off >= latOff) {
-        const f1 = decode100HzFrame(packet, f1Off)
-        if (f1) hz100Frames.push(f1)
+        const f1 = decode100HzFrame(packet, f1Off, hz100Size)
+        if (f1 && validate100Hz(f1)) hz100Frames.push(f1)
       }
-      const f2 = decode100HzFrame(packet, f2Off)
-      if (f2) hz100Frames.push(f2)
+      const f2 = decode100HzFrame(packet, f2Off, hz100Size)
+      if (f2 && validate100Hz(f2)) hz100Frames.push(f2)
     }
 
     // Decode 50Hz sub-frames
@@ -445,7 +513,7 @@ export function decodePacket(
 
     // 1 Hz (frame 0 only)
     if (frameIdx === 0) {
-      const hz1Data = decode1HzFrame(packet, latOff)
+      const hz1Data = decode1HzFrame(packet, latOff, hz1Size)
       if (hz1Data) {
         row.emotor_powerlevel = hz1Data.emotor_powerlevel
         row.hv_battery_charge = hz1Data.hv_battery_charge
