@@ -83,10 +83,17 @@
 
       <!-- Strip chart panel -->
       <div id="chart-panel">
-        <div id="chart-toolbar"></div>
+        <div id="chart-toolbar">
+          <button class="chart-tab active" data-tab="charts">Charts</button>
+          <button class="chart-tab" data-tab="track">Track &amp; Laps</button>
+        </div>
         <div id="chart-canvas-container">
           <canvas id="chart-canvas"></canvas>
           <div id="chart-empty">Open a file to view data</div>
+        </div>
+        <div id="track-panel">
+          <canvas id="track-canvas"></canvas>
+          <div id="lap-table-container"></div>
         </div>
       </div>
     </div>

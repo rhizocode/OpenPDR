@@ -14,8 +14,10 @@ import { initResizer } from './resizer'
 import { initOverlaySettings } from './overlay-settings'
 import { initEditMode } from './edit-mode'
 import { initChartPanel, getIsChartScrubbing } from './strip-chart'
+import { initTrackMap } from './track-map'
+import { initLapTable } from './lap-table'
 
-const BUILD_ID = 'phase2-v1'
+const BUILD_ID = 'phase3-v1'
 dbg(`Renderer loaded [${BUILD_ID}], pdr API: ${window.pdr ? 'OK' : 'MISSING'}`)
 
 // ── Initialize modules ──
@@ -26,6 +28,21 @@ initResizer()
 initOverlaySettings()
 initEditMode()
 initChartPanel()
+initTrackMap(document.getElementById('track-canvas') as HTMLCanvasElement)
+initLapTable(document.getElementById('lap-table-container') as HTMLDivElement)
+
+// ── Tab switching (Charts / Track & Laps) ──
+const chartCanvasContainer = document.getElementById('chart-canvas-container') as HTMLElement
+const trackPanel = document.getElementById('track-panel') as HTMLElement
+document.querySelectorAll<HTMLButtonElement>('.chart-tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.chart-tab').forEach((b) => b.classList.remove('active'))
+    btn.classList.add('active')
+    const tab = btn.dataset.tab
+    chartCanvasContainer.style.display = tab === 'charts' ? '' : 'none'
+    trackPanel.style.display = tab === 'track' ? '' : 'none'
+  })
+})
 
 // ── FPS counter (only active when debug panel is visible via F2) ──
 const fpsEl = document.getElementById('fps-counter') as HTMLSpanElement
