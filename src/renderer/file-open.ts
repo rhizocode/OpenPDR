@@ -2,7 +2,7 @@
  * OpenPDR Viewer — File open, drag-and-drop, parse flow
  */
 
-import { video, setTelemetry, dbg, getEditMode } from './state'
+import { video, setTelemetry, setLapData, dbg, getEditMode } from './state'
 import { showHud, resetCarryForward } from './hud'
 import { showChartPanel } from './resizer'
 
@@ -59,6 +59,12 @@ async function openFile(filePath?: string): Promise<void> {
     if (meta.maxSpeed_kph) dbg(`Max speed: ${meta.maxSpeed_kph.toFixed(1)} kph`)
     if (meta.maxRpm) dbg(`Max RPM: ${meta.maxRpm.toFixed(0)}`)
     setTelemetry(rows, meta.duration)
+    setLapData(meta.lapData ?? null)
+    if (meta.lapData?.hasLapData) {
+      dbg(`Laps detected: ${meta.lapData.laps.length}`)
+    } else {
+      dbg('No laps detected')
+    }
     hideProgress()
   } catch (err) {
     dbg('Parse failed: ' + (err instanceof Error ? err.message : String(err)))

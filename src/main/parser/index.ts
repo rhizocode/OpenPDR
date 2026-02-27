@@ -17,6 +17,7 @@ import { parseSampleTable, getSampleOffsets } from './sample-table'
 import { decodePacket } from './telemetry-decoder'
 import { findGpsInPacket } from './gps-discovery'
 import { DEG_SCALE } from './constants'
+import { detectLaps } from '../lap-detection'
 import type { ParseResult, TelemetryRow, GpsRefRange, ProgressCallback } from './types'
 
 export type { TelemetryRow, ParseResult, ProgressCallback }
@@ -165,6 +166,8 @@ export async function parsePdrFile(
       ? allRows[allRows.length - 1].time - allRows[0].time
       : 0
 
+    const lapData = detectLaps(allRows)
+
     return {
       rows: allRows,
       metadata: {
@@ -176,6 +179,7 @@ export async function parsePdrFile(
         refLocation,
         maxSpeed_kph: maxSpeed,
         maxRpm: maxRpm,
+        lapData,
       },
     }
   } finally {

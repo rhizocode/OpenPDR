@@ -6,12 +6,17 @@
  * loop in main.ts drives updates by calling setCurrentRow().
  */
 
-import type { TelemetryRow } from './types'
+import type { TelemetryRow, LapData } from './types'
 
 // ── State ──
 export let telemetry: TelemetryRow[] = []
 export let currentRow: TelemetryRow | null = null
 export let duration = 0
+export let lapData: LapData | null = null
+
+export function setLapData(data: LapData | null): void {
+  lapData = data
+}
 
 // ── DOM refs (shared across modules) ──
 export const video = document.getElementById('video') as HTMLVideoElement
