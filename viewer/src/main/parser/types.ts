@@ -48,6 +48,8 @@ export interface RateGroup {
 /** Version info from advi box */
 export interface AdviInfo {
   formatVersion: number
+  generation?: number
+  mmpVersion?: number
   source?: string
 }
 

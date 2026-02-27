@@ -21,6 +21,20 @@ import type { ParseResult, TelemetryRow, GpsRefRange, ProgressCallback } from '.
 
 export type { TelemetryRow, ParseResult, ProgressCallback }
 
+/** Return the most frequently occurring value in an array. */
+function mostCommonValue(arr: number[]): number {
+  const counts = new Map<number, number>()
+  for (const v of arr) {
+    counts.set(v, (counts.get(v) ?? 0) + 1)
+  }
+  let best = 0
+  let bestCount = 0
+  for (const [v, c] of counts) {
+    if (c > bestCount) { best = v; bestCount = c }
+  }
+  return best
+}
+
 export async function parsePdrFile(
   filePath: string,
   onProgress?: ProgressCallback
@@ -55,6 +69,12 @@ export async function parsePdrFile(
     const adviInfo = adviBox
       ? parseAdvi(moovBuf.subarray(adviBox[2], adviBox[0] + adviBox[1]))
       : undefined
+
+    // Determine 100Hz frame size from dominant packet size.
+    // MMP version alone isn't reliable across generations (gen1 MMP v8 uses old format).
+    // Packet size is the direct indicator: ~4050 = MMP v4+ format, ~3247 = legacy format.
+    const dominantPktSize = mostCommonValue(sampleTable.sampleSizes)
+    const hz100Size = dominantPktSize > 3500 ? 25 : 17
 
     const adopBox = scanForBox(moovBuf, 'adop')
     let refLatRange: GpsRefRange | undefined
@@ -119,7 +139,7 @@ export async function parsePdrFile(
       await fh.read(packetBuf, 0, size, offset)
       const packet = packetBuf.subarray(0, size)
 
-      const rows = decodePacket(packet, i, refLatRange)
+      const rows = decodePacket(packet, i, refLatRange, hz100Size)
       for (const row of rows) {
         allRows.push(row)
       }
