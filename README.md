@@ -1,20 +1,79 @@
 # OpenPDR
 
-OpenPDR is an open-source parser for the **AliveDrive PDR 2.5** telemetry format found in modern GM vehicles equipped with the Cosworth Performance Data Recorder (PDR 2.5), including the 2025–2026 Cadillac CT5-V Blackwing, Corvette Z06, and Corvette Stingray.
+OpenPDR is an open-source desktop viewer for **AliveDrive PDR 2.5** recordings — the Cosworth Performance Data Recorder found in 2025–2026 GM vehicles including the Cadillac CT5-V Blackwing, Corvette Z06, and Corvette Stingray.
 
-The PDR records high-rate vehicle telemetry (GPS, accelerometer, engine, steering, wheel speeds, etc.) into an MP4 file alongside video. This data is normally only accessible through proprietary software (Cosworth Toolbox / AliveDrive app).
+The PDR records high-rate vehicle telemetry (GPS, accelerometer, engine, steering, wheel speeds, and more) into an MP4 file alongside the video. OpenPDR parses the binary telemetry and plays it back as a synchronized HUD overlay over the original video, without requiring Cosworth Toolbox or the AliveDrive app.
 
-In this project, we reverse-engineered the binary telemetry format and provide tools to extract the data to CSV. Both format variants (legacy 3247-byte packets and MMP v4+ 4050-byte packets) are automatically detected and supported.
+> **Format note:** This covers the **AliveDrive PDR 2.5** format (`adrv`/`adco` codec), which is distinct from the older **Marlin** format (`ctbx`/`mrld`) used in Corvette C7/C8 PDR systems.
 
-> **Note:** This covers the **AliveDrive PDR 2.5** format (`adrv`/`adco` codec), which is distinct from the older **Marlin** format (`ctbx`/`mrld`) used in Corvette C7/C8 PDR systems.
+> **Reverse engineering method:** The format was decoded entirely through binary analysis of MP4 files recorded directly by the vehicles. No proprietary software was decompiled, disassembled, or otherwise reverse-engineered. See [Protocol Documentation](#protocol-documentation) section for details.
 
-## Decoded Channels
+---
 
-All 59 channels defined in the `adcp` box have been identified with their
-authoritative Cosworth namespace names, scale factors, and offsets. Every rate
-group's byte layout is fully mapped. All 9 enum channels (gear, drive mode,
-ABS, ESC, TCS, VSE, PTM, engine start/stop, e-motor axle) are fully decoded
-with human-readable labels in the CSV output.
+## Viewer
+
+Built with **Electron + TypeScript + Vite**.
+
+### Quick Start
+
+```bash
+npm install
+npm run dev
+```
+
+Click **Open File** and select a `.mp4` PDR recording. The viewer looks for a `_telemetry.json` sidecar next to the video (e.g. `ADV_0600_telemetry.json` alongside `ADV_0600.mp4`). See [Generating the sidecar](#generating-the-telemetry-sidecar) below.
+
+### Build
+
+```bash
+npm run build    # outputs to out/main, out/preload, out/renderer
+npm run start    # run the production build
+```
+
+### Architecture
+
+```
+src/
+  main/
+    index.ts            Electron main process — window management, IPC, file dialogs
+    parser/             TypeScript MP4 parser (adco track → typed telemetry)
+  preload/
+    index.ts            Secure contextBridge — exposes window.pdr API
+  renderer/
+    index.html          Layout shell
+    main.ts             Video playback, telemetry sync, HUD updates
+    styles.css          Dark motorsport theme
+    hud.ts              Master HUD overlay
+    rpm-gauge.ts        RPM gauge
+    gforce-ball.ts      G-force visualisation
+    strip-chart.ts      Telemetry strip charts
+    controls.ts         Playback controls and scrub bar
+```
+
+### Controls
+
+| Input | Action |
+|-------|--------|
+| Click video | Play / pause |
+| Space | Play / pause |
+| Left / Right arrow | Seek −/+ 5 seconds |
+| `,` / `.` (paused) | Frame step backward / forward |
+| Scrub bar | Click or drag to seek |
+| Rate dropdown | Change playback speed |
+
+### Dependencies
+
+| Package | Role |
+|---------|------|
+| electron | Desktop shell + Chromium video playback |
+| electron-vite | Build tooling (Vite for main, preload, and renderer) |
+| typescript | Type-safe source |
+
+---
+
+## Telemetry Channels
+
+All 59 channels defined in the PDR 2.5 `adcp` descriptor have been identified with their authoritative Cosworth namespace names, scale factors, and offsets. All 9 enum channels (gear, drive mode, ABS, ESC, TCS, VSE, PTM, engine start/stop, e-motor axle) are fully decoded with human-readable labels.
 
 | Rate | Channels |
 |------|----------|
@@ -25,33 +84,34 @@ with human-readable labels in the CSV output.
 | 2 Hz | Oil pressure |
 | 1 Hz | Engine temps (coolant, oil, air intake), transmission temp, outside air temp, fuel level, odometer, tire pressures (4×), tire temps (4×), drive mode, PTM mode, VSE status, HV battery/e-motor channels |
 
-## Quick Start
+---
+
+## Generating the Telemetry Sidecar
+
+The viewer loads a `_telemetry.json` sidecar produced by the reference parser. The parser lives in [`protocol/`](protocol/).
 
 ### Requirements
 
-- Python 3.7+
-- No external dependencies (stdlib only)
+- Python 3.7+, no external dependencies
 
 ### From an MP4 file
 
 ```bash
-python alivedrive_parser.py input.mp4 --csv output.csv
+python protocol/alivedrive_parser.py input.mp4 --csv output.csv
 ```
 
 ### From a pre-extracted binary
 
-If you've already extracted the data track with ffmpeg:
-
 ```bash
 ffmpeg -v quiet -i input.mp4 -map 0:1 -c copy -f data telemetry_raw.bin
-python alivedrive_parser.py telemetry_raw.bin --raw --csv output.csv
+python protocol/alivedrive_parser.py telemetry_raw.bin --raw --csv output.csv
 ```
 
 ### Options
 
 ```
 positional arguments:
-  input                 Input MP4 file or raw telemetry file (.bin)
+  input                 Input MP4 file or raw telemetry binary (.bin)
 
 options:
   --csv, -o PATH        Output CSV file path (default: input with .csv extension)
@@ -61,51 +121,46 @@ options:
   --verbose, -v         Verbose output
 ```
 
-## Viewer App
+---
 
-The [**OpenPDR Viewer**](viewer/) is a desktop application that plays PDR MP4 recordings with synchronized telemetry overlays. Built with Electron + TypeScript + Vite.
+## Protocol Documentation
 
-- Plays the original PDR video with a HUD overlay showing speed, RPM, gear, g-force ball, and throttle/brake bars
-- Binary-search telemetry sync via `requestAnimationFrame` for smooth updates at display refresh rate
-- Custom scrub bar, keyboard shortcuts, playback rate control, click-to-play/pause
+See [`protocol/ALIVEDRIVE_FORMAT.md`](protocol/ALIVEDRIVE_FORMAT.md) for the full reverse-engineered format specification, including:
 
-```bash
-cd viewer && npm install && npm run dev
-```
-
-See [`viewer/README.md`](viewer/README.md) for full details.
-
-## Format Documentation
-
-See [ALIVEDRIVE_FORMAT.md](ALIVEDRIVE_FORMAT.md) for the full reverse-engineered format specification, including:
-
-- MP4 container layout and track identification
+- MP4 container layout and track identification (`adrv` handler, `adco` codec)
 - Complete channel definitions with Cosworth namespace names (all 59 channels)
 - `adcp` box structure (channel parameters: scale, offset, min/max, type)
-- `adud` box structure (unit definitions: angle, velocity, temperature, etc.)
-- `advi` box structure (format version info and source identifier)
+- `adud` box structure (unit definitions)
+- `advi` box structure (format version, hardware generation, MMP firmware version)
 - `adeg` box structure (20 performance timing event definitions)
-- Rate table structure (`adcr`) and rate-table width overhead analysis
-- Packet framing and multi-rate interleaving pattern
-- Scale factors and unit conversions for all channel types
+- Rate table structure (`adcr`) and multi-rate interleaving pattern
 - Complete sub-frame byte layouts for all 6 rate groups (100/50/10/5/2/1 Hz)
-- Temperature encoding (Kelvin offset model), torque formula, pressure/proportion scales
+- Encoding details: temperature (Kelvin offset model), torque, pressure, GPS coordinates
 
-## How It Works
+Both format variants are covered — legacy (3247-byte packets, gen 1 / MMP ≤ 3) and MMP v4+ (4050-byte packets, gen 2 MMP ≥ 4).
 
-1. **Track discovery** — Locates the `adrv` handler / `adco` codec track in the MP4 container
-2. **Sample table parsing** — Reads the MP4 sample table (`stsz`, `stco`, `stsc`) to find each telemetry sample's offset and size
-3. **GPS anchor detection** — Finds valid GPS coordinate patterns in the data to establish frame boundaries (positions vary per packet due to a variable-length preamble)
-4. **Frame decoding** — Walks the interleaved multi-rate structure (100/50/10/5/2/1 Hz) relative to each GPS anchor
-5. **CSV export** — Writes all decoded channels with timestamps
+---
+
+## How the Parser Works
+
+1. **Track discovery** — locates the `adrv` handler / `adco` codec track in the MP4 container
+2. **Sample table parsing** — reads `stsz`, `stco`, `stsc` to find each telemetry sample's offset and size
+3. **GPS anchor detection** — finds valid GPS coordinate patterns to establish frame boundaries
+4. **Frame decoding** — walks the interleaved multi-rate structure relative to each GPS anchor
+5. **Export** — writes all decoded channels with timestamps to CSV
+
+---
 
 ## Contributing
 
-Contributions are welcome, especially for:
+Contributions welcome, especially:
 
-- Testing with other GM/PDR 2.5 vehicles (especially hybrids to validate e-motor/HV battery channels)
-- Identifying the remaining numeric fields in the `advi` header (offsets 16–28; generation and MMP version at offsets 12–15 are now identified)
-- Adding export formats (GPX, MoTeC, etc.)
+- Testing with other GM PDR 2.5 vehicles (hybrids, EVs, trucks) to validate e-motor and HV battery channels
+- Identifying the remaining numeric fields in the `advi` header (offsets 16–28)
+- Additional export formats (GPX, MoTeC i2, etc.)
+- HUD overlay improvements and new channel visualisations
+
+---
 
 ## License
 
