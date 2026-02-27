@@ -78,6 +78,51 @@ export function applyAllPositions(): void {
   }
 }
 
+/**
+ * Clamp every overlay so it sits fully inside the visible container.
+ * Call after applying positions to guarantee nothing is off-screen.
+ */
+function clampAllToViewport(): void {
+  const cRect = container.getBoundingClientRect()
+  if (cRect.width === 0 || cRect.height === 0) return
+
+  for (const [key, el] of hudElements) {
+    const elRect = el.getBoundingClientRect()
+    // Compute percentage position that keeps the element fully inside
+    let leftPct = layout[key].left
+    let topPct = layout[key].top
+
+    // Right edge overflow
+    const rightOverflow = (elRect.right - cRect.right)
+    if (rightOverflow > 0) {
+      leftPct -= (rightOverflow / cRect.width) * 100
+    }
+    // Bottom edge overflow
+    const bottomOverflow = (elRect.bottom - cRect.bottom)
+    if (bottomOverflow > 0) {
+      topPct -= (bottomOverflow / cRect.height) * 100
+    }
+    // Left edge overflow
+    const leftOverflow = (cRect.left - elRect.left)
+    if (leftOverflow > 0) {
+      leftPct += (leftOverflow / cRect.width) * 100
+    }
+    // Top edge overflow
+    const topOverflow = (cRect.top - elRect.top)
+    if (topOverflow > 0) {
+      topPct += (topOverflow / cRect.height) * 100
+    }
+
+    leftPct = Math.max(0, leftPct)
+    topPct = Math.max(0, topPct)
+
+    if (leftPct !== layout[key].left || topPct !== layout[key].top) {
+      layout[key] = { ...layout[key], left: leftPct, top: topPct }
+      applyPosition(key)
+    }
+  }
+}
+
 // ── Drag logic ──
 
 let dragTarget: OverlayKey | null = null
@@ -229,8 +274,26 @@ function buildPanel(panel: HTMLDivElement): void {
   const resetBtn = document.createElement('button')
   resetBtn.textContent = 'Reset Layout'
   resetBtn.addEventListener('click', () => {
+    // Reset positions + scale
     layout = JSON.parse(JSON.stringify(DEFAULT_LAYOUT))
     applyAllPositions()
+
+    // Re-enable all overlays
+    const allOn: OverlayConfig = {
+      speed: true, rpmGauge: true, gear: true, gforce: true,
+      pedals: true, steering: true, gps: true,
+    }
+    setOverlayConfig(allOn)
+    applyOverlayConfig(allOn)
+    localStorage.setItem(OVERLAY_STORAGE_KEY, JSON.stringify(allOn))
+
+    // Sync checkboxes in the panel
+    for (const cb of panel.querySelectorAll<HTMLInputElement>('input[data-edit-overlay-key]')) {
+      cb.checked = true
+    }
+
+    // Clamp any overlays that ended up outside the visible area
+    clampAllToViewport()
     saveLayout()
   })
   actions.appendChild(resetBtn)
@@ -257,9 +320,17 @@ export function initEditMode(): void {
     }
   }
 
-  // Load and apply saved layout
+  // Load and apply saved layout, then clamp to visible area
   layout = loadLayout()
   applyAllPositions()
+  clampAllToViewport()
+  saveLayout()
+
+  // Re-clamp when the window resizes (container may shrink)
+  window.addEventListener('resize', () => {
+    clampAllToViewport()
+    saveLayout()
+  })
 
   // Build panel
   buildPanel(panel)

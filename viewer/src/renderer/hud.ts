@@ -78,8 +78,34 @@ const GEAR_DISPLAY: Record<string, string> = {
 // ── Carry-forward state for sparse channels ──
 let lastKnownGear = '-'
 
+// ── Shift indicator ──
+const shiftArrow = document.getElementById('hud-shift-arrow') as HTMLSpanElement
+let shiftFlashTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Numeric rank for numbered gears; non-numbered gears return -1 */
+function gearRank(display: string): number {
+  const n = parseInt(display, 10)
+  return Number.isNaN(n) ? -1 : n
+}
+
+function flashShift(direction: 'up' | 'down'): void {
+  // Cancel any in-progress flash
+  if (shiftFlashTimer) { clearTimeout(shiftFlashTimer); shiftFlashTimer = null }
+  shiftArrow.className = 'shift-arrow'  // reset
+  shiftArrow.textContent = direction === 'up' ? '\u25B2' : '\u25BC'   // ▲ or ▼
+  // Force reflow so animation restarts
+  void shiftArrow.offsetWidth
+  shiftArrow.classList.add(direction === 'up' ? 'upshift' : 'downshift', 'flash')
+  shiftFlashTimer = setTimeout(() => {
+    shiftArrow.className = 'shift-arrow'
+    shiftFlashTimer = null
+  }, 650)
+}
+
 export function resetCarryForward(): void {
   lastKnownGear = '-'
+  if (shiftFlashTimer) { clearTimeout(shiftFlashTimer); shiftFlashTimer = null }
+  shiftArrow.className = 'shift-arrow'
 }
 
 // ── Set target values + update cheap DOM elements (called on row change) ──
@@ -106,9 +132,17 @@ function updateHud(row: TelemetryRow | null): void {
     hudSpeedValue.textContent = Math.round(row.speed_mph).toString()
   }
 
-  // Gear (carry forward sparse value — cheap DOM text update)
+  // Gear (carry forward sparse value — cheap DOM text update + shift detection)
   if (row.gear !== undefined) {
-    lastKnownGear = GEAR_DISPLAY[row.gear] ?? row.gear
+    const newDisplay = GEAR_DISPLAY[row.gear] ?? row.gear
+    if (newDisplay !== lastKnownGear && overlayConfig.gear) {
+      const prevRank = gearRank(lastKnownGear)
+      const newRank = gearRank(newDisplay)
+      if (prevRank > 0 && newRank > 0) {
+        flashShift(newRank > prevRank ? 'up' : 'down')
+      }
+    }
+    lastKnownGear = newDisplay
   }
   if (overlayConfig.gear) {
     hudGearValue.textContent = lastKnownGear
