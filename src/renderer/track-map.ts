@@ -78,9 +78,7 @@ function gpsToCanvas(lat: number, lon: number): { x: number; y: number } | null 
 
 function drawEmpty(): void {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
-  ctx.fillStyle = '#1a1a1a'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.fillStyle = '#555'
+  ctx.fillStyle = 'rgba(255,255,255,0.3)'
   ctx.font = '13px monospace'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
@@ -91,8 +89,6 @@ function drawEmpty(): void {
 
 function drawTrack(): void {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
-  ctx.fillStyle = '#1a1a1a'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
 
   if (!cachedLayout || !proj) { drawEmpty(); return }
 
@@ -100,7 +96,7 @@ function drawTrack(): void {
 
   // Track polyline
   ctx.beginPath()
-  ctx.strokeStyle = '#555'
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'
   ctx.lineWidth = 5
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'

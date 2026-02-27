@@ -2,9 +2,10 @@
  * OpenPDR Viewer — File open, drag-and-drop, parse flow
  */
 
-import { video, setTelemetry, setLapData, dbg, getEditMode } from './state'
+import { video, setTelemetry, setCurrentRow, setLapData, dbg, getEditMode } from './state'
 import { showHud, resetCarryForward } from './hud'
 import { showChartPanel } from './resizer'
+import { clampAllToViewport } from './edit-mode'
 
 const pdr = window.pdr
 
@@ -58,8 +59,10 @@ async function openFile(filePath?: string): Promise<void> {
     dbg(`Parsed ${rows.length} rows, duration ${meta.duration.toFixed(1)}s`)
     if (meta.maxSpeed_kph) dbg(`Max speed: ${meta.maxSpeed_kph.toFixed(1)} kph`)
     if (meta.maxRpm) dbg(`Max RPM: ${meta.maxRpm.toFixed(0)}`)
-    setTelemetry(rows, meta.duration)
     setLapData(meta.lapData ?? null)
+    setTelemetry(rows, meta.duration)
+    // Seed HUD with first row so indicators aren't blank on load
+    if (rows.length > 0) setCurrentRow(rows[0])
     if (meta.lapData?.hasLapData) {
       dbg(`Laps detected: ${meta.lapData.laps.length}`)
     } else {
@@ -86,6 +89,8 @@ export function initFileOpen(): void {
     noFilePrompt.classList.add('hidden')
     showHud()
     showChartPanel()
+    // Clamp overlay positions now that elements are visible and laid out
+    requestAnimationFrame(() => clampAllToViewport())
   })
 
   video.addEventListener('canplay', () => dbg('Video canplay'))
