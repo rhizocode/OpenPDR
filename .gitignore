@@ -31,7 +31,7 @@ dev/
 *.csv
 *_telemetry.json
 
-# Viewer app
-viewer/node_modules/
-viewer/out/
-viewer/dist/
+# Electron app
+node_modules/
+out/
+dist/

@@ -1237,17 +1237,17 @@ Events come in start/end pairs, defining 10 performance timing categories:
 
 ## 18. Reference Implementation
 
-See `alivedrive_parser.py` in this directory for a working Python parser that
+See [`alivedrive_parser.py`](alivedrive_parser.py) in this directory for a working Python parser that
 extracts all decoded channels to CSV. It supports both direct MP4 parsing and
 pre-extracted raw binary files, and automatically detects the format variant
 (legacy vs MMP v4+) from the dominant packet size.
 
 ```bash
 # Direct from MP4
-python alivedrive_parser.py ADV_0600.mp4 --csv output.csv
+python protocol/alivedrive_parser.py ADV_0600.mp4 --csv output.csv
 
 # From pre-extracted binary
-python alivedrive_parser.py telemetry_raw.bin --raw --csv output.csv
+python protocol/alivedrive_parser.py telemetry_raw.bin --raw --csv output.csv
 ```
 
 > The parser implements all channel definitions, scale factors, and frame
@@ -1255,5 +1255,5 @@ python alivedrive_parser.py telemetry_raw.bin --raw --csv output.csv
 > (17/25-byte 100 Hz frames, 31/34-byte 1 Hz frames), the full 1 Hz frame
 > decode (27 channels), corrected 4-byte heading, and confirmed torque formula.
 
-A TypeScript implementation is also available in `viewer/src/main/parser/` as
+A TypeScript implementation is also available in `src/main/parser/` as
 part of the OpenPDR Electron viewer application.
