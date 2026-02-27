@@ -1,0 +1,219 @@
+/**
+ * OpenPDR Viewer — HUD manager
+ *
+ * Coordinates all HUD overlay elements: speed, RPM gauge, gear, g-force,
+ * pedals, steering, GPS. Handles carry-forward for sparse-rate channels
+ * and applies overlay visibility config.
+ *
+ * Each overlay is an independent absolutely-positioned .hud-element
+ * inside #video-container (no flex wrapper).
+ */
+
+import type { TelemetryRow, OverlayConfig, OverlayKey } from './types'
+import { onRowUpdate, onFrameTick, currentRow } from './state'
+import { initGForceBall, drawGForce } from './gforce-ball'
+import { initRpmGauge, drawRpmGauge } from './rpm-gauge'
+import { initSteeringIndicator, drawSteering } from './steering'
+
+const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
+
+const DEFAULT_OVERLAY: OverlayConfig = {
+  speed: true, rpmGauge: true, gear: true, gforce: true,
+  pedals: true, steering: true, gps: true,
+}
+
+// ── DOM refs ──
+const hudSpeedValue = document.getElementById('hud-speed-value') as HTMLSpanElement
+const hudGearValue = document.getElementById('hud-gear-value') as HTMLSpanElement
+const throttleFill = document.getElementById('throttle-fill') as HTMLDivElement
+const brakeFill = document.getElementById('brake-fill') as HTMLDivElement
+const videoContainer = document.getElementById('video-container') as HTMLDivElement
+const gpsLat = document.getElementById('hud-gps-lat') as HTMLSpanElement
+const gpsLon = document.getElementById('hud-gps-lon') as HTMLSpanElement
+const gpsAlt = document.getElementById('hud-gps-alt') as HTMLSpanElement
+
+// ── Overlay config (cached for skipping disabled canvas draws) ──
+let overlayConfig: OverlayConfig = loadOverlayConfig()
+
+function loadOverlayConfig(): OverlayConfig {
+  const saved = localStorage.getItem(OVERLAY_STORAGE_KEY)
+  if (saved) {
+    try {
+      return { ...DEFAULT_OVERLAY, ...JSON.parse(saved) }
+    } catch {
+      return { ...DEFAULT_OVERLAY }
+    }
+  }
+  return { ...DEFAULT_OVERLAY }
+}
+
+export function getOverlayConfig(): OverlayConfig {
+  return { ...overlayConfig }
+}
+
+export function setOverlayConfig(config: OverlayConfig): void {
+  overlayConfig = { ...config }
+}
+
+// ── Smoothing for canvas-drawn indicators ──
+// Target values come from telemetry (discrete 100Hz). Displayed values
+// lerp toward targets every animation frame for smooth visual movement.
+const SMOOTH_RATE = 25  // exponential decay rate (per second) — higher = snappier
+
+let targetRpm = 0, displayedRpm = 0
+let targetSteeringDeg = 0, displayedSteeringDeg = 0
+let targetGLat = 0, displayedGLat = 0
+let targetGLon = 0, displayedGLon = 0
+let lastFrameTime = 0
+let hudActive = false  // true after first telemetry row received
+
+// ── Gear label → display mapping ──
+const GEAR_DISPLAY: Record<string, string> = {
+  park: 'P', neutral: 'N', reverse: 'R',
+  first: '1', second: '2', third: '3',
+  fourth: '4', fifth: '5', sixth: '6',
+  seventh: '7', eighth: '8', ninth: '9', tenth: '10',
+}
+
+// ── Carry-forward state for sparse channels ──
+let lastKnownGear = '-'
+
+// ── Shift indicator ──
+const shiftArrow = document.getElementById('hud-shift-arrow') as HTMLSpanElement
+let shiftFlashTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Numeric rank for numbered gears; non-numbered gears return -1 */
+function gearRank(display: string): number {
+  const n = parseInt(display, 10)
+  return Number.isNaN(n) ? -1 : n
+}
+
+function flashShift(direction: 'up' | 'down'): void {
+  // Cancel any in-progress flash
+  if (shiftFlashTimer) { clearTimeout(shiftFlashTimer); shiftFlashTimer = null }
+  shiftArrow.className = 'shift-arrow'  // reset
+  shiftArrow.textContent = direction === 'up' ? '\u25B2' : '\u25BC'   // ▲ or ▼
+  // Force reflow so animation restarts
+  void shiftArrow.offsetWidth
+  shiftArrow.classList.add(direction === 'up' ? 'upshift' : 'downshift', 'flash')
+  shiftFlashTimer = setTimeout(() => {
+    shiftArrow.className = 'shift-arrow'
+    shiftFlashTimer = null
+  }, 650)
+}
+
+export function resetCarryForward(): void {
+  lastKnownGear = '-'
+  if (shiftFlashTimer) { clearTimeout(shiftFlashTimer); shiftFlashTimer = null }
+  shiftArrow.className = 'shift-arrow'
+}
+
+// ── Set target values + update cheap DOM elements (called on row change) ──
+function updateHud(row: TelemetryRow | null): void {
+  if (!row) {
+    hudSpeedValue.textContent = '--'
+    hudGearValue.textContent = '-'
+    throttleFill.style.width = '0%'
+    brakeFill.style.width = '0%'
+    hudActive = false
+    return
+  }
+
+  hudActive = true
+
+  // Set smoothing targets (canvas elements drawn in smoothAndDraw)
+  targetRpm = row.rpm
+  targetSteeringDeg = row.steering_deg
+  targetGLat = row.gforce_lat
+  targetGLon = row.gforce_lon
+
+  // Speed (cheap DOM text update)
+  if (overlayConfig.speed) {
+    hudSpeedValue.textContent = Math.round(row.speed_mph).toString()
+  }
+
+  // Gear (carry forward sparse value — cheap DOM text update + shift detection)
+  if (row.gear !== undefined) {
+    const newDisplay = GEAR_DISPLAY[row.gear] ?? row.gear
+    if (newDisplay !== lastKnownGear && overlayConfig.gear) {
+      const prevRank = gearRank(lastKnownGear)
+      const newRank = gearRank(newDisplay)
+      if (prevRank > 0 && newRank > 0) {
+        flashShift(newRank > prevRank ? 'up' : 'down')
+      }
+    }
+    lastKnownGear = newDisplay
+  }
+  if (overlayConfig.gear) {
+    hudGearValue.textContent = lastKnownGear
+  }
+
+  // Pedal bars (cheap DOM style update)
+  if (overlayConfig.pedals) {
+    throttleFill.style.width = `${(row.throttle * 100).toFixed(0)}%`
+    brakeFill.style.width = `${(row.brake * 100).toFixed(0)}%`
+  }
+
+  // GPS display (cheap DOM text update)
+  if (overlayConfig.gps) {
+    gpsLat.textContent = row.lat.toFixed(6)
+    gpsLon.textContent = row.lon.toFixed(6)
+    gpsAlt.textContent = `${row.altitude_m.toFixed(0)}m`
+  }
+}
+
+// ── Lerp displayed values toward targets + draw canvases (called every frame) ──
+function smoothAndDraw(): void {
+  if (!hudActive) return
+
+  const now = performance.now()
+  const dt = lastFrameTime ? (now - lastFrameTime) / 1000 : 0.016
+  lastFrameTime = now
+
+  // Exponential smoothing: alpha = 1 - e^(-rate * dt)
+  // At rate=25: reaches ~95% of target in ~120ms (3τ)
+  const alpha = 1 - Math.exp(-SMOOTH_RATE * dt)
+
+  displayedRpm += (targetRpm - displayedRpm) * alpha
+  displayedSteeringDeg += (targetSteeringDeg - displayedSteeringDeg) * alpha
+  displayedGLat += (targetGLat - displayedGLat) * alpha
+  displayedGLon += (targetGLon - displayedGLon) * alpha
+
+  if (overlayConfig.rpmGauge) drawRpmGauge(displayedRpm)
+  if (overlayConfig.steering) drawSteering(displayedSteeringDeg)
+  if (overlayConfig.gforce) drawGForce(displayedGLat, displayedGLon)
+}
+
+// ── Overlay visibility ──
+export function applyOverlayConfig(config: OverlayConfig): void {
+  overlayConfig = { ...config }
+  // Each .hud-element has data-overlay matching a config key
+  for (const el of videoContainer.querySelectorAll<HTMLElement>('.hud-element[data-overlay]')) {
+    const key = el.dataset.overlay as OverlayKey
+    if (key in config) {
+      if (config[key]) {
+        el.classList.add('active')
+      } else {
+        el.classList.remove('active')
+      }
+    }
+  }
+}
+
+export function showHud(): void {
+  // Activate all overlays that are enabled in config
+  applyOverlayConfig(overlayConfig)
+}
+
+// ── Initialize ──
+export function initHud(): void {
+  initGForceBall()
+  initRpmGauge()
+  initSteeringIndicator()
+
+  // Row change: set targets + update DOM text
+  onRowUpdate(() => updateHud(currentRow))
+
+  // Every frame: smooth-lerp canvas indicators toward targets
+  onFrameTick(() => smoothAndDraw())
+}
