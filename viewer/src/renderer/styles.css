@@ -1,4 +1,4 @@
-/* OpenPDR Viewer — Phase 0 PoC styles (dark motorsport theme) */
+/* OpenPDR Viewer — Phase 2 styles (dark motorsport theme) */
 
 * {
   margin: 0;
@@ -59,12 +59,54 @@ html, body {
   background: var(--accent-dim);
 }
 
+#btn-settings,
+#btn-edit {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid #444 !important;
+  font-size: 16px !important;
+  padding: 2px 10px !important;
+}
+
+#btn-settings:hover,
+#btn-edit:hover {
+  background: #3a3a3a !important;
+}
+
+#btn-edit.active {
+  background: var(--accent) !important;
+  color: #fff !important;
+  border-color: var(--accent) !important;
+}
+
+#toolbar-spacer {
+  flex: 1;
+}
+
 #file-name {
   font-size: 13px;
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+#fps-counter {
+  display: none;
+  font-size: 11px;
+  font-family: Consolas, monospace;
+  color: var(--green);
+  min-width: 52px;
+  text-align: right;
+}
+
+/* ── Main content area (video + charts) ── */
+#main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
 
 /* ── Video container ── */
@@ -76,6 +118,7 @@ html, body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  min-height: 200px;
 }
 
 #video {
@@ -127,27 +170,29 @@ html, body {
   display: none;
 }
 
-/* ── HUD overlay ── */
-#hud {
+/* ── HUD overlay elements (independently positioned) ── */
+.hud-element {
   position: absolute;
-  bottom: 10px;
-  left: 10px;
-  right: 10px;
-  display: none;
-  align-items: flex-end;
-  gap: 16px;
   pointer-events: none;
+  display: none;
   font-family: 'Consolas', 'Courier New', monospace;
+  transform-origin: top left;
+  z-index: 2;
+  /* Force auto on bottom/right so only left/top control position.
+     Without this, CSS defaults using bottom/right would combine with
+     the inline left/top from applyPosition() and stretch the element. */
+  bottom: auto;
+  right: auto;
 }
 
-#hud.active {
-  display: flex;
-}
-
+/* Speed */
 #hud-speed {
-  display: flex;
   align-items: baseline;
   gap: 4px;
+}
+
+#hud-speed.active {
+  display: flex;
 }
 
 #hud-speed-value {
@@ -164,27 +209,19 @@ html, body {
   text-shadow: 0 0 8px rgba(0,0,0,0.8);
 }
 
-#hud-rpm {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
+/* RPM gauge */
+
+#hud-rpm-gauge.active {
+  display: block;
 }
 
-#hud-rpm-value {
-  font-size: 28px;
-  font-weight: 600;
-  color: #fff;
-  text-shadow: 0 0 8px rgba(0,0,0,0.8);
+#rpm-gauge-canvas {
+  display: block;
+  background: transparent;
 }
 
-#hud-rpm-label {
-  font-size: 12px;
-  color: #aaa;
-  text-shadow: 0 0 8px rgba(0,0,0,0.8);
-}
-
+/* Gear */
 #hud-gear {
-  display: flex;
   align-items: center;
   justify-content: center;
   width: 48px;
@@ -194,27 +231,94 @@ html, body {
   background: rgba(0,0,0,0.5);
 }
 
+#hud-gear.active {
+  display: flex;
+}
+
 #hud-gear-value {
   font-size: 28px;
   font-weight: 700;
   color: #fff;
 }
 
-#hud-gforce {
-  margin-left: auto;
+/* Shift arrow flash */
+.shift-arrow {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 20px;
+  font-weight: 900;
+  pointer-events: none;
+  opacity: 0;
+  transition: none;
+  text-shadow: 0 0 8px currentColor;
+}
+
+.shift-arrow.upshift {
+  bottom: 100%;
+  margin-bottom: 2px;
+  color: var(--green);
+}
+
+.shift-arrow.downshift {
+  top: 100%;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.shift-arrow.flash {
+  opacity: 1;
+  animation: shift-flash 0.6s ease-out forwards;
+}
+
+@keyframes shift-flash {
+  0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  50%  { opacity: 0.8; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(0); }
+}
+
+/* Steering indicator */
+
+#hud-steering.active {
+  display: block;
+}
+
+.steering-label {
+  display: block;
+  text-align: center;
+  font: bold 18px Consolas, monospace;
+  color: #fff;
+}
+
+.steering-svg {
+  display: block;
+  width: 80px;
+  height: 80px;
+  fill: rgba(255,255,255,0.75);
+  transition: none;
+}
+
+/* G-force */
+
+#hud-gforce.active {
+  display: block;
 }
 
 #gforce-canvas {
+  display: block;
   background: rgba(0,0,0,0.5);
   border-radius: 50%;
 }
 
-/* ── Pedal bars ── */
+/* Pedal bars */
 #hud-pedals {
-  display: flex;
   flex-direction: column;
   gap: 3px;
   width: 100px;
+}
+
+#hud-pedals.active {
+  display: flex;
 }
 
 .pedal-bar {
@@ -250,6 +354,119 @@ html, body {
   font-size: 10px;
   color: #ccc;
   text-shadow: 0 0 4px rgba(0,0,0,0.8);
+}
+
+/* ── GPS display ── */
+#hud-gps {
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: #aaa;
+  background: rgba(0,0,0,0.5);
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-shadow: 0 0 4px rgba(0,0,0,0.8);
+}
+
+#hud-gps.active {
+  display: flex;
+}
+
+/* ── Resize handle ── */
+#resize-handle {
+  height: 6px;
+  background: var(--bg-secondary);
+  border-top: 1px solid #333;
+  border-bottom: 1px solid #333;
+  cursor: row-resize;
+  flex-shrink: 0;
+  display: none;
+  touch-action: none;
+}
+
+#resize-handle.active {
+  display: block;
+}
+
+#resize-handle:hover,
+#resize-handle.dragging {
+  background: var(--accent-dim);
+}
+
+/* ── Chart panel ── */
+#chart-panel {
+  display: none;
+  flex-direction: column;
+  background: var(--bg-primary);
+  min-height: 80px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+#chart-panel.active {
+  display: flex;
+}
+
+#chart-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.chart-channel-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: 'Consolas', monospace;
+  border: 1px solid #444;
+  border-radius: 3px;
+  cursor: pointer;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  transition: background 0.1s, color 0.1s;
+}
+
+.chart-channel-btn.active {
+  color: #fff;
+  border-color: currentColor;
+}
+
+.chart-channel-btn:hover {
+  background: #3a3a3a;
+}
+
+#chart-canvas-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+#chart-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  touch-action: none;
+}
+
+#chart-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+#chart-empty.hidden {
+  display: none;
 }
 
 /* ── Transport controls ── */
@@ -294,6 +511,7 @@ html, body {
   flex: 1;
   padding: 4px 0;
   cursor: pointer;
+  touch-action: none;
 }
 
 #scrub-track {
@@ -343,7 +561,185 @@ html, body {
   cursor: pointer;
 }
 
-/* ── Debug panel ── */
+/* ── Edit mode ── */
+.hud-element.edit-mode {
+  pointer-events: auto;
+  cursor: grab;
+  outline: 1px dashed rgba(255, 107, 0, 0.5);
+  outline-offset: 4px;
+}
+
+.hud-element.edit-mode:hover {
+  outline-color: rgba(255, 107, 0, 1);
+}
+
+.hud-element.dragging {
+  cursor: grabbing;
+  outline-color: var(--accent);
+  outline-width: 2px;
+  outline-style: solid;
+  z-index: 10;
+}
+
+/* Resize handle (bottom-right corner of each overlay in edit mode) */
+.resize-handle {
+  display: none;
+}
+
+.hud-element.edit-mode .resize-handle {
+  display: block;
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border: 1px solid #fff;
+  border-radius: 2px;
+  cursor: nwse-resize;
+  z-index: 11;
+}
+
+.hud-element.edit-mode .resize-handle:hover {
+  background: #fff;
+  border-color: var(--accent);
+}
+
+/* ── Edit panel dropdown ── */
+#edit-panel {
+  display: none;
+  position: absolute;
+  top: 38px;
+  right: 48px;
+  background: var(--bg-secondary);
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 10px 14px;
+  z-index: 1000;
+  font-size: 13px;
+  min-width: 200px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+#edit-panel.visible {
+  display: block;
+}
+
+.edit-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
+}
+
+.edit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.edit-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  flex: 1;
+}
+
+.edit-row input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+#edit-panel .edit-actions {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #444;
+}
+
+#edit-panel .edit-actions button {
+  padding: 4px 12px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid #444;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  width: 100%;
+}
+
+#edit-panel .edit-actions button:hover {
+  background: #3a3a3a;
+}
+
+/* ── Overlay settings dropdown ── */
+#overlay-settings-panel {
+  display: none;
+  position: absolute;
+  top: 38px;
+  right: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 10px 14px;
+  z-index: 1000;
+  font-size: 13px;
+  min-width: 200px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+#overlay-settings-panel.visible {
+  display: block;
+}
+
+.settings-section {
+  margin-bottom: 10px;
+}
+
+.settings-section:last-child {
+  margin-bottom: 0;
+}
+
+.settings-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.settings-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  flex: 1;
+}
+
+.settings-row input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.settings-row input[type="number"] {
+  width: 70px;
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid #444;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: 'Consolas', monospace;
+}
+
+/* ── Debug panel (hidden by default, F2 to toggle) ── */
 #debug-panel {
   position: fixed;
   top: 40px;
@@ -362,10 +758,11 @@ html, body {
   word-break: break-all;
   z-index: 9999;
   pointer-events: auto;
+  display: none;
 }
 
-#debug-panel:empty {
-  display: none;
+#debug-panel.visible {
+  display: block;
 }
 
 /* ── Drag-and-drop visual ── */
