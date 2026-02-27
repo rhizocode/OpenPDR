@@ -283,9 +283,19 @@ html, body {
   display: block;
 }
 
-#steering-canvas {
+.steering-label {
   display: block;
-  background: transparent;
+  text-align: center;
+  font: bold 18px Consolas, monospace;
+  color: #fff;
+}
+
+.steering-svg {
+  display: block;
+  width: 80px;
+  height: 80px;
+  fill: rgba(255,255,255,0.75);
+  transition: none;
 }
 
 /* G-force */
