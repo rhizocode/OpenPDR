@@ -21,7 +21,7 @@ npm install
 npm run dev
 ```
 
-Click **Open File** and select a `.mp4` PDR recording. The viewer looks for a `_telemetry.json` sidecar next to the video (e.g. `ADV_0600_telemetry.json` alongside `ADV_0600.mp4`). See [Generating the sidecar](#generating-the-telemetry-sidecar) below.
+Click **Open File** and select a `.mp4` PDR recording. The viewer parses the telemetry directly from the MP4 — no pre-processing or sidecar files required.
 
 ### Build
 
@@ -86,43 +86,6 @@ All 59 channels defined in the PDR 2.5 `adcp` descriptor have been identified wi
 
 ---
 
-## Generating the Telemetry Sidecar
-
-The viewer loads a `_telemetry.json` sidecar produced by the reference parser. The parser lives in [`protocol/`](protocol/).
-
-### Requirements
-
-- Python 3.7+, no external dependencies
-
-### From an MP4 file
-
-```bash
-python protocol/alivedrive_parser.py input.mp4 --csv output.csv
-```
-
-### From a pre-extracted binary
-
-```bash
-ffmpeg -v quiet -i input.mp4 -map 0:1 -c copy -f data telemetry_raw.bin
-python protocol/alivedrive_parser.py telemetry_raw.bin --raw --csv output.csv
-```
-
-### Options
-
-```
-positional arguments:
-  input                 Input MP4 file or raw telemetry binary (.bin)
-
-options:
-  --csv, -o PATH        Output CSV file path (default: input with .csv extension)
-  --raw                 Input is a raw telemetry binary (from ffmpeg extraction)
-  --lat FLOAT           Reference latitude for GPS search
-  --lon FLOAT           Reference longitude for GPS search
-  --verbose, -v         Verbose output
-```
-
----
-
 ## Protocol Documentation
 
 See [`protocol/ALIVEDRIVE_FORMAT.md`](protocol/ALIVEDRIVE_FORMAT.md) for the full reverse-engineered format specification, including:
@@ -139,6 +102,8 @@ See [`protocol/ALIVEDRIVE_FORMAT.md`](protocol/ALIVEDRIVE_FORMAT.md) for the ful
 
 Both format variants are covered — legacy (3247-byte packets, gen 1 / MMP ≤ 3) and MMP v4+ (4050-byte packets, gen 2 MMP ≥ 4).
 
+A standalone Python reference parser is available at [`protocol/alivedrive_parser.py`](protocol/alivedrive_parser.py).
+
 ---
 
 ## How the Parser Works
@@ -147,7 +112,7 @@ Both format variants are covered — legacy (3247-byte packets, gen 1 / MMP ≤ 
 2. **Sample table parsing** — reads `stsz`, `stco`, `stsc` to find each telemetry sample's offset and size
 3. **GPS anchor detection** — finds valid GPS coordinate patterns to establish frame boundaries
 4. **Frame decoding** — walks the interleaved multi-rate structure relative to each GPS anchor
-5. **Export** — writes all decoded channels with timestamps to CSV
+5. **Playback sync** — binary search over decoded rows on each animation frame to drive the HUD overlay
 
 ---
 
