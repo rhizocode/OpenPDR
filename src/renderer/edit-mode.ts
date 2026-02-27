@@ -21,6 +21,7 @@ const OVERLAY_LABELS: Record<OverlayKey, string> = {
   pedals: 'Pedals',
   steering: 'Steering',
   gps: 'GPS',
+  trackMap: 'Track Map',
 }
 
 // Default layout positions (pixel offsets from edges of video-container).
@@ -34,6 +35,7 @@ const DEFAULT_LAYOUT: OverlayLayout = {
   gforce:   { left: 82,  top: 68, scale: 1 },
   pedals:   { left: 68,  top: 84, scale: 1 },
   gps:      { left: 85,  top: 2,  scale: 1 },
+  trackMap: { left: 1.5, top: 2,  scale: 1 },
 }
 
 let layout: OverlayLayout
@@ -82,11 +84,13 @@ export function applyAllPositions(): void {
  * Clamp every overlay so it sits fully inside the visible container.
  * Call after applying positions to guarantee nothing is off-screen.
  */
-function clampAllToViewport(): void {
+export function clampAllToViewport(): void {
   const cRect = container.getBoundingClientRect()
   if (cRect.width === 0 || cRect.height === 0) return
 
   for (const [key, el] of hudElements) {
+    // Skip hidden elements — getBoundingClientRect returns zeros for display:none
+    if (!el.classList.contains('active')) continue
     const elRect = el.getBoundingClientRect()
     // Compute percentage position that keeps the element fully inside
     let leftPct = layout[key].left
@@ -281,7 +285,7 @@ function buildPanel(panel: HTMLDivElement): void {
     // Re-enable all overlays
     const allOn: OverlayConfig = {
       speed: true, rpmGauge: true, gear: true, gforce: true,
-      pedals: true, steering: true, gps: true,
+      pedals: true, steering: true, gps: true, trackMap: true,
     }
     setOverlayConfig(allOn)
     applyOverlayConfig(allOn)
@@ -320,16 +324,13 @@ export function initEditMode(): void {
     }
   }
 
-  // Load and apply saved layout, then clamp to visible area
+  // Load and apply saved layout (don't clamp yet — elements are hidden)
   layout = loadLayout()
   applyAllPositions()
-  clampAllToViewport()
-  saveLayout()
 
-  // Re-clamp when the window resizes (container may shrink)
+  // Re-clamp when the window resizes (elements are visible by then)
   window.addEventListener('resize', () => {
     clampAllToViewport()
-    saveLayout()
   })
 
   // Build panel

@@ -131,6 +131,7 @@ export interface OverlayConfig {
   pedals: boolean
   steering: boolean
   gps: boolean
+  trackMap: boolean
 }
 
 /** RPM gauge zone configuration */

@@ -12,7 +12,6 @@ import { saveRpmConfig, getRpmConfig, loadRpmConfig } from './rpm-gauge'
 const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
 
 export function initOverlaySettings(): void {
-  const config = getOverlayConfig()
   const rpmConfig = loadRpmConfig()
 
   const btnSettings = document.getElementById('btn-settings') as HTMLButtonElement
@@ -21,8 +20,7 @@ export function initOverlaySettings(): void {
   // Build settings panel content (RPM zones only)
   buildPanel(panel, rpmConfig)
 
-  // Apply initial config
-  applyOverlayConfig(config)
+  // Don't apply overlay config here — showHud() applies it when a file loads
 
   // Toggle panel visibility
   btnSettings.addEventListener('click', (e) => {
