@@ -8,7 +8,7 @@
 import './types' // side-effect: augments Window with pdr
 import { video, findRowAtTime, setCurrentRow, fireFrameTick, isDebugVisible, dbg } from './state'
 import { initHud } from './hud'
-import { initControls, controls, getIsScrubbing } from './controls'
+import { initControls, getIsScrubbing } from './controls'
 import { initFileOpen } from './file-open'
 import { initResizer } from './resizer'
 import { initOverlaySettings } from './overlay-settings'
@@ -22,7 +22,7 @@ dbg(`Renderer loaded [${BUILD_ID}], pdr API: ${window.pdr ? 'OK' : 'MISSING'}`)
 
 // ── Initialize modules ──
 initHud()
-initControls()
+const controls = initControls()
 initFileOpen()
 initResizer()
 initOverlaySettings()

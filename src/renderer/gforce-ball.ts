@@ -12,10 +12,13 @@ const MAX_G = 1.5
 
 export function initGForceBall(): void {
   canvas = document.getElementById('gforce-canvas') as HTMLCanvasElement
-  ctx = canvas.getContext('2d')!
+  const c = canvas.getContext('2d')
+  if (!c) return
+  ctx = c
 }
 
 export function drawGForce(lat: number, lon: number): void {
+  if (!ctx) return
   const w = canvas.width
   const h = canvas.height
   const cx = w / 2

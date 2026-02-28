@@ -3,7 +3,9 @@ import { join } from 'path'
 import { createReadStream } from 'fs'
 import { stat } from 'fs/promises'
 import { parsePdrFile } from './parser'
-import type { ParseResult } from './parser'
+import type { ParseResult, IpcChannels } from '../shared/types'
+
+type Channel = keyof IpcChannels
 
 const BUILD_ID = 'phase1-v3'
 console.log(`[OpenPDR main] build=${BUILD_ID}`)
@@ -128,7 +130,7 @@ app.on('window-all-closed', () => {
 })
 
 // IPC: Open file dialog and return the selected MP4 path
-ipcMain.handle('open-file-dialog', async () => {
+ipcMain.handle('open-file-dialog' satisfies Channel, async () => {
   if (!mainWindow) return null
 
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -146,8 +148,8 @@ ipcMain.handle('open-file-dialog', async () => {
 })
 
 // IPC: Parse PDR file — extracts telemetry directly from MP4
-ipcMain.handle('parse-pdr-file', async (_event, filePath: string): Promise<ParseResult> => {
+ipcMain.handle('parse-pdr-file' satisfies Channel, async (_event, filePath: string): Promise<ParseResult> => {
   return parsePdrFile(filePath, (phase, pct) => {
-    mainWindow?.webContents.send('parse-progress', phase, pct)
+    mainWindow?.webContents.send('parse-progress' satisfies Channel, phase, pct)
   })
 })
