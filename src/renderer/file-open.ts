@@ -31,7 +31,7 @@ function hideProgress(): void {
 async function openFile(filePath?: string): Promise<void> {
   if (!filePath) {
     dbg('Opening file dialog...')
-    filePath = await pdr.openFileDialog()
+    filePath = await pdr.openFileDialog() ?? undefined
     if (!filePath) { dbg('Dialog canceled'); return }
   }
   dbg('Selected: ' + filePath)
