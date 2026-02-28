@@ -65,7 +65,7 @@ async function openFile(filePath?: string): Promise<void> {
     if (rows.length > 0) setCurrentRow(rows[0])
     if (meta.lapData?.hasLapData) {
       const method = meta.lapData.detectionMethod === 'events'
-        ? 'firmware S/F events' : 'GPS density heuristic'
+        ? 'start/finish line events from device' : 'GPS density heuristic'
       dbg(`Laps detected: ${meta.lapData.laps.length} (${method})`)
     } else {
       dbg('No laps detected')
@@ -95,7 +95,7 @@ export function initFileOpen(): void {
     requestAnimationFrame(() => clampAllToViewport())
   })
 
-  video.addEventListener('canplay', () => dbg('Video canplay'))
+  video.addEventListener('canplay', () => {})
   video.addEventListener('error', () => {
     const e = video.error
     dbg(`VIDEO ERROR: code=${e?.code} message="${e?.message}"`)

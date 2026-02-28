@@ -75,7 +75,7 @@ function updateHighlight(): void {
   const t = currentRow.time
   let idx = -1
   for (let i = 0; i < laps.length; i++) {
-    if (t >= laps[i].startTime && t <= laps[i].endTime) {
+    if (t >= laps[i].startTime && t < laps[i].endTime) {
       idx = i
       break
     }

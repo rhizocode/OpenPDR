@@ -13,7 +13,7 @@
  */
 
 import type { TelemetryRow } from './types'
-import { telemetry, duration, video, onRowUpdate, onFrameTick, onTelemetryLoad, currentRow, setCurrentRow, findRowAtTime } from './state'
+import { telemetry, duration, video, onRowUpdate, onFrameTick, onTelemetryLoad, currentRow, setCurrentRow, findRowAtTime, lapData } from './state'
 
 // ── Channel configuration ──
 
@@ -324,6 +324,32 @@ function renderFrameCache(): void {
       frameCacheCtx.lineTo(w, y)
       frameCacheCtx.stroke()
     }
+  }
+
+  // Lap markers — vertical dotted lines spanning all charts
+  if (lapData?.hasLapData && duration > 0) {
+    frameCacheCtx.strokeStyle = 'rgba(255,255,255,0.25)'
+    frameCacheCtx.lineWidth = 1 * dpr
+    frameCacheCtx.setLineDash([3 * dpr, 4 * dpr])
+    const labelW = LABEL_WIDTH * dpr
+    const dataW = w - labelW
+    for (const lap of lapData.laps) {
+      const x = labelW + (lap.startTime / duration) * dataW
+      frameCacheCtx.beginPath()
+      frameCacheCtx.moveTo(x, 0)
+      frameCacheCtx.lineTo(x, h)
+      frameCacheCtx.stroke()
+    }
+    // End of last lap
+    const lastLap = lapData.laps[lapData.laps.length - 1]
+    if (lastLap) {
+      const x = labelW + (lastLap.endTime / duration) * dataW
+      frameCacheCtx.beginPath()
+      frameCacheCtx.moveTo(x, 0)
+      frameCacheCtx.lineTo(x, h)
+      frameCacheCtx.stroke()
+    }
+    frameCacheCtx.setLineDash([])
   }
 }
 

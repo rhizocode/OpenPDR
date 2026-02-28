@@ -74,6 +74,43 @@ function gpsToCanvas(lat: number, lon: number): { x: number; y: number } | null 
   }
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Compute the angle perpendicular to the track direction at the S/F point.
+ * Finds the closest track segment, derives its heading in canvas space, and
+ * returns that heading + 90°.
+ */
+function computePerpendicularAngle(
+  points: Array<{ lat: number; lon: number }>,
+  sfLat: number,
+  sfLon: number
+): number {
+  if (points.length < 2) return 0
+
+  // Find the closest point index
+  let bestIdx = 0
+  let bestDist = Infinity
+  for (let i = 0; i < points.length; i++) {
+    const dlat = points[i].lat - sfLat
+    const dlon = points[i].lon - sfLon
+    const d = dlat * dlat + dlon * dlon
+    if (d < bestDist) { bestDist = d; bestIdx = i }
+  }
+
+  // Pick two neighbours to define the track direction at that point
+  const i0 = Math.max(0, bestIdx - 1)
+  const i1 = Math.min(points.length - 1, bestIdx + 1)
+  if (i0 === i1) return 0
+
+  const p0 = gpsToCanvas(points[i0].lat, points[i0].lon)
+  const p1 = gpsToCanvas(points[i1].lat, points[i1].lon)
+  if (!p0 || !p1) return 0
+
+  const trackAngle = Math.atan2(p1.y - p0.y, p1.x - p0.x)
+  return trackAngle + Math.PI / 2 // perpendicular
+}
+
 // ── Drawing ───────────────────────────────────────────────────────────────────
 
 function drawEmpty(): void {
@@ -109,23 +146,23 @@ function drawTrack(): void {
   }
   ctx.stroke()
 
-  // Start/finish marker
+  // Start/finish marker — perpendicular to track direction
   const sfPx = gpsToCanvas(startFinishLat, startFinishLon)
   if (sfPx) {
+    const perpAngle = computePerpendicularAngle(points, startFinishLat, startFinishLon)
+    const halfLen = 10
     ctx.save()
     ctx.strokeStyle = '#fff'
     ctx.lineWidth = 2.5
     ctx.setLineDash([4, 4])
     ctx.beginPath()
-    ctx.moveTo(sfPx.x - 8, sfPx.y - 8)
-    ctx.lineTo(sfPx.x + 8, sfPx.y + 8)
+    ctx.moveTo(sfPx.x + Math.cos(perpAngle) * halfLen,
+               sfPx.y + Math.sin(perpAngle) * halfLen)
+    ctx.lineTo(sfPx.x - Math.cos(perpAngle) * halfLen,
+               sfPx.y - Math.sin(perpAngle) * halfLen)
     ctx.stroke()
     ctx.setLineDash([])
     ctx.restore()
-
-    ctx.fillStyle = '#aaa'
-    ctx.font = '10px monospace'
-    ctx.fillText('S/F', sfPx.x + 11, sfPx.y + 4)
   }
 }
 
