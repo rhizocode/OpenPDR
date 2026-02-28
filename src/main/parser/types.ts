@@ -188,9 +188,18 @@ export interface TrackLayout {
   bounds: { minLat: number; maxLat: number; minLon: number; maxLon: number }
 }
 
+/** An embedded event extracted from an oversized telemetry packet */
+export interface EmbeddedEvent {
+  eventId: number          // 0–19, maps to adeg definitions
+  eventName: string        // e.g., "com.cosworth.event.lap.start"
+  time: number             // seconds from recording start
+}
+
 /** Result of lap detection */
 export interface LapData {
   laps: LapInfo[]
   trackLayout: TrackLayout | null
   hasLapData: boolean
+  /** Which method detected laps: firmware S/F events or GPS density heuristic */
+  detectionMethod?: 'events' | 'gps-density'
 }
