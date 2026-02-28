@@ -40,7 +40,7 @@ function createWindow(): void {
 
 // Register a custom protocol to serve local video files securely
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'pdr-file', privileges: { stream: true, bypassCSP: true } }
+  { scheme: 'pdr-file', privileges: { stream: true } }
 ])
 
 app.whenReady().then(() => {
