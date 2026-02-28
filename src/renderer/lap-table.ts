@@ -39,6 +39,8 @@ function buildTable(): void {
 
   laps = ld.laps
 
+  const bestTime = Math.min(...laps.map(l => l.lapTime))
+
   const heading = document.createElement('div')
   heading.className = 'lap-heading'
   heading.textContent = `${laps.length} lap${laps.length !== 1 ? 's' : ''}`
@@ -53,12 +55,27 @@ function buildTable(): void {
     numEl.className = 'lap-num'
     numEl.textContent = `Lap ${lap.lapNumber}`
 
+    const rightEl = document.createElement('span')
+    rightEl.className = 'lap-right'
+
     const timeEl = document.createElement('span')
     timeEl.className = 'lap-time'
     timeEl.textContent = formatLapTime(lap.lapTime)
 
+    const deltaEl = document.createElement('span')
+    deltaEl.className = 'lap-delta'
+    if (lap.lapTime === bestTime) {
+      deltaEl.textContent = 'best'
+      deltaEl.classList.add('lap-delta-best')
+    } else {
+      const delta = lap.lapTime - bestTime
+      deltaEl.textContent = `+${delta.toFixed(3)}`
+    }
+
+    rightEl.appendChild(timeEl)
+    rightEl.appendChild(deltaEl)
     row.appendChild(numEl)
-    row.appendChild(timeEl)
+    row.appendChild(rightEl)
 
     row.addEventListener('click', () => {
       video.currentTime = lap.startTime

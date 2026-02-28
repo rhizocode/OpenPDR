@@ -702,9 +702,27 @@ html, body {
   font-weight: 600;
 }
 
+.lap-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .lap-time {
   color: inherit;
   font-variant-numeric: tabular-nums;
+}
+
+.lap-delta {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  min-width: 52px;
+  text-align: right;
+}
+
+.lap-delta-best {
+  color: #4caf50;
 }
 
 .lap-empty {
