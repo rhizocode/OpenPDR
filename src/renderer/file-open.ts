@@ -7,6 +7,9 @@ import { showHud, resetCarryForward } from './hud'
 import { showChartPanel } from './resizer'
 import { clampAllToViewport } from './edit-mode'
 
+/** Electron adds a `path` property to dropped File objects */
+interface ElectronFile extends File { path: string }
+
 const pdr = window.pdr
 
 // ── DOM refs ──
@@ -115,9 +118,9 @@ export function initFileOpen(): void {
   videoContainer.addEventListener('drop', (e) => {
     e.preventDefault()
     videoContainer.classList.remove('drag-over')
-    const file = e.dataTransfer?.files[0]
-    if (file && (file as any).path && file.name.toLowerCase().endsWith('.mp4')) {
-      openFile((file as any).path)
+    const file = e.dataTransfer?.files[0] as ElectronFile | undefined
+    if (file?.path && file.name.toLowerCase().endsWith('.mp4')) {
+      openFile(file.path)
     }
   })
 
