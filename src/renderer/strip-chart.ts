@@ -59,6 +59,8 @@ interface ChannelData {
 }
 
 let channelData: ChannelData[] = []
+/** Cached scaled arrays, keyed by channel key. Rebuilt only on telemetry load. */
+let scaledCache = new Map<string, Float32Array>()
 let enabledKeys: Set<string>
 let canvas: HTMLCanvasElement
 let ctx: CanvasRenderingContext2D
@@ -114,6 +116,7 @@ export function initChartPanel(): void {
 
   // Subscribe to telemetry load
   onTelemetryLoad(() => {
+    buildScaledCache()
     rebuildChannelData()
     resizeAndRender()
     chartEmpty.classList.add('hidden')
@@ -198,6 +201,21 @@ function buildToolbar(): void {
   }
 }
 
+/** Pre-compute scaled arrays for channels with scale !== 1. Called once on telemetry load. */
+function buildScaledCache(): void {
+  scaledCache.clear()
+  const store = telemetryStore
+  if (!store || store.length === 0) return
+  for (const config of CHANNELS) {
+    if (config.scale !== 1) {
+      const raw = config.storeAccessor(store)
+      const scaled = new Float32Array(store.length)
+      for (let i = 0; i < store.length; i++) scaled[i] = raw[i] * config.scale
+      scaledCache.set(config.key, scaled)
+    }
+  }
+}
+
 function rebuildChannelData(): void {
   const store = telemetryStore
   if (!store || store.length === 0) {
@@ -209,16 +227,7 @@ function rebuildChannelData(): void {
   const times = store.time  // shared across all channels
 
   channelData = enabled.map(config => {
-    const raw = config.storeAccessor(store)
-    // Apply scale factor if needed (e.g. throttle 0-1 → 0-100%)
-    let values: ArrayLike<number>
-    if (config.scale !== 1) {
-      const scaled = new Float32Array(store.length)
-      for (let i = 0; i < store.length; i++) scaled[i] = raw[i] * config.scale
-      values = scaled
-    } else {
-      values = raw
-    }
+    const values = scaledCache.get(config.key) ?? config.storeAccessor(store)
     const offscreen = document.createElement('canvas')
     const offCtx = offscreen.getContext('2d')!
     return { config, values, times, offscreen, ctx: offCtx }
