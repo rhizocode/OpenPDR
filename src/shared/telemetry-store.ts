@@ -243,82 +243,106 @@ export function writeRow(store: TelemetryStore, index: number, row: TelemetryRow
   store.vse_status[index] = row.vse_status
 }
 
-/** Assemble a TelemetryRow object from columnar arrays at `index`. Ephemeral — not stored. */
-export function getRow(store: TelemetryStore, index: number): TelemetryRow {
-  const row: TelemetryRow = {
-    time: store.time[index],
-    packetIdx: store.packetIdx[index],
-    frameIdx: store.frameIdx[index],
-
-    lat: store.lat[index],
-    lon: store.lon[index],
-    altitude_m: store.altitude_m[index],
-    heading_deg: store.heading_deg[index],
-    speed_kph: store.speed_kph[index],
-    speed_mph: store.speed_mph[index],
-    speed_mps: store.speed_mps[index],
-    gps_fix_quality: store.gps_fix_quality[index],
-    gps_satellites: store.gps_satellites[index],
-
-    throttle: store.throttle[index],
-    abs_status: store.abs_status[index],
-    abs_status_label: store.abs_status_label[index],
-    boost_pressure_kpa: store.boost_pressure_kpa[index],
-    emotor_power_kw: store.emotor_power_kw[index],
-    engine_power_kw: store.engine_power_kw[index],
-
-    brake: store.brake[index],
-    rpm: store.rpm[index],
-    engine_torque_nm: store.engine_torque_nm[index],
-    steering_deg: store.steering_deg[index],
-    gyro_yaw_deg_s: store.gyro_yaw_deg_s[index],
-    wheel_speed_fl_kph: store.wheel_speed_fl_kph[index],
-    wheel_speed_fr_kph: store.wheel_speed_fr_kph[index],
-    wheel_speed_rl_kph: store.wheel_speed_rl_kph[index],
-    wheel_speed_rr_kph: store.wheel_speed_rr_kph[index],
-
-    gforce_lat: store.gforce_lat[index],
-    gforce_lon: store.gforce_lon[index],
-    gforce_vert: store.gforce_vert[index],
+/** Create a zeroed TelemetryRow suitable for reuse with getRowInto(). */
+export function createEmptyRow(): TelemetryRow {
+  return {
+    time: 0, packetIdx: 0, frameIdx: 0,
+    lat: 0, lon: 0, altitude_m: 0, heading_deg: 0,
+    speed_kph: 0, speed_mph: 0, speed_mps: 0,
+    gps_fix_quality: 0, gps_satellites: 0,
+    throttle: 0, abs_status: 0, abs_status_label: '',
+    boost_pressure_kpa: 0, emotor_power_kw: 0, engine_power_kw: 0,
+    brake: 0, rpm: 0, engine_torque_nm: 0, steering_deg: 0,
+    gyro_yaw_deg_s: 0,
+    wheel_speed_fl_kph: 0, wheel_speed_fr_kph: 0,
+    wheel_speed_rl_kph: 0, wheel_speed_rr_kph: 0,
+    gforce_lat: 0, gforce_lon: 0, gforce_vert: 0,
   }
+}
 
-  // Only include sparse channels if they have a value
-  if (store.gear[index] !== undefined) row.gear = store.gear[index]
-  if (store.gear_raw[index] !== undefined) row.gear_raw = store.gear_raw[index]
-  if (store.engine_startstop[index] !== undefined) row.engine_startstop = store.engine_startstop[index]
-  if (store.esc_status[index] !== undefined) row.esc_status = store.esc_status[index]
-  if (store.tcs_status[index] !== undefined) row.tcs_status = store.tcs_status[index]
-  if (store.oil_pressure_kpa[index] !== undefined) row.oil_pressure_kpa = store.oil_pressure_kpa[index]
+/**
+ * Fill a pre-allocated TelemetryRow from columnar arrays at `index`.
+ * Mutates `out` in-place — no allocation. Callers must not hold references
+ * across frames.
+ */
+export function getRowInto(store: TelemetryStore, index: number, out: TelemetryRow): TelemetryRow {
+  out.time = store.time[index]
+  out.packetIdx = store.packetIdx[index]
+  out.frameIdx = store.frameIdx[index]
 
-  if (store.emotor_powerlevel[index] !== undefined) row.emotor_powerlevel = store.emotor_powerlevel[index]
-  if (store.hv_battery_charge[index] !== undefined) row.hv_battery_charge = store.hv_battery_charge[index]
-  if (store.drive_mode[index] !== undefined) row.drive_mode = store.drive_mode[index]
-  if (store.emotor_axle_available[index] !== undefined) row.emotor_axle_available = store.emotor_axle_available[index]
-  if (store.emotor_temp_rotor_c[index] !== undefined) row.emotor_temp_rotor_c = store.emotor_temp_rotor_c[index]
-  if (store.emotor_temp_stator_c[index] !== undefined) row.emotor_temp_stator_c = store.emotor_temp_stator_c[index]
-  if (store.engine_temp_coolant_c[index] !== undefined) row.engine_temp_coolant_c = store.engine_temp_coolant_c[index]
-  if (store.engine_temp_airintake_c[index] !== undefined) row.engine_temp_airintake_c = store.engine_temp_airintake_c[index]
-  if (store.engine_temp_oil_c[index] !== undefined) row.engine_temp_oil_c = store.engine_temp_oil_c[index]
-  if (store.engine_powerlevel[index] !== undefined) row.engine_powerlevel = store.engine_powerlevel[index]
-  if (store.outside_air_temp_c[index] !== undefined) row.outside_air_temp_c = store.outside_air_temp_c[index]
-  if (store.fuel_level_pct[index] !== undefined) row.fuel_level_pct = store.fuel_level_pct[index]
-  if (store.hv_battery_temp_avg_c[index] !== undefined) row.hv_battery_temp_avg_c = store.hv_battery_temp_avg_c[index]
-  if (store.hv_battery_temp_max_c[index] !== undefined) row.hv_battery_temp_max_c = store.hv_battery_temp_max_c[index]
-  if (store.hv_battery_temp_min_c[index] !== undefined) row.hv_battery_temp_min_c = store.hv_battery_temp_min_c[index]
-  if (store.odometer_km[index] !== undefined) row.odometer_km = store.odometer_km[index]
-  if (store.ptm_mode[index] !== undefined) row.ptm_mode = store.ptm_mode[index]
-  if (store.trans_oil_temp_c[index] !== undefined) row.trans_oil_temp_c = store.trans_oil_temp_c[index]
-  if (store.tire_pressure_fl_kpa[index] !== undefined) row.tire_pressure_fl_kpa = store.tire_pressure_fl_kpa[index]
-  if (store.tire_pressure_fr_kpa[index] !== undefined) row.tire_pressure_fr_kpa = store.tire_pressure_fr_kpa[index]
-  if (store.tire_pressure_rl_kpa[index] !== undefined) row.tire_pressure_rl_kpa = store.tire_pressure_rl_kpa[index]
-  if (store.tire_pressure_rr_kpa[index] !== undefined) row.tire_pressure_rr_kpa = store.tire_pressure_rr_kpa[index]
-  if (store.tire_temp_fl_c[index] !== undefined) row.tire_temp_fl_c = store.tire_temp_fl_c[index]
-  if (store.tire_temp_fr_c[index] !== undefined) row.tire_temp_fr_c = store.tire_temp_fr_c[index]
-  if (store.tire_temp_rl_c[index] !== undefined) row.tire_temp_rl_c = store.tire_temp_rl_c[index]
-  if (store.tire_temp_rr_c[index] !== undefined) row.tire_temp_rr_c = store.tire_temp_rr_c[index]
-  if (store.vse_status[index] !== undefined) row.vse_status = store.vse_status[index]
+  out.lat = store.lat[index]
+  out.lon = store.lon[index]
+  out.altitude_m = store.altitude_m[index]
+  out.heading_deg = store.heading_deg[index]
+  out.speed_kph = store.speed_kph[index]
+  out.speed_mph = store.speed_mph[index]
+  out.speed_mps = store.speed_mps[index]
+  out.gps_fix_quality = store.gps_fix_quality[index]
+  out.gps_satellites = store.gps_satellites[index]
 
-  return row
+  out.throttle = store.throttle[index]
+  out.abs_status = store.abs_status[index]
+  out.abs_status_label = store.abs_status_label[index]
+  out.boost_pressure_kpa = store.boost_pressure_kpa[index]
+  out.emotor_power_kw = store.emotor_power_kw[index]
+  out.engine_power_kw = store.engine_power_kw[index]
+
+  out.brake = store.brake[index]
+  out.rpm = store.rpm[index]
+  out.engine_torque_nm = store.engine_torque_nm[index]
+  out.steering_deg = store.steering_deg[index]
+  out.gyro_yaw_deg_s = store.gyro_yaw_deg_s[index]
+  out.wheel_speed_fl_kph = store.wheel_speed_fl_kph[index]
+  out.wheel_speed_fr_kph = store.wheel_speed_fr_kph[index]
+  out.wheel_speed_rl_kph = store.wheel_speed_rl_kph[index]
+  out.wheel_speed_rr_kph = store.wheel_speed_rr_kph[index]
+
+  out.gforce_lat = store.gforce_lat[index]
+  out.gforce_lon = store.gforce_lon[index]
+  out.gforce_vert = store.gforce_vert[index]
+
+  // Sparse channels — always assign (undefined is fine, keeps the object shape monomorphic)
+  out.gear = store.gear[index]
+  out.gear_raw = store.gear_raw[index]
+  out.engine_startstop = store.engine_startstop[index]
+  out.esc_status = store.esc_status[index]
+  out.tcs_status = store.tcs_status[index]
+  out.oil_pressure_kpa = store.oil_pressure_kpa[index]
+
+  out.emotor_powerlevel = store.emotor_powerlevel[index]
+  out.hv_battery_charge = store.hv_battery_charge[index]
+  out.drive_mode = store.drive_mode[index]
+  out.emotor_axle_available = store.emotor_axle_available[index]
+  out.emotor_temp_rotor_c = store.emotor_temp_rotor_c[index]
+  out.emotor_temp_stator_c = store.emotor_temp_stator_c[index]
+  out.engine_temp_coolant_c = store.engine_temp_coolant_c[index]
+  out.engine_temp_airintake_c = store.engine_temp_airintake_c[index]
+  out.engine_temp_oil_c = store.engine_temp_oil_c[index]
+  out.engine_powerlevel = store.engine_powerlevel[index]
+  out.outside_air_temp_c = store.outside_air_temp_c[index]
+  out.fuel_level_pct = store.fuel_level_pct[index]
+  out.hv_battery_temp_avg_c = store.hv_battery_temp_avg_c[index]
+  out.hv_battery_temp_max_c = store.hv_battery_temp_max_c[index]
+  out.hv_battery_temp_min_c = store.hv_battery_temp_min_c[index]
+  out.odometer_km = store.odometer_km[index]
+  out.ptm_mode = store.ptm_mode[index]
+  out.trans_oil_temp_c = store.trans_oil_temp_c[index]
+  out.tire_pressure_fl_kpa = store.tire_pressure_fl_kpa[index]
+  out.tire_pressure_fr_kpa = store.tire_pressure_fr_kpa[index]
+  out.tire_pressure_rl_kpa = store.tire_pressure_rl_kpa[index]
+  out.tire_pressure_rr_kpa = store.tire_pressure_rr_kpa[index]
+  out.tire_temp_fl_c = store.tire_temp_fl_c[index]
+  out.tire_temp_fr_c = store.tire_temp_fr_c[index]
+  out.tire_temp_rl_c = store.tire_temp_rl_c[index]
+  out.tire_temp_rr_c = store.tire_temp_rr_c[index]
+  out.vse_status = store.vse_status[index]
+
+  return out
+}
+
+/** Assemble a TelemetryRow object from columnar arrays at `index`. Allocates — use getRowInto() in hot paths. */
+export function getRow(store: TelemetryStore, index: number): TelemetryRow {
+  return getRowInto(store, index, createEmptyRow())
 }
 
 /**
