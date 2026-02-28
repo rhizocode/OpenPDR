@@ -35,6 +35,61 @@ initLapTable(document.getElementById('lap-table-container') as HTMLDivElement)
 initExportMenu()
 initOverlayRenderer()
 
+// ── Video overlay anchor sizing ──
+// The anchor div matches the video's rendered bounds inside the container,
+// so overlay % positions map 1:1 between preview and export.
+const videoContainer = document.getElementById('video-container') as HTMLDivElement
+const overlayAnchor = document.getElementById('video-overlay-anchor') as HTMLDivElement
+
+function updateAnchorBounds(): void {
+  const vw = video.videoWidth
+  const vh = video.videoHeight
+  const cw = videoContainer.clientWidth
+  const ch = videoContainer.clientHeight
+  if (!cw || !ch) return
+
+  if (!vw || !vh) {
+    // No video loaded — anchor fills container at natural size
+    overlayAnchor.style.left = '0px'
+    overlayAnchor.style.top = '0px'
+    overlayAnchor.style.width = `${cw}px`
+    overlayAnchor.style.height = `${ch}px`
+    overlayAnchor.style.transform = ''
+    return
+  }
+
+  // Compute rendered video rectangle (object-fit: contain)
+  const videoAR = vw / vh
+  const containerAR = cw / ch
+  let rw: number, rh: number
+  if (videoAR > containerAR) {
+    rw = cw
+    rh = cw / videoAR
+  } else {
+    rw = ch * videoAR
+    rh = ch
+  }
+
+  // Set anchor to video's native resolution and scale to fit.
+  // This makes overlay pixel sizes (fonts, canvases) scale proportionally
+  // with the video — matching what the export renderer produces.
+  const scaleFactor = rw / vw
+  overlayAnchor.style.left = `${(cw - rw) / 2}px`
+  overlayAnchor.style.top = `${(ch - rh) / 2}px`
+  overlayAnchor.style.width = `${vw}px`
+  overlayAnchor.style.height = `${vh}px`
+  overlayAnchor.style.transform = `scale(${scaleFactor})`
+}
+
+new ResizeObserver(() => {
+  updateAnchorBounds()
+  updateChartPanelCollapse()
+}).observe(videoContainer)
+
+video.addEventListener('loadedmetadata', () => {
+  updateAnchorBounds()
+})
+
 // ── Panel toggles ──
 const PANEL_STORAGE_KEY = 'pdr-panel-state'
 const chartsPanel = document.getElementById('charts-panel') as HTMLElement
@@ -64,11 +119,33 @@ function activatePanel(key: string, show: boolean): void {
   }
 }
 
+/** Collapse chart panel content+handle when no sub-panels are active */
+function updateChartPanelCollapse(): void {
+  const chartPanel = document.getElementById('chart-panel')!
+  if (!chartPanel.classList.contains('active')) return
+
+  const anyActive = Object.values(panelState).some(v => v)
+  const resizeHandle = document.getElementById('resize-handle')!
+  const contentRow = document.getElementById('chart-content-row')!
+
+  resizeHandle.classList.toggle('active', anyActive)
+  contentRow.style.display = anyActive ? '' : 'none'
+  if (!anyActive) {
+    chartPanel.style.height = 'auto'
+    chartPanel.style.minHeight = '0'
+  } else if (chartPanel.style.height === 'auto') {
+    const saved = localStorage.getItem('pdr-chart-height')
+    chartPanel.style.height = saved || '200px'
+    chartPanel.style.minHeight = ''
+  }
+}
+
 document.querySelectorAll<HTMLButtonElement>('.panel-toggle').forEach((btn) => {
   const panelKey = btn.dataset.panel!
   // Restore saved state; default charts to on if no saved state
   const defaultOn = panelKey === 'charts'
   const isOn = panelKey in panelState ? panelState[panelKey] : defaultOn
+  panelState[panelKey] = isOn
   if (isOn) {
     btn.classList.add('active')
     activatePanel(panelKey, true)
@@ -81,6 +158,7 @@ document.querySelectorAll<HTMLButtonElement>('.panel-toggle').forEach((btn) => {
     activatePanel(panelKey, isActive)
     panelState[panelKey] = isActive
     savePanelState(panelState)
+    updateChartPanelCollapse()
   })
 })
 
