@@ -163,7 +163,7 @@ function drawSpeed(
   const valueWidth = ctx.measureText(Math.round(row.speed_mph).toString()).width
   ctx.fillStyle = '#ccc'
   ctx.font = '18px Consolas, monospace'
-  ctx.fillText('mph', valueWidth + 4, 56)
+  ctx.fillText('MPH', valueWidth + 4, 56)
   clearShadow(ctx)
 
   ctx.restore()
@@ -297,7 +297,7 @@ function drawSteeringOverlay(
   ctx.font = 'bold 18px Consolas, monospace'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
-  ctx.fillText(`${Math.round(deg)}\u00B0`, STEERING_ICON_SIZE / 2, 0)
+  ctx.fillText(`${Math.abs(Math.round(deg))}\u00B0`, STEERING_ICON_SIZE / 2, 0)
 
   // Steering wheel icon — rotate around center, positioned below label
   const iconCx = STEERING_ICON_SIZE / 2
@@ -526,9 +526,11 @@ function drawSessionOverlay(
   x: number, y: number, scale: number,
 ): void {
   const fields: Array<[string, string]> = []
-  if (info.vehicle) fields.push(['Vehicle', info.vehicle])
+  const vehicleParts = [info.year, info.vehicle]
+    .filter(Boolean)
+    .map(s => s!.replace(/[()]/g, ''))
+  if (vehicleParts.length) fields.push(['Vehicle', vehicleParts.join(' ')])
   if (info.engine) fields.push(['Engine', info.engine])
-  if (info.year) fields.push(['Year', info.year])
   if (fields.length === 0) return
 
   ctx.save()
