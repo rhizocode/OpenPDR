@@ -10,7 +10,7 @@
  */
 
 import type { TelemetryRow, OverlayConfig, OverlayKey } from './types'
-import { onRowUpdate, onFrameTick, currentRow } from './state'
+import { onRowUpdate, onFrameTick, currentRow, interpPrev, interpNext, interpAlpha } from './state'
 import { initGForceBall, drawGForce } from './gforce-ball'
 import { initRpmGauge, drawRpmGauge } from './rpm-gauge'
 import { initSteeringIndicator, drawSteering } from './steering'
@@ -58,7 +58,7 @@ export function setOverlayConfig(config: OverlayConfig): void {
 // ── Smoothing for canvas-drawn indicators ──
 // Target values come from telemetry (discrete 100Hz). Displayed values
 // lerp toward targets every animation frame for smooth visual movement.
-const SMOOTH_RATE = 25  // exponential decay rate (per second) — higher = snappier
+const SMOOTH_RATE = 80  // exponential decay rate (per second) — higher = snappier
 
 let targetRpm = 0, displayedRpm = 0
 let targetSteeringDeg = 0, displayedSteeringDeg = 0
@@ -181,8 +181,19 @@ function smoothAndDraw(): void {
   const dt = lastFrameTime ? (now - lastFrameTime) / 1000 : 0.016
   lastFrameTime = now
 
-  // Exponential smoothing: alpha = 1 - e^(-rate * dt)
-  // At rate=25: reaches ~95% of target in ~120ms (3τ)
+  // Interpolate targets between bracketing rows for frame-accurate movement.
+  // This makes RPM/steering/g-force move continuously rather than stepping
+  // every 100ms on row change.
+  if (interpPrev && interpNext && interpPrev !== interpNext) {
+    const a = interpAlpha
+    targetRpm = interpPrev.rpm + (interpNext.rpm - interpPrev.rpm) * a
+    targetSteeringDeg = interpPrev.steering_deg + (interpNext.steering_deg - interpPrev.steering_deg) * a
+    targetGLat = interpPrev.gforce_lat + (interpNext.gforce_lat - interpPrev.gforce_lat) * a
+    targetGLon = interpPrev.gforce_lon + (interpNext.gforce_lon - interpPrev.gforce_lon) * a
+  }
+
+  // Exponential smoothing on top of interpolated targets — just enough to
+  // prevent single-frame jitter without adding perceptible lag.
   const alpha = 1 - Math.exp(-SMOOTH_RATE * dt)
 
   displayedRpm += (targetRpm - displayedRpm) * alpha

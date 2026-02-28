@@ -406,6 +406,13 @@ export function decodePacket(
   const records: TelemetryRow[] = []
   const baseTime = packetIdx // seconds
 
+  // Carry-forward state for sparse channels within this packet
+  let lastGearLabel: string | undefined
+  let lastGearRaw: number | undefined
+  let lastStartstop: string | undefined
+  let lastEsc: string | undefined
+  let lastTcs: string | undefined
+
   for (let frameIdx = 0; frameIdx < gpsOffsets.length; frameIdx++) {
     const latOff = gpsOffsets[frameIdx]
     const frameTime = baseTime + frameIdx * 0.1
@@ -508,13 +515,20 @@ export function decodePacket(
       gforce_vert: avg50.vert,
     }
 
-    // 5 Hz (even frames only)
+    // 5 Hz (even frames only) — carry forward to odd frames for instant display
     if (hz5Data) {
-      row.gear = hz5Data.gear_label
-      row.gear_raw = hz5Data.gear
-      row.engine_startstop = hz5Data.engine_startstop_label
-      row.esc_status = hz5Data.esc_status_label
-      row.tcs_status = hz5Data.tcs_status_label
+      lastGearLabel = hz5Data.gear_label
+      lastGearRaw = hz5Data.gear
+      lastStartstop = hz5Data.engine_startstop_label
+      lastEsc = hz5Data.esc_status_label
+      lastTcs = hz5Data.tcs_status_label
+    }
+    if (lastGearLabel !== undefined) {
+      row.gear = lastGearLabel
+      row.gear_raw = lastGearRaw
+      row.engine_startstop = lastStartstop
+      row.esc_status = lastEsc
+      row.tcs_status = lastTcs
     }
 
     // 2 Hz
