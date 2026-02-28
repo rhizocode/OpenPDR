@@ -7,7 +7,7 @@ import type { ParseResult, IpcChannels } from '../shared/types'
 
 type Channel = keyof IpcChannels
 
-const BUILD_ID = 'phase1-v3'
+const BUILD_ID = 'phase3-v1'
 console.log(`[OpenPDR main] build=${BUILD_ID}`)
 
 let mainWindow: BrowserWindow | null = null

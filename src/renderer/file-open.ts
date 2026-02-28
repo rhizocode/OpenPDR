@@ -98,7 +98,6 @@ export function initFileOpen(): void {
     requestAnimationFrame(() => clampAllToViewport())
   })
 
-  video.addEventListener('canplay', () => {})
   video.addEventListener('error', () => {
     const e = video.error
     dbg(`VIDEO ERROR: code=${e?.code} message="${e?.message}"`)

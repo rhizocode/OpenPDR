@@ -28,10 +28,6 @@ export const TIRE_RADIUS_M = 0.321
 // Proportions
 export const PROPORTION_SCALE = 1.0 / 255.0
 
-// Temperatures
-export const TEMP_KELVIN_OFFSET = 233.15
-export const TIRE_TEMP_KELVIN_OFFSET = 253.15
-
 // Pressures
 export const OIL_PRESSURE_SCALE = 4000
 export const BOOST_PRESSURE_SCALE = 1000

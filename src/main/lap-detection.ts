@@ -170,7 +170,6 @@ export function detectLaps(rows: TelemetryRow[]): LapData {
   let wasAway = false
   let maxDistFromSf = 0
   let inZone = false
-  let zoneEntryTime = 0
 
   for (const r of valid) {
     const dist = Math.abs(r.lat - sfLat) + Math.abs(r.lon - sfLon)
@@ -180,7 +179,6 @@ export function detectLaps(rows: TelemetryRow[]): LapData {
       // Entering zone
       if (wasAway) {
         // Valid crossing — record it
-        zoneEntryTime = r.time
         crossings.push(r.time)
         wasAway = false
         maxDistFromSf = 0
