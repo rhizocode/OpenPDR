@@ -4,9 +4,10 @@ import { createReadStream } from 'fs'
 import { stat } from 'fs/promises'
 import { parsePdrFile } from '../parser'
 import { NodeFileSource } from './file-source-node'
-import type { ParseResult, IpcChannels, ExportScope } from '../shared/types'
+import type { ParseResult, IpcChannels, ExportScope, VideoExportOptions } from '../shared/types'
 import { exportCsv } from './export-csv'
 import { exportGpx } from './export-gpx'
+import { exportVideo, cancelVideoExport } from './export-video'
 
 type Channel = keyof IpcChannels
 
@@ -261,4 +262,48 @@ ipcMain.handle('export-gpx' satisfies Channel, async (_event, scope: ExportScope
 
   await exportGpx(lastParseResult.store, result.filePath, range.startIdx, range.endIdx, trackName, baseDate)
   return true
+})
+
+// IPC: Export Video with baked overlays
+ipcMain.handle('export-video' satisfies Channel, async (_event, scope: ExportScope, options: VideoExportOptions): Promise<boolean> => {
+  if (!mainWindow || !lastParseResult || !lastFilePath) return false
+
+  const range = getExportRange(scope)
+  if (!range) return false
+
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export Video with Overlays',
+    defaultPath: `${getBaseName()}_${range.label}.mp4`,
+    filters: [
+      { name: 'MP4 Video', extensions: ['mp4'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  })
+
+  if (result.canceled || !result.filePath) return false
+
+  try {
+    await exportVideo(
+      lastParseResult.store,
+      lastFilePath,
+      result.filePath,
+      range.startIdx,
+      range.endIdx,
+      options.overlayConfig,
+      options.overlayLayout,
+      options.rpmConfig,
+      lastParseResult.metadata.lapData?.trackLayout ?? null,
+      (phase, pct) => mainWindow?.webContents.send('export-video-progress' satisfies Channel, phase, pct),
+      mainWindow,
+    )
+    return true
+  } catch (err) {
+    console.error('[export-video] Failed:', err)
+    return false
+  }
+})
+
+// IPC: Cancel video export
+ipcMain.on('export-video-cancel' satisfies Channel, () => {
+  cancelVideoExport()
 })

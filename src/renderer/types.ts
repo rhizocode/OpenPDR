@@ -1,8 +1,9 @@
 /**
  * OpenPDR Viewer — Renderer type definitions
  *
- * Shared types (TelemetryRow, LapInfo, TrackLayout, LapData, ParseResult)
- * are re-exported from src/shared/types.ts. Renderer-only types live here.
+ * Shared types (TelemetryRow, LapInfo, TrackLayout, LapData, ParseResult,
+ * overlay types) are re-exported from src/shared/types.ts.
+ * Renderer-only types live here.
  */
 
 // Re-export shared types so all existing `from './types'` imports keep working
@@ -13,6 +14,13 @@ export type {
   LapData,
   ParseResult,
   ExportScope,
+  OverlayConfig,
+  OverlayKey,
+  OverlayPosition,
+  OverlayLayout,
+  RpmConfig,
+  VideoExportOptions,
+  RenderOverlayRequest,
 } from '../shared/types'
 
 export interface PdrApi {
@@ -24,40 +32,13 @@ export interface PdrApi {
   getVideoUrl(filePath: string): string
   exportCsv(scope: import('../shared/types').ExportScope): Promise<boolean>
   exportGpx(scope: import('../shared/types').ExportScope): Promise<boolean>
+  exportVideo(scope: import('../shared/types').ExportScope, options: import('../shared/types').VideoExportOptions): Promise<boolean>
+  onRenderOverlayFrames(callback: (request: import('../shared/types').RenderOverlayRequest) => void): () => void
+  onExportVideoProgress(callback: (phase: string, pct: number) => void): () => void
+  sendOverlayFrameData(idx: number, buffer: Uint8Array): void
+  sendOverlayFramesDone(): void
 }
 
 declare global {
   interface Window { pdr: PdrApi }
 }
-
-/** Overlay visibility configuration */
-export interface OverlayConfig {
-  speed: boolean
-  rpmGauge: boolean
-  gear: boolean
-  gforce: boolean
-  pedals: boolean
-  steering: boolean
-  gps: boolean
-  trackMap: boolean
-}
-
-/** RPM gauge zone configuration */
-export interface RpmConfig {
-  yellowStart: number
-  redline: number
-  maxRpm: number
-}
-
-/** Overlay key — matches keys of OverlayConfig */
-export type OverlayKey = keyof OverlayConfig
-
-/** Position + scale for a single overlay element (% of video-container) */
-export interface OverlayPosition {
-  left: number
-  top: number
-  scale: number
-}
-
-/** Stored layout for all overlay elements */
-export type OverlayLayout = Record<OverlayKey, OverlayPosition>
