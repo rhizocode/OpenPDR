@@ -13,6 +13,7 @@ import type { TrackLayout } from './types'
 let canvas: HTMLCanvasElement
 let ctx: CanvasRenderingContext2D
 let cachedLayout: TrackLayout | null = null
+let dpr = 1
 
 // Offscreen cache for the static track polyline + S/F marker.
 // Rebuilt only on telemetry load or canvas resize; per-frame work is just blit + dot.
@@ -148,10 +149,10 @@ function renderTrackCache(): void {
 
   const { points, startFinishLat, startFinishLon } = cachedLayout
 
-  // Track polyline
+  // Track polyline — scale by DPR so it looks the same as export at native resolution
   c.beginPath()
   c.strokeStyle = 'rgba(255,255,255,0.6)'
-  c.lineWidth = 5
+  c.lineWidth = 5 * dpr
   c.lineJoin = 'round'
   c.lineCap = 'round'
   let first = true
@@ -170,8 +171,8 @@ function renderTrackCache(): void {
     const halfLen = 10
     c.save()
     c.strokeStyle = '#fff'
-    c.lineWidth = 2.5
-    c.setLineDash([4, 4])
+    c.lineWidth = 2.5 * dpr
+    c.setLineDash([4 * dpr, 4 * dpr])
     c.beginPath()
     c.moveTo(sfPx.x + Math.cos(perpAngle) * halfLen,
              sfPx.y + Math.sin(perpAngle) * halfLen)
@@ -222,11 +223,11 @@ function drawPositionDot(): void {
   }
 
   ctx.beginPath()
-  ctx.arc(px.x, px.y, 6, 0, Math.PI * 2)
+  ctx.arc(px.x, px.y, 6 * dpr, 0, Math.PI * 2)
   ctx.fillStyle = `rgb(${r},${g},0)`
   ctx.fill()
   ctx.strokeStyle = '#fff'
-  ctx.lineWidth = 1.5
+  ctx.lineWidth = 1.5 * dpr
   ctx.stroke()
 }
 
@@ -234,7 +235,7 @@ function drawPositionDot(): void {
 
 function resizeCanvas(): boolean {
   const rect = canvas.getBoundingClientRect()
-  const dpr = window.devicePixelRatio || 1
+  dpr = window.devicePixelRatio || 1
   const w = Math.round(rect.width * dpr)
   const h = Math.round(rect.height * dpr)
   if (canvas.width === w && canvas.height === h) return false

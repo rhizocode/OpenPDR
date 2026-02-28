@@ -15,7 +15,7 @@ import type {
   RpmConfig, TrackLayout, RenderOverlayRequest,
 } from './types'
 import { telemetryStore } from './state'
-import { getRow } from '../shared/telemetry-store'
+import { getRowInto, createEmptyRow } from '../shared/telemetry-store'
 
 // ── Steering wheel SVG path (from index.html) ──
 const STEERING_PATH = 'M370.513 874.855c-48.815-20.02-92.685-50.082-129.215-87.716-69.276-71.384-112.122-170.011-112.122-278.945 0-108.918 42.846-207.544 112.122-278.929 69.836-71.953 170.267-107.93 270.706-107.93 100.423 0 200.861 35.977 270.688 107.93 69.276 71.384 112.131 170.01 112.131 278.929 0 108.934-42.855 207.561-112.131 278.945-36.52 37.633-80.399 67.694-129.205 87.716-45.187 18.524-93.334 27.811-141.483 27.811-48.166 0-96.298-9.288-141.491-27.811l0 0zM512.005 199.998c-80.213 0-160.425 28.732-216.19 86.211-33.202 34.203-58.802 76.253-73.97 123.216-4.189 15.772 1.398 23.218 16.742 22.364 50.317-1.991 158.745-3.58 181.017-4.735-19.13 22.356-30.724 51.706-30.724 83.843 0 35.031 13.779 66.757 36.06 89.716 7.949 8.2 16.994 15.277 26.875 20.983 18.62 10.778 39.397 16.165 60.19 16.174 20.785-0.008 41.563-5.396 60.181-16.174 9.881-5.707 18.919-12.783 26.875-20.983 22.281-22.959 36.06-54.684 36.06-89.716 0-32.136-11.603-61.488-30.716-83.843 22.263 1.155 130.691 2.744 181.001 4.735 15.345 0.853 20.94-6.593 16.742-22.364-15.159-46.962-40.762-89.012-73.971-123.216-55.764-57.48-135.968-86.211-216.174-86.211l0 0zM581.084 439.837c-35.645-36.729-102.534-36.729-138.178 0-17.676 18.215-28.613 43.389-28.613 71.185 0 27.811 10.937 52.978 28.613 71.199 6.813 7.011 14.615 13.002 23.19 17.704 28.483 15.645 63.324 15.645 91.808 0 8.566-4.702 16.377-10.694 23.182-17.704 17.684-18.222 28.62-43.389 28.62-71.199 0.001-27.794-10.936-52.969-28.62-71.185l0 0zM529.738 548.203c13.365-6.761 22.564-20.933 22.564-37.307 0-17.353-10.337-32.221-25.008-38.428-9.71-4.108-20.875-4.108-30.586 0-14.672 6.208-25.008 21.076-25.008 38.428 0 16.373 9.191 30.546 22.555 37.307 11.074 5.588 24.423 5.588 35.483 0l0 0zM575.449 817.192c58.964-12.818 111.669-43.147 152.728-85.459 42.896-44.2 73.092-101.47 84.509-165.509 4.109-17.369-3.143-22.69-15.848-22.272-25.626-0.56-51.261-0.452-75.691 4.293-87.041 16.909-118.171 60.19-133.574 159.829-5.595 36.193-9.151 78.547-12.123 109.118l0 0zM448.541 817.192c-2.963-30.572-6.528-72.925-12.114-109.118-15.404-99.638-46.54-142.919-133.583-159.829-24.423-4.745-50.065-4.853-75.691-4.293-12.699-0.418-19.957 4.902-15.841 22.272 11.408 64.039 41.614 121.309 84.501 165.509 41.068 42.312 93.764 72.64 152.728 85.459z'
@@ -119,6 +119,27 @@ function computePerpendicularAngle(
   return Math.atan2(p1.y - p0.y, p1.x - p0.x) + Math.PI / 2
 }
 
+// ── Shadow helpers ──
+
+/** Apply a canvas shadow matching a CSS text-shadow / drop-shadow. */
+function setShadow(
+  ctx: CanvasRenderingContext2D,
+  blur: number, color: string,
+  offX = 0, offY = 0,
+): void {
+  ctx.shadowColor = color
+  ctx.shadowBlur = blur
+  ctx.shadowOffsetX = offX
+  ctx.shadowOffsetY = offY
+}
+
+function clearShadow(ctx: CanvasRenderingContext2D): void {
+  ctx.shadowColor = 'transparent'
+  ctx.shadowBlur = 0
+  ctx.shadowOffsetX = 0
+  ctx.shadowOffsetY = 0
+}
+
 // ── Individual overlay drawing functions ──
 
 function drawSpeed(
@@ -129,18 +150,21 @@ function drawSpeed(
   ctx.translate(x, y)
   if (scale !== 1) ctx.scale(scale, scale)
 
-  // Speed value
+  // Speed value — CSS: text-shadow: 0 0 10px rgba(0,0,0,0.8), 0 2px 4px rgba(0,0,0,0.6)
+  setShadow(ctx, 10, 'rgba(0,0,0,0.8)')
   ctx.fillStyle = '#fff'
   ctx.font = 'bold 56px Consolas, monospace'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'alphabetic'
   ctx.fillText(Math.round(row.speed_mph).toString(), 0, 56)
 
-  // Unit
+  // Unit — CSS: text-shadow: 0 0 8px rgba(0,0,0,0.8)
+  setShadow(ctx, 8, 'rgba(0,0,0,0.8)')
   const valueWidth = ctx.measureText(Math.round(row.speed_mph).toString()).width
   ctx.fillStyle = '#ccc'
   ctx.font = '18px Consolas, monospace'
   ctx.fillText('mph', valueWidth + 4, 56)
+  clearShadow(ctx)
 
   ctx.restore()
 }
@@ -240,11 +264,14 @@ function drawGearOverlay(
   if (scale !== 1) ctx.scale(scale, scale)
 
   const s = GEAR_BOX_SIZE
-  // Background box
+  // Background box + border — CSS: border: 2px solid rgba(255,255,255,0.5); border-radius: 8px
   ctx.fillStyle = 'rgba(0,0,0,0.5)'
   ctx.beginPath()
-  ctx.roundRect(0, 0, s, s, 6)
+  ctx.roundRect(0, 0, s, s, 8)
   ctx.fill()
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'
+  ctx.lineWidth = 2
+  ctx.stroke()
 
   // Gear text
   ctx.fillStyle = '#fff'
@@ -264,16 +291,17 @@ function drawSteeringOverlay(
   ctx.translate(x, y)
   if (scale !== 1) ctx.scale(scale, scale)
 
-  // Label above wheel
+  // Label at the top of the bounding box (matches DOM: label block sits above SVG)
+  const labelH = 22  // approximate line-height for bold 18px font
   ctx.fillStyle = '#fff'
   ctx.font = 'bold 18px Consolas, monospace'
   ctx.textAlign = 'center'
-  ctx.textBaseline = 'bottom'
+  ctx.textBaseline = 'top'
   ctx.fillText(`${Math.round(deg)}\u00B0`, STEERING_ICON_SIZE / 2, 0)
 
-  // Steering wheel icon — rotate around center
+  // Steering wheel icon — rotate around center, positioned below label
   const iconCx = STEERING_ICON_SIZE / 2
-  const iconCy = STEERING_ICON_SIZE / 2 + 4  // offset below label
+  const iconCy = labelH + STEERING_ICON_SIZE / 2
   ctx.translate(iconCx, iconCy)
   ctx.rotate((-deg * Math.PI) / 180)  // negate: PDR positive = left turn
   const iconScale = STEERING_ICON_SIZE / 1024  // SVG viewBox is 1024x1024
@@ -297,7 +325,13 @@ function drawGForceOverlay(
   const cx = s / 2, cy = s / 2
   const radius = (s / 2) - 8
 
-  // Background circle
+  // Outer ring — CSS: background: rgba(0,0,0,0.5); border-radius: 50%
+  ctx.beginPath()
+  ctx.arc(cx, cy, s / 2, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'
+  ctx.fill()
+
+  // Inner background circle
   ctx.beginPath()
   ctx.arc(cx, cy, radius, 0, Math.PI * 2)
   ctx.fillStyle = 'rgba(0,0,0,0.4)'
@@ -375,12 +409,14 @@ function drawPedalBar(
     ctx.fill()
   }
 
-  // Label
+  // Label — CSS: text-shadow: 0 0 4px rgba(0,0,0,0.8)
+  setShadow(ctx, 4, 'rgba(0,0,0,0.8)')
   ctx.fillStyle = '#ccc'
   ctx.font = '10px Consolas, monospace'
   ctx.textAlign = 'right'
   ctx.textBaseline = 'middle'
   ctx.fillText(label, x + w - 4, y + h / 2)
+  clearShadow(ctx)
 }
 
 function drawGpsOverlay(
@@ -397,6 +433,8 @@ function drawGpsOverlay(
   ctx.roundRect(0, 0, 100, 50, 4)
   ctx.fill()
 
+  // CSS: text-shadow: 0 0 4px rgba(0,0,0,0.8)
+  setShadow(ctx, 4, 'rgba(0,0,0,0.8)')
   ctx.fillStyle = '#aaa'
   ctx.font = '11px Consolas, monospace'
   ctx.textAlign = 'left'
@@ -404,6 +442,7 @@ function drawGpsOverlay(
   ctx.fillText(row.lat.toFixed(6), 8, 6)
   ctx.fillText(row.lon.toFixed(6), 8, 20)
   ctx.fillText(`${row.altitude_m.toFixed(0)}m`, 8, 34)
+  clearShadow(ctx)
 
   ctx.restore()
 }
@@ -419,6 +458,9 @@ function drawTrackMapOverlay(
   ctx.save()
   ctx.translate(x, y)
   if (scale !== 1) ctx.scale(scale, scale)
+
+  // CSS: filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.7))
+  setShadow(ctx, 6, 'rgba(0,0,0,0.7)', 0, 2)
 
   const proj = buildProjection(trackLayout, mapW, mapH)
   if (!proj) { ctx.restore(); return }
@@ -454,7 +496,8 @@ function drawTrackMapOverlay(
   ctx.setLineDash([])
   ctx.restore()
 
-  // Position dot (colour by speed)
+  // Position dot (colour by speed) — no shadow on the dot itself
+  clearShadow(ctx)
   const lat = row.lat, lon = row.lon
   let spd = Math.max(0, row.speed_kph)
   const px = gpsToCanvas(proj, lat, lon)
@@ -479,10 +522,10 @@ function drawTrackMapOverlay(
 
 // ── Composite frame renderer ──
 
-/** Compute the track map canvas size based on container proportions */
-function getTrackMapSize(width: number, height: number): { w: number; h: number } {
-  // Track map element occupies roughly 20% width, 30% height of the video
-  return { w: Math.round(width * 0.20), h: Math.round(height * 0.30) }
+/** Track map canvas size — must match the CSS dimensions of #hud-trackMap (200×160)
+ *  since the overlay anchor is at native video resolution, these CSS pixels map 1:1. */
+function getTrackMapSize(): { w: number; h: number } {
+  return { w: 200, h: 160 }
 }
 
 function renderOverlayFrame(
@@ -542,9 +585,29 @@ function renderOverlayFrame(
 
   if (config.trackMap && trackLayout) {
     const p = px(layout.trackMap)
-    const mapSize = getTrackMapSize(width, height)
+    const mapSize = getTrackMapSize()
     drawTrackMapOverlay(ctx, row, p.x, p.y, mapSize.w, mapSize.h, p.s, trackLayout)
   }
+}
+
+// ── Interpolation helpers ──
+
+/** Linearly interpolate the numeric fields used by overlay drawing. */
+function lerpRow(a: TelemetryRow, b: TelemetryRow, alpha: number, out: TelemetryRow): void {
+  const mix = (va: number, vb: number) => va + (vb - va) * alpha
+  out.speed_mph = mix(a.speed_mph, b.speed_mph)
+  out.speed_kph = mix(a.speed_kph, b.speed_kph)
+  out.rpm = mix(a.rpm, b.rpm)
+  out.steering_deg = mix(a.steering_deg, b.steering_deg)
+  out.throttle = mix(a.throttle, b.throttle)
+  out.brake = mix(a.brake, b.brake)
+  out.gforce_lat = mix(a.gforce_lat, b.gforce_lat)
+  out.gforce_lon = mix(a.gforce_lon, b.gforce_lon)
+  out.lat = a.lat + (b.lat - a.lat) * alpha
+  out.lon = a.lon + (b.lon - a.lon) * alpha
+  out.altitude_m = mix(a.altitude_m, b.altitude_m)
+  // Sparse fields: use lower row
+  out.gear = a.gear
 }
 
 // ── IPC frame rendering pipeline ──
@@ -552,10 +615,7 @@ function renderOverlayFrame(
 let isRendering = false
 
 async function handleRenderRequest(request: RenderOverlayRequest): Promise<void> {
-  if (isRendering) {
-    console.warn('[overlay-renderer] Already rendering, ignoring duplicate request')
-    return
-  }
+  // Reset stuck flag so retries work after a previous failure
   isRendering = true
 
   const {
@@ -571,40 +631,86 @@ async function handleRenderRequest(request: RenderOverlayRequest): Promise<void>
     return
   }
 
+  // Resolve fps/totalFrames — main process provides them for smooth interpolation;
+  // fall back to telemetry rate if missing (backwards compat with older main builds)
+  const times = store.time
+  const startTime = times[startIdx]
+  const endTime = times[Math.min(endIdx - 1, store.length - 1)]
+  const duration = endTime - startTime
+
+  const fps = request.fps ?? (duration > 0 ? (endIdx - startIdx) / duration : 10)
+  const totalFrames = request.totalFrames ?? (endIdx - startIdx)
+
+  console.log(`[overlay-renderer] Render request: ${totalFrames} frames at ${fps.toFixed(1)} fps, idx ${startIdx}..${endIdx}, ${width}x${height}`)
+
   // Create offscreen canvas at video resolution
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d')!
 
-  const total = endIdx - startIdx
+  // Pre-allocate scratch rows for interpolation (no per-frame allocation)
+  const rowA = createEmptyRow()
+  const rowB = createEmptyRow()
+  const lerpedRow = createEmptyRow()
   let lastKnownGear = '-'
 
-  for (let i = startIdx; i < endIdx; i++) {
-    const row = getRow(store, i)
+  try {
+    for (let f = 0; f < totalFrames; f++) {
+      const t = startTime + f / fps
 
-    // Carry-forward gear
-    if (row.gear !== undefined) {
-      lastKnownGear = GEAR_DISPLAY[row.gear] ?? row.gear
+      // Binary search for bracketing telemetry rows
+      let lo = startIdx, hi = endIdx - 1
+      if (t <= times[lo]) {
+        hi = lo
+      } else if (t >= times[hi]) {
+        lo = hi
+      } else {
+        while (hi - lo > 1) {
+          const mid = (lo + hi) >>> 1
+          if (times[mid] <= t) lo = mid
+          else hi = mid
+        }
+      }
+
+      // Build the interpolated row
+      getRowInto(store, lo, rowA)
+      let row: TelemetryRow
+      if (lo === hi) {
+        row = rowA
+      } else {
+        getRowInto(store, hi, rowB)
+        const span = times[hi] - times[lo]
+        const alpha = span > 0 ? (t - times[lo]) / span : 0
+        lerpRow(rowA, rowB, alpha, lerpedRow)
+        row = lerpedRow
+      }
+
+      // Carry-forward gear
+      if (row.gear !== undefined) {
+        lastKnownGear = GEAR_DISPLAY[row.gear] ?? row.gear
+      }
+
+      renderOverlayFrame(
+        ctx, row, width, height,
+        overlayLayout, overlayConfig, rpmConfig, trackLayout,
+        lastKnownGear,
+      )
+
+      // Convert to PNG blob and send to main
+      const blob = await new Promise<Blob>((resolve) => {
+        canvas.toBlob((b) => resolve(b!), 'image/png')
+      })
+      const buffer = new Uint8Array(await blob.arrayBuffer())
+      window.pdr.sendOverlayFrameData(f, buffer)
+
+      // Yield to event loop every 50 frames for progress updates / cancellation
+      if (f % 50 === 49) {
+        await new Promise((r) => setTimeout(r, 0))
+      }
     }
-
-    renderOverlayFrame(
-      ctx, row, width, height,
-      overlayLayout, overlayConfig, rpmConfig, trackLayout,
-      lastKnownGear,
-    )
-
-    // Convert to PNG blob and send to main
-    const blob = await new Promise<Blob>((resolve) => {
-      canvas.toBlob((b) => resolve(b!), 'image/png')
-    })
-    const buffer = new Uint8Array(await blob.arrayBuffer())
-    window.pdr.sendOverlayFrameData(i - startIdx, buffer)
-
-    // Yield to event loop every 50 frames for progress updates / cancellation
-    if ((i - startIdx) % 50 === 49) {
-      await new Promise((r) => setTimeout(r, 0))
-    }
+  } catch (err) {
+    console.error('[overlay-renderer] Error rendering frame:', err)
   }
 
   window.pdr.sendOverlayFramesDone()
@@ -613,6 +719,10 @@ async function handleRenderRequest(request: RenderOverlayRequest): Promise<void>
 
 export function initOverlayRenderer(): void {
   window.pdr.onRenderOverlayFrames((request) => {
-    handleRenderRequest(request)
+    handleRenderRequest(request).catch((err) => {
+      console.error('[overlay-renderer] Unhandled error:', err)
+      window.pdr.sendOverlayFramesDone()
+      isRendering = false
+    })
   })
 }
