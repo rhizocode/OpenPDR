@@ -121,7 +121,7 @@ export interface AdviInfo {
 
 /** Result returned by parsePdrFile() */
 export interface ParseResult {
-  rows: TelemetryRow[]
+  store: import('./telemetry-store').TelemetryStore
   metadata: {
     fileName: string
     fileSize: number

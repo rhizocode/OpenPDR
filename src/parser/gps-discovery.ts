@@ -3,6 +3,7 @@
  * Ported from alivedrive_parser.py (find_gps_in_packet, find_float_blocks)
  */
 
+import { readInt32BE, readUint32BE, readFloatBE } from '../shared/binary-reader'
 import { DEG_SCALE, ALT_SCALE } from './constants'
 import type { GpsRefRange } from './types'
 
@@ -15,14 +16,14 @@ import type { GpsRefRange } from './types'
  * 2. Filter to evenly-spaced positions (expecting ~300-360 byte gaps for 10 Hz)
  * 3. Validate clustering: all lats should be similar (within 0.5 degrees)
  */
-export function findGpsInPacket(packet: Buffer, refRange?: GpsRefRange): number[] {
+export function findGpsInPacket(packet: Uint8Array, refRange?: GpsRefRange): number[] {
   const packetSize = packet.length
   const candidates: number[] = []
 
   for (let off = 0; off < packetSize - 12; off++) {
-    const latRaw = packet.readInt32BE(off)
-    const lonRaw = packet.readInt32BE(off + 4)
-    const altRaw = packet.readUInt32BE(off + 8)
+    const latRaw = readInt32BE(packet, off)
+    const lonRaw = readInt32BE(packet, off + 4)
+    const altRaw = readUint32BE(packet, off + 8)
 
     const latDeg = latRaw * DEG_SCALE
     const lonDeg = lonRaw * DEG_SCALE
@@ -64,7 +65,7 @@ export function findGpsInPacket(packet: Buffer, refRange?: GpsRefRange): number[
     const lats: number[] = []
     const checkCount = Math.min(5, filtered.length)
     for (let i = 0; i < checkCount; i++) {
-      const lat = packet.readInt32BE(filtered[i]) * DEG_SCALE
+      const lat = readInt32BE(packet, filtered[i]) * DEG_SCALE
       lats.push(lat)
     }
     const latRange = Math.max(...lats) - Math.min(...lats)
@@ -81,16 +82,16 @@ export function findGpsInPacket(packet: Buffer, refRange?: GpsRefRange): number[
  * Returns the offsets if they still contain valid GPS data, or null if stale.
  */
 export function verifyGpsOffsets(
-  packet: Buffer,
+  packet: Uint8Array,
   knownOffsets: number[],
   refRange?: GpsRefRange
 ): number[] | null {
   if (knownOffsets.length === 0) return null
   for (const off of knownOffsets) {
     if (off + 12 > packet.length) return null
-    const latDeg = packet.readInt32BE(off) * DEG_SCALE
-    const lonDeg = packet.readInt32BE(off + 4) * DEG_SCALE
-    const altM = packet.readUInt32BE(off + 8) * ALT_SCALE
+    const latDeg = readInt32BE(packet, off) * DEG_SCALE
+    const lonDeg = readInt32BE(packet, off + 4) * DEG_SCALE
+    const altM = readUint32BE(packet, off + 8) * ALT_SCALE
     if (refRange) {
       if (
         latDeg < refRange.latMin || latDeg > refRange.latMax ||
@@ -113,14 +114,14 @@ export function verifyGpsOffsets(
  * Returns the offsets if they still contain valid float data, or null if stale.
  */
 export function verifyFloatOffsets(
-  packet: Buffer,
+  packet: Uint8Array,
   knownOffsets: number[]
 ): number[] | null {
   if (knownOffsets.length === 0) return null
   for (const start of knownOffsets) {
     if (start + 24 > packet.length) return null
     for (let j = 0; j < 6; j++) {
-      const fval = packet.readFloatBE(start + j * 4)
+      const fval = readFloatBE(packet, start + j * 4)
       if (Math.abs(fval) > 5.0 || (Math.abs(fval) < 1e-10 && fval !== 0.0)) {
         return null
       }
@@ -134,7 +135,7 @@ export function verifyFloatOffsets(
  * Each block is 24 bytes: 3 device-frame + 3 vehicle-frame acceleration values.
  * Blocks must be at least 20 bytes apart (50 Hz spacing).
  */
-export function findFloatBlocks(packet: Buffer, packetSize: number): number[] {
+export function findFloatBlocks(packet: Uint8Array, packetSize: number): number[] {
   const floatOffsets: number[] = []
 
   for (let start = 0; start < packetSize - 24; start++) {
@@ -142,7 +143,7 @@ export function findFloatBlocks(packet: Buffer, packetSize: number): number[] {
 
     let valid = true
     for (let j = 0; j < 6; j++) {
-      const fval = packet.readFloatBE(start + j * 4)
+      const fval = readFloatBE(packet, start + j * 4)
       if (Math.abs(fval) > 5.0 || (Math.abs(fval) < 1e-10 && fval !== 0.0)) {
         valid = false
         break
@@ -153,7 +154,7 @@ export function findFloatBlocks(packet: Buffer, packetSize: number): number[] {
       // Check at least 2 non-trivial values
       let nonzero = 0
       for (let j = 0; j < 6; j++) {
-        if (Math.abs(packet.readFloatBE(start + j * 4)) > 0.001) {
+        if (Math.abs(readFloatBE(packet, start + j * 4)) > 0.001) {
           nonzero++
         }
       }

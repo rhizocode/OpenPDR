@@ -7,9 +7,11 @@
  */
 
 import type { TelemetryRow, LapData } from './types'
+import type { TelemetryStore } from '../shared/telemetry-store'
+import { getRow } from '../shared/telemetry-store'
 
 // ── State ──
-export let telemetry: TelemetryRow[] = []
+export let telemetryStore: TelemetryStore | null = null
 export let currentRow: TelemetryRow | null = null
 export let duration = 0
 export let lapData: LapData | null = null
@@ -107,38 +109,39 @@ export function setCurrentRow(row: TelemetryRow | null): void {
   for (const fn of rowListeners) fn()
 }
 
-export function setTelemetry(rows: TelemetryRow[], dur: number): void {
-  telemetry = rows
+export function setTelemetry(store: TelemetryStore, dur: number): void {
+  telemetryStore = store
   duration = dur
   for (const fn of telemetryLoadListeners) fn()
 }
 
 // ── Binary search: find the telemetry row closest to a given time ──
 export function findRowAtTime(t: number): TelemetryRow | null {
-  if (telemetry.length === 0) return null
+  const store = telemetryStore
+  if (!store || store.length === 0) return null
 
+  const times = store.time
   let lo = 0
-  let hi = telemetry.length - 1
+  let hi = store.length - 1
 
-  if (t <= telemetry[0].time) return telemetry[0]
-  if (t >= telemetry[hi].time) return telemetry[hi]
+  if (t <= times[0]) return getRow(store, 0)
+  if (t >= times[hi]) return getRow(store, hi)
 
   while (lo <= hi) {
     const mid = (lo + hi) >>> 1
-    if (telemetry[mid].time < t) {
+    if (times[mid] < t) {
       lo = mid + 1
-    } else if (telemetry[mid].time > t) {
+    } else if (times[mid] > t) {
       hi = mid - 1
     } else {
-      return telemetry[mid]
+      return getRow(store, mid)
     }
   }
 
-  if (lo >= telemetry.length) return telemetry[hi]
-  if (hi < 0) return telemetry[lo]
-  return (t - telemetry[hi].time) <= (telemetry[lo].time - t)
-    ? telemetry[hi]
-    : telemetry[lo]
+  if (lo >= store.length) return getRow(store, hi)
+  if (hi < 0) return getRow(store, lo)
+  const idx = (t - times[hi]) <= (times[lo] - t) ? hi : lo
+  return getRow(store, idx)
 }
 
 /**
@@ -147,22 +150,24 @@ export function findRowAtTime(t: number): TelemetryRow | null {
  * Called every animation frame from main.ts.
  */
 export function updateInterpolation(t: number): void {
-  if (telemetry.length === 0) {
+  const store = telemetryStore
+  if (!store || store.length === 0) {
     interpPrev = interpNext = null
     interpAlpha = 0
     return
   }
 
+  const times = store.time
   let lo = 0
-  let hi = telemetry.length - 1
+  let hi = store.length - 1
 
-  if (t <= telemetry[0].time) {
-    interpPrev = interpNext = telemetry[0]
+  if (t <= times[0]) {
+    interpPrev = interpNext = getRow(store, 0)
     interpAlpha = 0
     return
   }
-  if (t >= telemetry[hi].time) {
-    interpPrev = interpNext = telemetry[hi]
+  if (t >= times[hi]) {
+    interpPrev = interpNext = getRow(store, hi)
     interpAlpha = 0
     return
   }
@@ -170,12 +175,12 @@ export function updateInterpolation(t: number): void {
   // Binary search for the insertion point: find last row with time <= t
   while (hi - lo > 1) {
     const mid = (lo + hi) >>> 1
-    if (telemetry[mid].time <= t) lo = mid
+    if (times[mid] <= t) lo = mid
     else hi = mid
   }
 
-  interpPrev = telemetry[lo]
-  interpNext = telemetry[hi]
+  interpPrev = getRow(store, lo)
+  interpNext = getRow(store, hi)
 
   const span = interpNext.time - interpPrev.time
   interpAlpha = span > 0 ? (t - interpPrev.time) / span : 0

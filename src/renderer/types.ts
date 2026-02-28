@@ -17,7 +17,7 @@ export type {
 export interface PdrApi {
   openFileDialog(): Promise<string | null>
   parsePdrFile(filePath: string): Promise<import('../shared/types').ParseResult>
-  onParseProgress(callback: (phase: string, pct: number) => void): void
+  onParseProgress(callback: (phase: string, pct: number) => void): () => void
   getVideoUrl(filePath: string): string
 }
 

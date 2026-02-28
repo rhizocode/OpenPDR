@@ -10,7 +10,7 @@
  * detectLaps() when no embedded events are available.
  */
 
-import type { TelemetryRow, EmbeddedEvent, LapData, LapInfo, TrackLayout } from './parser/types'
+import type { TelemetryRow, EmbeddedEvent, LapData, LapInfo, TrackLayout } from './types'
 
 // ── Event-based lap detection ────────────────────────────────────────────────
 
