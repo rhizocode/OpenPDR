@@ -136,7 +136,10 @@ export async function parsePdrFile(
     onProgress?.('Decoding telemetry...', 10)
     const allRows: TelemetryRow[] = []
     const allEvents: EmbeddedEvent[] = []
-    const maxPacketSize = Math.max(...sampleTable.sampleSizes, 8192)
+    let maxPacketSize = 8192
+    for (const s of sampleTable.sampleSizes) {
+      if (s > maxPacketSize) maxPacketSize = s
+    }
     const packetBuf = Buffer.alloc(maxPacketSize)
 
     for (let i = 0; i < sampleOffsets.length; i++) {
