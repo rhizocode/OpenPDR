@@ -10,7 +10,8 @@
  * detectLaps() when no embedded events are available.
  */
 
-import type { TelemetryRow, EmbeddedEvent, LapData, LapInfo, TrackLayout } from './types'
+import type { TelemetryStore } from '../shared/telemetry-store'
+import type { EmbeddedEvent, LapData, LapInfo, TrackLayout } from './types'
 
 // ── Event-based lap detection ────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ const LAP_END_EVENT = 1     // com.cosworth.event.lap.end
  */
 export function detectLapsFromEvents(
   events: EmbeddedEvent[],
-  rows: TelemetryRow[]
+  store: TelemetryStore
 ): LapData | null {
   const lapStarts = events
     .filter(e => e.eventId === LAP_START_EVENT)
@@ -49,64 +50,65 @@ export function detectLapsFromEvents(
   if (laps.length === 0) return null
 
   // Get S/F location from GPS at the first lap-start event
-  const sfRow = findClosestRow(rows, lapStarts[0].time)
-  if (!sfRow || sfRow.lat === 0 || sfRow.lon === 0) return null
+  const sfIdx = findClosestIndex(store, lapStarts[0].time)
+  if (sfIdx < 0 || store.lat[sfIdx] === 0 || store.lon[sfIdx] === 0) return null
 
-  const trackLayout = buildTrackLayout(rows, laps, sfRow.lat, sfRow.lon)
+  const trackLayout = buildTrackLayout(store, laps, store.lat[sfIdx], store.lon[sfIdx])
   return { laps, trackLayout, hasLapData: true, detectionMethod: 'events' }
 }
 
-/** Binary search for the telemetry row closest to a given time. */
-function findClosestRow(rows: TelemetryRow[], time: number): TelemetryRow | null {
-  if (rows.length === 0) return null
+/** Binary search for the store index closest to a given time. Returns -1 if store is empty. */
+function findClosestIndex(store: TelemetryStore, time: number): number {
+  if (store.length === 0) return -1
   let lo = 0
-  let hi = rows.length - 1
+  let hi = store.length - 1
   while (lo < hi) {
     const mid = (lo + hi) >>> 1
-    if (rows[mid].time < time) lo = mid + 1
+    if (store.time[mid] < time) lo = mid + 1
     else hi = mid
   }
   // Check neighbours for closest
-  if (lo > 0 && Math.abs(rows[lo - 1].time - time) < Math.abs(rows[lo].time - time)) {
-    return rows[lo - 1]
+  if (lo > 0 && Math.abs(store.time[lo - 1] - time) < Math.abs(store.time[lo] - time)) {
+    return lo - 1
   }
-  return rows[lo]
+  return lo
 }
 
 /** Extract track layout from the last full lap's GPS trace. */
 function buildTrackLayout(
-  rows: TelemetryRow[],
+  store: TelemetryStore,
   laps: LapInfo[],
   sfLat: number,
   sfLon: number
 ): TrackLayout | null {
   const lastLap = laps[laps.length - 1]
-  const trackPoints = rows
-    .filter(
-      (r) =>
-        r.time >= lastLap.startTime &&
-        r.time <= lastLap.endTime &&
-        r.gps_fix_quality >= 1 &&
-        r.lat !== 0 &&
-        r.lon !== 0
-    )
-    .map((r) => ({ lat: r.lat, lon: r.lon }))
+  const trackPoints: { lat: number; lon: number }[] = []
+  let minLat = Infinity
+  let maxLat = -Infinity
+  let minLon = Infinity
+  let maxLon = -Infinity
+
+  for (let i = 0; i < store.length; i++) {
+    const t = store.time[i]
+    if (t < lastLap.startTime) continue
+    if (t > lastLap.endTime) break
+    if (store.gps_fix_quality[i] < 1 || store.lat[i] === 0 || store.lon[i] === 0) continue
+    const lat = store.lat[i]
+    const lon = store.lon[i]
+    trackPoints.push({ lat, lon })
+    if (lat < minLat) minLat = lat
+    if (lat > maxLat) maxLat = lat
+    if (lon < minLon) minLon = lon
+    if (lon > maxLon) maxLon = lon
+  }
 
   if (trackPoints.length < 10) return null
-
-  const lats = trackPoints.map((p) => p.lat)
-  const lons = trackPoints.map((p) => p.lon)
 
   return {
     points: trackPoints,
     startFinishLat: sfLat,
     startFinishLon: sfLon,
-    bounds: {
-      minLat: Math.min(...lats),
-      maxLat: Math.max(...lats),
-      minLon: Math.min(...lons),
-      maxLon: Math.max(...lons),
-    },
+    bounds: { minLat, maxLat, minLon, maxLon },
   }
 }
 
@@ -128,20 +130,28 @@ const MAX_LAP_TIME = 1200
 // Minimum speed (kph) to count a GPS point as valid on-track movement
 const MIN_SPEED_KPH = 20
 
-export function detectLaps(rows: TelemetryRow[]): LapData {
+export function detectLaps(store: TelemetryStore): LapData {
   const noLaps: LapData = { laps: [], trackLayout: null, hasLapData: false }
 
-  // Step A: filter to valid on-track GPS points
-  const valid = rows.filter(
-    (r) => r.speed_kph > MIN_SPEED_KPH && r.gps_fix_quality >= 1 && r.lat !== 0 && r.lon !== 0
-  )
-  if (valid.length < 100) return noLaps
+  // Step A: collect indices of valid on-track GPS points
+  const validIdx: number[] = []
+  for (let i = 0; i < store.length; i++) {
+    if (
+      store.speed_kph[i] > MIN_SPEED_KPH &&
+      store.gps_fix_quality[i] >= 1 &&
+      store.lat[i] !== 0 &&
+      store.lon[i] !== 0
+    ) {
+      validIdx.push(i)
+    }
+  }
+  if (validIdx.length < 100) return noLaps
 
   // Step B: find start/finish centroid via spatial density grid
   const cellCounts = new Map<string, { count: number; lat: number; lon: number }>()
-  for (const r of valid) {
-    const cellLat = Math.round(r.lat / CELL_SIZE) * CELL_SIZE
-    const cellLon = Math.round(r.lon / CELL_SIZE) * CELL_SIZE
+  for (const i of validIdx) {
+    const cellLat = Math.round(store.lat[i] / CELL_SIZE) * CELL_SIZE
+    const cellLon = Math.round(store.lon[i] / CELL_SIZE) * CELL_SIZE
     const key = `${cellLat.toFixed(6)},${cellLon.toFixed(6)}`
     const existing = cellCounts.get(key)
     if (existing) {
@@ -171,15 +181,15 @@ export function detectLaps(rows: TelemetryRow[]): LapData {
   let maxDistFromSf = 0
   let inZone = false
 
-  for (const r of valid) {
-    const dist = Math.abs(r.lat - sfLat) + Math.abs(r.lon - sfLon)
+  for (const i of validIdx) {
+    const dist = Math.abs(store.lat[i] - sfLat) + Math.abs(store.lon[i] - sfLon)
     const nowInZone = dist < SF_ZONE_RADIUS
 
     if (!inZone && nowInZone) {
       // Entering zone
       if (wasAway) {
         // Valid crossing — record it
-        crossings.push(r.time)
+        crossings.push(store.time[i])
         wasAway = false
         maxDistFromSf = 0
       }
@@ -218,6 +228,6 @@ export function detectLaps(rows: TelemetryRow[]): LapData {
   if (laps.length === 0) return noLaps
 
   // Step E: extract track layout from the last full lap
-  const trackLayout = buildTrackLayout(rows, laps, sfLat, sfLon)
+  const trackLayout = buildTrackLayout(store, laps, sfLat, sfLon)
   return { laps, trackLayout, hasLapData: true, detectionMethod: 'gps-density' }
 }

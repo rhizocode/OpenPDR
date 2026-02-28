@@ -138,7 +138,6 @@ export async function parsePdrFile(
   onProgress?.('Decoding telemetry...', 10)
   const estimatedRows = sampleTable.sampleCount * 10  // ~10 rows per packet at 10 Hz
   const store = createTelemetryStore(estimatedRows)
-  const allRows: TelemetryRow[] = []  // temporary — needed for lap detection
   const allEvents: EmbeddedEvent[] = []
 
   let cachedOffsets: CachedOffsets | undefined
@@ -155,7 +154,6 @@ export async function parsePdrFile(
     for (const row of result.rows) {
       writeRow(store, store.length, row)
       store.length++
-      allRows.push(row)
     }
 
     // Extract embedded events from oversized packets
@@ -187,7 +185,7 @@ export async function parsePdrFile(
     : 0
 
   // Try event-based lap detection first, fall back to GPS density heuristic
-  const lapData = detectLapsFromEvents(allEvents, allRows) ?? detectLaps(allRows)
+  const lapData = detectLapsFromEvents(allEvents, trimmedStore) ?? detectLaps(trimmedStore)
 
   return {
     store: trimmedStore,
