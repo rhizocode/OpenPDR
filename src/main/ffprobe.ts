@@ -6,7 +6,12 @@
  */
 
 import { execFile } from 'child_process'
-import ffmpegPath from 'ffmpeg-static'
+import { createRequire } from 'module'
+
+// Resolve ffmpeg binary at runtime so the bundler doesn't inline
+// ffmpeg-static's __dirname-based path resolution (which breaks after bundling).
+const _require = createRequire(import.meta.url)
+const ffmpegPath: string | null = _require('ffmpeg-static')
 
 export interface VideoMeta {
   width: number
