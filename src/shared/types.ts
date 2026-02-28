@@ -145,4 +145,5 @@ export interface IpcChannels {
   'open-file-dialog': { args: []; return: string | null }
   'parse-pdr-file': { args: [string]; return: ParseResult }
   'parse-progress': { args: [string, number]; return: void }
+  'set-allowed-video-path': { args: [string]; return: void }
 }

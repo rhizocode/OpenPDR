@@ -148,6 +148,11 @@ ipcMain.handle('open-file-dialog' satisfies Channel, async () => {
   return result.filePaths[0]
 })
 
+// IPC: Set allowed video path (used by drag-and-drop — dialog handler sets it automatically)
+ipcMain.handle('set-allowed-video-path' satisfies Channel, (_event, filePath: string) => {
+  allowedVideoPath = filePath.replace(/\\/g, '/')
+})
+
 // IPC: Parse PDR file — extracts telemetry directly from MP4
 ipcMain.handle('parse-pdr-file' satisfies Channel, async (_event, filePath: string): Promise<ParseResult> => {
   const source = await NodeFileSource.open(filePath)

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { ParseResult, IpcChannels } from '../shared/types'
 
 type Channel = keyof IpcChannels
@@ -15,6 +15,11 @@ contextBridge.exposeInMainWorld('pdr', {
     ipcRenderer.on('parse-progress' satisfies Channel, handler)
     return () => ipcRenderer.removeListener('parse-progress' satisfies Channel, handler)
   },
+
+  setAllowedVideoPath: (filePath: string): Promise<void> =>
+    ipcRenderer.invoke('set-allowed-video-path' satisfies Channel, filePath),
+
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   getVideoUrl: (filePath: string): string => {
     // Use pdr-file:// protocol (secure — no webSecurity: false needed)
