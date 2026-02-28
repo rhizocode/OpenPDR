@@ -14,8 +14,39 @@ export let currentRow: TelemetryRow | null = null
 export let duration = 0
 export let lapData: LapData | null = null
 
+// ── Interpolation state ──
+// Exposed so modules (track-map, hud) can interpolate between bracketing rows.
+// Updated every animation frame by the animation loop in main.ts.
+export let interpPrev: TelemetryRow | null = null
+export let interpNext: TelemetryRow | null = null
+export let interpAlpha = 0  // 0..1 fraction between prev and next
+
 export function setLapData(data: LapData | null): void {
   lapData = data
+}
+
+// ── Audio-to-video sync offset ──
+// HTML5 video decoders often buffer audio ahead of the decoded video frame.
+// video.currentTime reflects the video frame position, but the user hears audio
+// that corresponds to a slightly later point in time. This offset (in seconds)
+// is added to the telemetry lookup time so HUD indicators lead the video frame
+// to match the audio timing.  Positive = telemetry leads video (compensates for
+// audio being ahead).
+const AV_SYNC_KEY = 'pdr-av-sync-offset'
+export let avSyncOffset = loadAvSyncOffset()
+
+function loadAvSyncOffset(): number {
+  const saved = localStorage.getItem(AV_SYNC_KEY)
+  if (saved) {
+    const v = parseFloat(saved)
+    if (!Number.isNaN(v)) return v
+  }
+  return 0.15  // default 150ms — typical browser audio lead
+}
+
+export function setAvSyncOffset(seconds: number): void {
+  avSyncOffset = seconds
+  localStorage.setItem(AV_SYNC_KEY, seconds.toFixed(3))
 }
 
 // ── DOM refs (shared across modules) ──
@@ -108,6 +139,46 @@ export function findRowAtTime(t: number): TelemetryRow | null {
   return (t - telemetry[hi].time) <= (telemetry[lo].time - t)
     ? telemetry[hi]
     : telemetry[lo]
+}
+
+/**
+ * Update interpolation state for a given time.
+ * Finds the two bracketing telemetry rows and computes a 0..1 alpha between them.
+ * Called every animation frame from main.ts.
+ */
+export function updateInterpolation(t: number): void {
+  if (telemetry.length === 0) {
+    interpPrev = interpNext = null
+    interpAlpha = 0
+    return
+  }
+
+  let lo = 0
+  let hi = telemetry.length - 1
+
+  if (t <= telemetry[0].time) {
+    interpPrev = interpNext = telemetry[0]
+    interpAlpha = 0
+    return
+  }
+  if (t >= telemetry[hi].time) {
+    interpPrev = interpNext = telemetry[hi]
+    interpAlpha = 0
+    return
+  }
+
+  // Binary search for the insertion point: find last row with time <= t
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >>> 1
+    if (telemetry[mid].time <= t) lo = mid
+    else hi = mid
+  }
+
+  interpPrev = telemetry[lo]
+  interpNext = telemetry[hi]
+
+  const span = interpNext.time - interpPrev.time
+  interpAlpha = span > 0 ? (t - interpPrev.time) / span : 0
 }
 
 // ── Format time as M:SS.d ──

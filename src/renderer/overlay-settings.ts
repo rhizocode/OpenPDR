@@ -8,6 +8,7 @@
 import type { OverlayConfig, RpmConfig } from './types'
 import { applyOverlayConfig, getOverlayConfig, setOverlayConfig } from './hud'
 import { saveRpmConfig, getRpmConfig, loadRpmConfig } from './rpm-gauge'
+import { avSyncOffset, setAvSyncOffset } from './state'
 
 const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
 
@@ -81,6 +82,36 @@ function buildPanel(panel: HTMLDivElement, rpmConfig: RpmConfig): void {
   }))
 
   panel.appendChild(rpmSection)
+
+  // A/V sync section
+  const syncSection = document.createElement('div')
+  syncSection.className = 'settings-section'
+  syncSection.innerHTML = '<div class="settings-section-title">A/V Sync</div>'
+
+  const syncRow = document.createElement('div')
+  syncRow.className = 'settings-row'
+
+  const syncLabel = document.createElement('label')
+  syncLabel.textContent = 'Offset (ms)'
+  syncLabel.title = 'Positive = telemetry leads video to match audio timing'
+
+  const syncInput = document.createElement('input')
+  syncInput.type = 'number'
+  syncInput.value = Math.round(avSyncOffset * 1000).toString()
+  syncInput.step = '25'
+  syncInput.min = '-500'
+  syncInput.max = '2000'
+  syncInput.addEventListener('change', () => {
+    const ms = parseInt(syncInput.value, 10)
+    if (!isNaN(ms)) {
+      setAvSyncOffset(ms / 1000)
+    }
+  })
+
+  syncRow.appendChild(syncLabel)
+  syncRow.appendChild(syncInput)
+  syncSection.appendChild(syncRow)
+  panel.appendChild(syncSection)
 }
 
 function buildNumberRow(label: string, value: number, onChange: (val: number) => void): HTMLDivElement {

@@ -6,7 +6,7 @@
  * A position dot tracks the current video time.
  */
 
-import { lapData, currentRow } from './state'
+import { lapData, currentRow, interpPrev, interpNext, interpAlpha } from './state'
 import { onTelemetryLoad, onFrameTick } from './state'
 import type { TrackLayout } from './types'
 
@@ -189,11 +189,25 @@ function blitTrack(): void {
 
 function drawPositionDot(): void {
   if (!currentRow || !cachedLayout) return
-  const px = gpsToCanvas(currentRow.lat, currentRow.lon)
+
+  // Interpolate GPS position between bracketing telemetry rows for smooth movement
+  let lat: number, lon: number, spd: number
+  if (interpPrev && interpNext && interpPrev !== interpNext) {
+    const a = interpAlpha
+    lat = interpPrev.lat + (interpNext.lat - interpPrev.lat) * a
+    lon = interpPrev.lon + (interpNext.lon - interpPrev.lon) * a
+    spd = interpPrev.speed_kph + (interpNext.speed_kph - interpPrev.speed_kph) * a
+  } else {
+    lat = currentRow.lat
+    lon = currentRow.lon
+    spd = currentRow.speed_kph
+  }
+
+  const px = gpsToCanvas(lat, lon)
   if (!px) return
 
   // Colour by speed: green → yellow → red
-  const spd = Math.max(0, currentRow.speed_kph)
+  spd = Math.max(0, spd)
   let r: number, g: number
   if (spd < 80) {
     r = Math.round((spd / 80) * 255)
