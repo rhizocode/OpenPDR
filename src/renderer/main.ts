@@ -137,21 +137,43 @@ function updateFpsCounter(): void {
   }
 }
 
-// ── Animation loop ──
-// Track last known time so we detect seeks while paused (e.g. chart click-to-seek)
+// ── Animation loop (demand-driven) ──
+// Only schedules frames when the video is playing, scrubbing, or a seek occurred.
 let lastVideoTime = -1
+let animationRunning = false
 
 function onAnimationFrame(): void {
   const t = video.currentTime
-  if (!video.paused || getIsScrubbing() || getIsChartScrubbing() || t !== lastVideoTime) {
-    lastVideoTime = t
-    setCurrentRow(findRowAtTime(t))  // Only fires listeners if row changed
-    controls.updateScrubBar(t)
-    controls.updateTimeDisplay(t)
-    fireFrameTick()  // Always fires — chart playhead needs smooth animation
-    updateFpsCounter()
+  lastVideoTime = t
+  setCurrentRow(findRowAtTime(t))  // Only fires listeners if row changed
+  controls.updateScrubBar(t)
+  controls.updateTimeDisplay(t)
+  fireFrameTick()
+  updateFpsCounter()
+
+  // Keep looping while playing or scrubbing; stop when idle
+  if (!video.paused || getIsScrubbing() || getIsChartScrubbing()) {
+    requestAnimationFrame(onAnimationFrame)
+  } else {
+    animationRunning = false
   }
+}
+
+/** Ensure the animation loop is running. Safe to call multiple times. */
+function startAnimationLoop(): void {
+  if (animationRunning) return
+  animationRunning = true
   requestAnimationFrame(onAnimationFrame)
 }
 
-requestAnimationFrame(onAnimationFrame)
+// Start loop on play
+video.addEventListener('play', startAnimationLoop)
+
+// Restart loop on any seek (scrub bar, chart click, keyboard seek, etc.)
+video.addEventListener('seeked', startAnimationLoop)
+
+// Also restart on timeupdate as a safety net
+video.addEventListener('timeupdate', startAnimationLoop)
+
+// Initial kick — render the first frame if anything is loaded
+startAnimationLoop()

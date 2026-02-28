@@ -66,8 +66,13 @@ export function getIsChartScrubbing(): boolean {
   return chartScrubActive
 }
 
-// Frame cache: holds composited data traces + labels (everything except playhead).
-// Rebuilt only on row change or resize. Per-frame work is just blit + playhead line.
+// Static cache: holds data traces + lap markers + channel/range labels.
+// Rebuilt only on resize or channel toggle (expensive operations are here).
+let staticCache: HTMLCanvasElement
+let staticCacheCtx: CanvasRenderingContext2D
+
+// Frame cache: static cache + current-value text overlay.
+// Rebuilt on row change (cheap — just blit static + draw a few text strings).
 let frameCache: HTMLCanvasElement
 let frameCacheCtx: CanvasRenderingContext2D
 
@@ -81,7 +86,9 @@ export function initChartPanel(): void {
   toolbar = document.getElementById('chart-toolbar') as HTMLDivElement
   dpr = window.devicePixelRatio || 1
 
-  // Create frame cache canvas (offscreen buffer for data + labels)
+  // Create offscreen buffers
+  staticCache = document.createElement('canvas')
+  staticCacheCtx = staticCache.getContext('2d')!
   frameCache = document.createElement('canvas')
   frameCacheCtx = frameCache.getContext('2d')!
 
@@ -107,7 +114,7 @@ export function initChartPanel(): void {
   })
 
   // On row change: rebuild frame cache (labels show new current values)
-  onRowUpdate(() => { renderFrameCache(); drawPlayhead() })
+  onRowUpdate(() => { renderFrameCache(); invalidatePlayhead(); drawPlayhead() })
 
   // On every animation frame: just blit cache + draw playhead (very cheap)
   onFrameTick(() => drawPlayhead())
@@ -208,11 +215,13 @@ function resizeAndRender(): void {
   const h = container.clientHeight
   if (w === 0 || h === 0) return
 
-  // Size visible canvas + frame cache for high-DPI
+  // Size visible canvas + caches for high-DPI
   canvas.width = w * dpr
   canvas.height = h * dpr
   canvas.style.width = `${w}px`
   canvas.style.height = `${h}px`
+  staticCache.width = w * dpr
+  staticCache.height = h * dpr
   frameCache.width = w * dpr
   frameCache.height = h * dpr
 
@@ -227,7 +236,9 @@ function resizeAndRender(): void {
     renderChannelOffscreen(cd, chartW, chartH)
   }
 
+  renderStaticCache()
   renderFrameCache()
+  invalidatePlayhead()
   drawPlayhead()
 }
 
@@ -239,22 +250,57 @@ function renderChannelOffscreen(cd: ChannelData, w: number, h: number): void {
 
   const range = config.max - config.min || 1
   const margin = 4 * dpr
+  const drawH = h - margin * 2
 
   offCtx.strokeStyle = config.color
   offCtx.lineWidth = 1.5 * dpr
   offCtx.beginPath()
 
-  for (let i = 0; i < values.length; i++) {
-    const x = (times[i] / duration) * w
-    const y = h - margin - ((values[i] - config.min) / range) * (h - margin * 2)
-    if (i === 0) offCtx.moveTo(x, y)
-    else offCtx.lineTo(x, y)
+  const pxPerSample = w / values.length
+  if (pxPerSample >= 1) {
+    // Enough room: draw every point
+    for (let i = 0; i < values.length; i++) {
+      const x = (times[i] / duration) * w
+      const y = h - margin - ((values[i] - config.min) / range) * drawH
+      if (i === 0) offCtx.moveTo(x, y)
+      else offCtx.lineTo(x, y)
+    }
+  } else {
+    // More samples than pixels: use min/max bucketing per pixel column
+    let sampleIdx = 0
+    for (let px = 0; px < w; px++) {
+      const tStart = (px / w) * duration
+      const tEnd = ((px + 1) / w) * duration
+      let bucketMin = Infinity
+      let bucketMax = -Infinity
+      let count = 0
+
+      while (sampleIdx < values.length && times[sampleIdx] < tEnd) {
+        if (times[sampleIdx] >= tStart) {
+          const v = values[sampleIdx]
+          if (v < bucketMin) bucketMin = v
+          if (v > bucketMax) bucketMax = v
+          count++
+        }
+        sampleIdx++
+      }
+
+      if (count === 0) continue
+
+      const yMin = h - margin - ((bucketMax - config.min) / range) * drawH
+      const yMax = h - margin - ((bucketMin - config.min) / range) * drawH
+      if (px === 0 && count > 0) {
+        offCtx.moveTo(px, yMin)
+      }
+      offCtx.lineTo(px, yMin)
+      if (yMax !== yMin) offCtx.lineTo(px, yMax)
+    }
   }
   offCtx.stroke()
 
   // Zero line for bipolar channels (g-force, steering)
   if (config.min < 0) {
-    const zeroY = h - margin - ((0 - config.min) / range) * (h - margin * 2)
+    const zeroY = h - margin - ((0 - config.min) / range) * drawH
     offCtx.strokeStyle = 'rgba(255,255,255,0.15)'
     offCtx.lineWidth = 1 * dpr
     offCtx.setLineDash([4 * dpr, 4 * dpr])
@@ -266,13 +312,13 @@ function renderChannelOffscreen(cd: ChannelData, w: number, h: number): void {
   }
 }
 
-/** Render data traces + labels to the frame cache. Called on row change, resize, channel toggle. */
-function renderFrameCache(): void {
-  const w = frameCache.width
-  const h = frameCache.height
+/** Render data traces + lap markers + static labels to the static cache. Called on resize/channel toggle. */
+function renderStaticCache(): void {
+  const w = staticCache.width
+  const h = staticCache.height
   if (w === 0 || h === 0) return
 
-  frameCacheCtx.clearRect(0, 0, w, h)
+  staticCacheCtx.clearRect(0, 0, w, h)
 
   const chartCount = channelData.length
   if (chartCount === 0) return
@@ -285,72 +331,99 @@ function renderFrameCache(): void {
     const y = i * chartH
 
     // Draw offscreen data to the right of the label area
-    frameCacheCtx.drawImage(cd.offscreen, labelW, y, w - labelW, chartH)
+    staticCacheCtx.drawImage(cd.offscreen, labelW, y, w - labelW, chartH)
 
     // Label background
-    frameCacheCtx.fillStyle = 'rgba(26,26,26,0.85)'
-    frameCacheCtx.fillRect(0, y, labelW, chartH)
+    staticCacheCtx.fillStyle = 'rgba(26,26,26,0.85)'
+    staticCacheCtx.fillRect(0, y, labelW, chartH)
 
     // Channel label (top line)
-    frameCacheCtx.fillStyle = cd.config.color
-    frameCacheCtx.font = `bold ${11 * dpr}px Consolas, monospace`
-    frameCacheCtx.textAlign = 'left'
-    frameCacheCtx.textBaseline = 'top'
-    frameCacheCtx.fillText(cd.config.label, 4 * dpr, y + 3 * dpr)
-
-    // Current value (second line, below label)
-    if (currentRow) {
-      const val = cd.config.accessor(currentRow)
-      frameCacheCtx.fillStyle = '#fff'
-      frameCacheCtx.font = `bold ${11 * dpr}px Consolas, monospace`
-      frameCacheCtx.textAlign = 'left'
-      frameCacheCtx.textBaseline = 'top'
-      frameCacheCtx.fillText(`${val.toFixed(cd.config.precision)} ${cd.config.unit}`, 4 * dpr, y + 17 * dpr)
-    }
+    staticCacheCtx.fillStyle = cd.config.color
+    staticCacheCtx.font = `bold ${11 * dpr}px Consolas, monospace`
+    staticCacheCtx.textAlign = 'left'
+    staticCacheCtx.textBaseline = 'top'
+    staticCacheCtx.fillText(cd.config.label, 4 * dpr, y + 3 * dpr)
 
     // Min/max range labels (smaller, dimmer)
-    frameCacheCtx.fillStyle = 'rgba(255,255,255,0.3)'
-    frameCacheCtx.font = `${9 * dpr}px Consolas, monospace`
-    frameCacheCtx.textAlign = 'left'
-    frameCacheCtx.textBaseline = 'bottom'
-    frameCacheCtx.fillText(`${cd.config.min}–${cd.config.max}`, 4 * dpr, y + chartH - 2 * dpr)
+    staticCacheCtx.fillStyle = 'rgba(255,255,255,0.3)'
+    staticCacheCtx.font = `${9 * dpr}px Consolas, monospace`
+    staticCacheCtx.textAlign = 'left'
+    staticCacheCtx.textBaseline = 'bottom'
+    staticCacheCtx.fillText(`${cd.config.min}–${cd.config.max}`, 4 * dpr, y + chartH - 2 * dpr)
 
     // Separator line
     if (i > 0) {
-      frameCacheCtx.strokeStyle = '#333'
-      frameCacheCtx.lineWidth = 1 * dpr
-      frameCacheCtx.beginPath()
-      frameCacheCtx.moveTo(0, y)
-      frameCacheCtx.lineTo(w, y)
-      frameCacheCtx.stroke()
+      staticCacheCtx.strokeStyle = '#333'
+      staticCacheCtx.lineWidth = 1 * dpr
+      staticCacheCtx.beginPath()
+      staticCacheCtx.moveTo(0, y)
+      staticCacheCtx.lineTo(w, y)
+      staticCacheCtx.stroke()
     }
   }
 
   // Lap markers — vertical dotted lines spanning all charts
   if (lapData?.hasLapData && duration > 0) {
-    frameCacheCtx.strokeStyle = 'rgba(255,255,255,0.25)'
-    frameCacheCtx.lineWidth = 1 * dpr
-    frameCacheCtx.setLineDash([3 * dpr, 4 * dpr])
-    const labelW = LABEL_WIDTH * dpr
+    staticCacheCtx.strokeStyle = 'rgba(255,255,255,0.25)'
+    staticCacheCtx.lineWidth = 1 * dpr
+    staticCacheCtx.setLineDash([3 * dpr, 4 * dpr])
     const dataW = w - labelW
     for (const lap of lapData.laps) {
       const x = labelW + (lap.startTime / duration) * dataW
-      frameCacheCtx.beginPath()
-      frameCacheCtx.moveTo(x, 0)
-      frameCacheCtx.lineTo(x, h)
-      frameCacheCtx.stroke()
+      staticCacheCtx.beginPath()
+      staticCacheCtx.moveTo(x, 0)
+      staticCacheCtx.lineTo(x, h)
+      staticCacheCtx.stroke()
     }
     // End of last lap
     const lastLap = lapData.laps[lapData.laps.length - 1]
     if (lastLap) {
       const x = labelW + (lastLap.endTime / duration) * dataW
-      frameCacheCtx.beginPath()
-      frameCacheCtx.moveTo(x, 0)
-      frameCacheCtx.lineTo(x, h)
-      frameCacheCtx.stroke()
+      staticCacheCtx.beginPath()
+      staticCacheCtx.moveTo(x, 0)
+      staticCacheCtx.lineTo(x, h)
+      staticCacheCtx.stroke()
     }
-    frameCacheCtx.setLineDash([])
+    staticCacheCtx.setLineDash([])
   }
+}
+
+/** Composite static cache + current-value text into the frame cache. Called on row change. */
+function renderFrameCache(): void {
+  const w = frameCache.width
+  const h = frameCache.height
+  if (w === 0 || h === 0) return
+
+  frameCacheCtx.clearRect(0, 0, w, h)
+
+  // Blit static layer
+  if (staticCache.width > 0 && staticCache.height > 0) {
+    frameCacheCtx.drawImage(staticCache, 0, 0)
+  }
+
+  // Overlay current values (the only thing that changes per row)
+  const chartCount = channelData.length
+  if (chartCount === 0 || !currentRow) return
+
+  const chartH = h / chartCount
+  for (let i = 0; i < chartCount; i++) {
+    const cd = channelData[i]
+    const y = i * chartH
+    const val = cd.config.accessor(currentRow)
+    frameCacheCtx.fillStyle = '#fff'
+    frameCacheCtx.font = `bold ${11 * dpr}px Consolas, monospace`
+    frameCacheCtx.textAlign = 'left'
+    frameCacheCtx.textBaseline = 'top'
+    frameCacheCtx.fillText(`${val.toFixed(cd.config.precision)} ${cd.config.unit}`, 4 * dpr, y + 17 * dpr)
+  }
+}
+
+let lastPlayheadX = -1
+let playheadDirty = true  // force first draw
+
+/** Mark playhead as needing redraw (called on row change / resize). */
+function invalidatePlayhead(): void {
+  playheadDirty = true
 }
 
 /** Blit frame cache + draw playhead. Called every animation frame (very cheap). */
@@ -359,6 +432,19 @@ function drawPlayhead(): void {
   const h = canvas.height
   if (w === 0 || h === 0) return
 
+  // Compute playhead position
+  let x = -1
+  if (channelData.length > 0 && video.duration > 0 && isFinite(video.duration)) {
+    const labelW = LABEL_WIDTH * dpr
+    const xPct = video.currentTime / video.duration
+    x = Math.round(labelW + xPct * (w - labelW))
+  }
+
+  // Skip redraw when paused and playhead hasn't moved
+  if (x === lastPlayheadX && !playheadDirty) return
+  lastPlayheadX = x
+  playheadDirty = false
+
   // Blit cached frame (one drawImage call)
   ctx.clearRect(0, 0, w, h)
   if (frameCache.width > 0 && frameCache.height > 0) {
@@ -366,11 +452,7 @@ function drawPlayhead(): void {
   }
 
   // Playhead
-  if (channelData.length > 0 && video.duration > 0 && isFinite(video.duration)) {
-    const labelW = LABEL_WIDTH * dpr
-    const xPct = video.currentTime / video.duration
-    const x = labelW + xPct * (w - labelW)
-
+  if (x >= 0) {
     ctx.strokeStyle = 'rgba(255,255,255,0.8)'
     ctx.lineWidth = 1.5 * dpr
     ctx.beginPath()

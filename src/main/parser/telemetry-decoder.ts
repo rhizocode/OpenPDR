@@ -13,7 +13,13 @@ import {
   FUEL_LEVEL_SCALE, ODOMETER_SCALE, TIRE_PRESSURE_SCALE,
   enumLabel,
 } from './constants'
-import { findGpsInPacket, findFloatBlocks } from './gps-discovery'
+import { findGpsInPacket, findFloatBlocks, verifyGpsOffsets, verifyFloatOffsets } from './gps-discovery'
+
+/** Cached offsets from a previous successful decode, reusable across packets of the same MMP version. */
+export interface CachedOffsets {
+  gps: number[]
+  floats: number[]
+}
 
 // ── Internal sub-frame types ──
 
@@ -378,19 +384,24 @@ export function decodePacket(
   packet: Buffer,
   packetIdx: number,
   refLatRange?: GpsRefRange,
-  hz100Size: number = 17
-): TelemetryRow[] {
-  if (packet.length < 100) return [] // Skip init packet
+  hz100Size: number = 17,
+  cachedOffsets?: CachedOffsets
+): { rows: TelemetryRow[]; offsets: CachedOffsets | undefined } {
+  if (packet.length < 100) return { rows: [], offsets: cachedOffsets }
 
   // Derive 1Hz frame size from 100Hz frame size
   const hz1Size = hz100Size === 25 ? 34 : 31
 
-  // Find GPS offsets by searching for valid coordinate patterns
-  const gpsOffsets = findGpsInPacket(packet, refLatRange)
-  if (gpsOffsets.length < 5) return []
+  // Try cached offsets first, fall back to full scan
+  const gpsOffsets = (cachedOffsets && verifyGpsOffsets(packet, cachedOffsets.gps, refLatRange))
+    ?? findGpsInPacket(packet, refLatRange)
+  if (gpsOffsets.length < 5) return { rows: [], offsets: cachedOffsets }
 
-  // Find float blocks (50Hz accelerometer data)
-  const floatOffsets = findFloatBlocks(packet, packet.length)
+  const floatOffsets = (cachedOffsets && verifyFloatOffsets(packet, cachedOffsets.floats))
+    ?? findFloatBlocks(packet, packet.length)
+
+  // Cache these offsets for subsequent packets
+  const newOffsets: CachedOffsets = { gps: gpsOffsets, floats: floatOffsets }
 
   const records: TelemetryRow[] = []
   const baseTime = packetIdx // seconds
@@ -548,5 +559,5 @@ export function decodePacket(
     records.push(row)
   }
 
-  return records
+  return { rows: records, offsets: newOffsets }
 }

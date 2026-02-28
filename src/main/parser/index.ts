@@ -14,7 +14,7 @@ import { open, stat } from 'fs/promises'
 import { readMoovBox, scanForBox } from './mp4-boxes'
 import { findAdcoTrack, parseAdvi, parseAdop, parseAdeg } from './adco-track'
 import { parseSampleTable, getSampleOffsets } from './sample-table'
-import { decodePacket } from './telemetry-decoder'
+import { decodePacket, type CachedOffsets } from './telemetry-decoder'
 import { findGpsInPacket } from './gps-discovery'
 import { DEG_SCALE } from './constants'
 import { extractEvents } from './event-extractor'
@@ -142,6 +142,7 @@ export async function parsePdrFile(
     }
     const packetBuf = Buffer.alloc(maxPacketSize)
 
+    let cachedOffsets: CachedOffsets | undefined
     for (let i = 0; i < sampleOffsets.length; i++) {
       const offset = sampleOffsets[i]
       const size = sampleTable.sampleSizes[i]
@@ -151,8 +152,9 @@ export async function parsePdrFile(
       await fh.read(packetBuf, 0, size, offset)
       const packet = packetBuf.subarray(0, size)
 
-      const rows = decodePacket(packet, i, refLatRange, hz100Size)
-      for (const row of rows) {
+      const result = decodePacket(packet, i, refLatRange, hz100Size, cachedOffsets)
+      cachedOffsets = result.offsets
+      for (const row of result.rows) {
         allRows.push(row)
       }
 
