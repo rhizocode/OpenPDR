@@ -16,7 +16,7 @@ export function initSteeringIndicator(): void {
 
 export function drawSteering(deg: number): void {
   // Update numeric label (non-rotated)
-  labelEl.textContent = `${Math.round(deg)}\u00B0`
+  labelEl.textContent = `${Math.abs(Math.round(deg))}\u00B0`
 
   // Negate: PDR positive = left turn
   svgEl.style.transform = `rotate(${-deg}deg)`

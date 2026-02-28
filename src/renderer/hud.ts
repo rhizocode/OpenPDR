@@ -236,20 +236,38 @@ function populateSessionOverlay(): void {
   const info = sessionInfo
   if (!info) return
 
-  // Format timestamp for display: "2026-01-13T13:03:28+00:00" → "Jan 13, 2026 1:03 PM"
+  // Format timestamp for display, preserving the recording timezone from the file.
+  // ADOP stores ISO 8601 with offset: "2026-01-13T13:03:28+00:00" (25 bytes).
+  // We parse directly to avoid Date() converting to the viewer's local timezone.
   let dateStr: string | undefined
   if (info.timestamp) {
-    try {
-      const d = new Date(info.timestamp)
-      dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-        + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-    } catch { dateStr = info.timestamp }
+    const m = info.timestamp.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})([+-]\d{2}:\d{2})$/)
+    if (m) {
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+      const month = months[parseInt(m[2], 10) - 1]
+      const day = parseInt(m[3], 10)
+      const year = m[1]
+      const hour24 = parseInt(m[4], 10)
+      const minute = m[5]
+      const ampm = hour24 >= 12 ? 'PM' : 'AM'
+      const hour12 = hour24 % 12 || 12
+      const offset = m[7]
+      dateStr = `${month} ${day}, ${year} ${hour12}:${minute} ${ampm}`
+    } else {
+      dateStr = info.timestamp
+    }
   }
 
+  // Combine year + vehicle into a single line, stripping parentheses
+  // vehicle already includes model in parens, e.g. "Chevrolet (Corvette)"
+  const vehicleParts = [info.year, info.vehicle]
+    .filter(Boolean)
+    .map(s => s!.replace(/[()]/g, ''))
+  const vehicleStr = vehicleParts.length ? vehicleParts.join(' ') : undefined
+
   const fields: Array<[string, string | undefined]> = [
-    ['Vehicle', info.vehicle],
+    ['Vehicle', vehicleStr],
     ['Engine', info.engine],
-    ['Year', info.year],
     ['Date', dateStr],
   ]
 
