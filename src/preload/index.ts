@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { ParseResult, IpcChannels } from '../shared/types'
+import type { ParseResult, IpcChannels, ExportScope } from '../shared/types'
 
 type Channel = keyof IpcChannels
 
@@ -26,4 +26,10 @@ contextBridge.exposeInMainWorld('pdr', {
     const normalized = filePath.replace(/\\/g, '/')
     return `pdr-file:///${normalized}`
   },
+
+  exportCsv: (scope: ExportScope): Promise<boolean> =>
+    ipcRenderer.invoke('export-csv' satisfies Channel, scope),
+
+  exportGpx: (scope: ExportScope): Promise<boolean> =>
+    ipcRenderer.invoke('export-gpx' satisfies Channel, scope),
 })

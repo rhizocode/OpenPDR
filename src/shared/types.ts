@@ -138,6 +138,12 @@ export interface ParseResult {
 /** Progress callback for reporting parse progress */
 export type ProgressCallback = (phase: string, pct: number) => void
 
+/** Export scope — full recording or a specific lap */
+export interface ExportScope {
+  type: 'full' | 'lap'
+  lapNumber?: number  // 1-based, only when type === 'lap'
+}
+
 // ── Typed IPC channel map (3.3) ──────────────────────────────────────────────
 
 /** Type-safe mapping of IPC channel names to their argument and return types. */
@@ -146,4 +152,6 @@ export interface IpcChannels {
   'parse-pdr-file': { args: [string]; return: ParseResult }
   'parse-progress': { args: [string, number]; return: void }
   'set-allowed-video-path': { args: [string]; return: void }
+  'export-csv': { args: [ExportScope]; return: boolean }
+  'export-gpx': { args: [ExportScope]; return: boolean }
 }
