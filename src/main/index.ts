@@ -8,6 +8,7 @@ const BUILD_ID = 'phase1-v3'
 console.log(`[OpenPDR main] build=${BUILD_ID}`)
 
 let mainWindow: BrowserWindow | null = null
+let allowedVideoPath: string | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -48,6 +49,11 @@ app.whenReady().then(() => {
   protocol.handle('pdr-file', (request) => {
     const url = new URL(request.url)
     const filePath = decodeURIComponent(url.pathname).replace(/^\//, '')
+
+    if (filePath !== allowedVideoPath) {
+      return new Response('Forbidden', { status: 403 })
+    }
+
     const rangeHeader = request.headers.get('Range')
 
     const fileSize = statSync(filePath).size
@@ -133,6 +139,7 @@ ipcMain.handle('open-file-dialog', async () => {
   })
 
   if (result.canceled || result.filePaths.length === 0) return null
+  allowedVideoPath = result.filePaths[0]
   return result.filePaths[0]
 })
 
