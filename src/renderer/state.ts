@@ -23,10 +23,19 @@ export const video = document.getElementById('video') as HTMLVideoElement
 
 // ── Event bus ──
 type Callback = () => void
+type Unsubscribe = () => void
 const rowListeners: Callback[] = []
 const telemetryLoadListeners: Callback[] = []
 const frameTickListeners: Callback[] = []
 const editModeListeners: Callback[] = []
+
+function subscribe(list: Callback[], fn: Callback): Unsubscribe {
+  list.push(fn)
+  return () => {
+    const idx = list.indexOf(fn)
+    if (idx >= 0) list.splice(idx, 1)
+  }
+}
 
 // ── Edit mode ──
 let editMode = false
@@ -39,21 +48,21 @@ export function setEditMode(on: boolean): void {
   for (const fn of editModeListeners) fn()
 }
 
-export function onEditModeChange(fn: Callback): void {
-  editModeListeners.push(fn)
+export function onEditModeChange(fn: Callback): Unsubscribe {
+  return subscribe(editModeListeners, fn)
 }
 
-export function onRowUpdate(fn: Callback): void {
-  rowListeners.push(fn)
+export function onRowUpdate(fn: Callback): Unsubscribe {
+  return subscribe(rowListeners, fn)
 }
 
-export function onTelemetryLoad(fn: Callback): void {
-  telemetryLoadListeners.push(fn)
+export function onTelemetryLoad(fn: Callback): Unsubscribe {
+  return subscribe(telemetryLoadListeners, fn)
 }
 
 /** Subscribe to every animation frame (for playhead animation, etc.) */
-export function onFrameTick(fn: Callback): void {
-  frameTickListeners.push(fn)
+export function onFrameTick(fn: Callback): Unsubscribe {
+  return subscribe(frameTickListeners, fn)
 }
 
 /** Fire frame tick — called by the animation loop every active frame */

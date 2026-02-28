@@ -13,7 +13,12 @@ export function getIsScrubbing(): boolean {
   return isScrubbing
 }
 
-export function initControls(): void {
+export interface Controls {
+  updateScrubBar: (t: number) => void
+  updateTimeDisplay: (t: number) => void
+}
+
+export function initControls(): Controls {
   const btnPlay = document.getElementById('btn-play') as HTMLButtonElement
   const timeCurrent = document.getElementById('time-current') as HTMLSpanElement
   const timeTotal = document.getElementById('time-total') as HTMLSpanElement
@@ -35,9 +40,6 @@ export function initControls(): void {
     timeCurrent.textContent = formatTime(t)
   }
 
-  // Export update functions for the animation loop
-  controls.updateScrubBar = updateScrubBar
-  controls.updateTimeDisplay = updateTimeDisplay
 
   // ── Scrub bar interaction ──
   function scrubToPosition(e: PointerEvent): void {
@@ -115,10 +117,6 @@ export function initControls(): void {
   video.addEventListener('ended', () => {
     btnPlay.innerHTML = '&#9654;'
   })
-}
 
-// Container for update functions that the animation loop calls
-export const controls = {
-  updateScrubBar: (_t: number): void => {},
-  updateTimeDisplay: (_t: number): void => {},
+  return { updateScrubBar, updateTimeDisplay }
 }

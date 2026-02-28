@@ -50,11 +50,14 @@ export function getRpmConfig(): RpmConfig {
 
 export function initRpmGauge(): void {
   canvas = document.getElementById('rpm-gauge-canvas') as HTMLCanvasElement
-  ctx = canvas.getContext('2d')!
+  const c = canvas.getContext('2d')
+  if (!c) return
+  ctx = c
   loadRpmConfig()
 }
 
 export function drawRpmGauge(rpm: number): void {
+  if (!ctx) return
   const w = canvas.width
   const h = canvas.height
   const cx = w / 2
