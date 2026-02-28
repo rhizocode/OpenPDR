@@ -51,68 +51,72 @@ app.whenReady().then(() => {
   // Handle serving local files via pdr-file:// protocol
   // Manually handle Range requests so HTML5 video seeking works
   protocol.handle('pdr-file', async (request) => {
-    const url = new URL(request.url)
-    const filePath = decodeURIComponent(url.pathname).replace(/^\//, '')
+    try {
+      const url = new URL(request.url)
+      const filePath = decodeURIComponent(url.pathname).replace(/^\//, '')
 
-    if (filePath !== allowedVideoPath) {
-      return new Response('Forbidden', { status: 403 })
-    }
-
-    const rangeHeader = request.headers.get('Range')
-
-    const fileInfo = await stat(filePath)
-    const fileSize = fileInfo.size
-    const mimeType = filePath.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'application/octet-stream'
-
-    if (rangeHeader) {
-      // Parse "bytes=start-end"
-      const match = rangeHeader.match(/bytes=(\d+)-(\d*)/)
-      if (match) {
-        const start = parseInt(match[1], 10)
-        const end = match[2] ? parseInt(match[2], 10) : fileSize - 1
-        const chunkSize = end - start + 1
-
-        const stream = createReadStream(filePath, { start, end })
-        const readable = new ReadableStream({
-          start(controller) {
-            stream.on('data', (chunk: Buffer) => controller.enqueue(chunk))
-            stream.on('end', () => controller.close())
-            stream.on('error', (err) => controller.error(err))
-          },
-          cancel() { stream.destroy() }
-        })
-
-        return new Response(readable, {
-          status: 206,
-          headers: {
-            'Content-Type': mimeType,
-            'Content-Length': String(chunkSize),
-            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-            'Accept-Ranges': 'bytes',
-          }
-        })
+      if (filePath !== allowedVideoPath) {
+        return new Response('Forbidden', { status: 403 })
       }
-    }
 
-    // No Range header — return full file
-    const stream = createReadStream(filePath)
-    const readable = new ReadableStream({
-      start(controller) {
-        stream.on('data', (chunk: Buffer) => controller.enqueue(chunk))
-        stream.on('end', () => controller.close())
-        stream.on('error', (err) => controller.error(err))
-      },
-      cancel() { stream.destroy() }
-    })
+      const rangeHeader = request.headers.get('Range')
 
-    return new Response(readable, {
-      status: 200,
-      headers: {
-        'Content-Type': mimeType,
-        'Content-Length': String(fileSize),
-        'Accept-Ranges': 'bytes',
+      const fileInfo = await stat(filePath)
+      const fileSize = fileInfo.size
+      const mimeType = filePath.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'application/octet-stream'
+
+      if (rangeHeader) {
+        // Parse "bytes=start-end"
+        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/)
+        if (match) {
+          const start = parseInt(match[1], 10)
+          const end = match[2] ? parseInt(match[2], 10) : fileSize - 1
+          const chunkSize = end - start + 1
+
+          const stream = createReadStream(filePath, { start, end })
+          const readable = new ReadableStream({
+            start(controller) {
+              stream.on('data', (chunk: Buffer) => controller.enqueue(chunk))
+              stream.on('end', () => controller.close())
+              stream.on('error', (err) => controller.error(err))
+            },
+            cancel() { stream.destroy() }
+          })
+
+          return new Response(readable, {
+            status: 206,
+            headers: {
+              'Content-Type': mimeType,
+              'Content-Length': String(chunkSize),
+              'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+              'Accept-Ranges': 'bytes',
+            }
+          })
+        }
       }
-    })
+
+      // No Range header — return full file
+      const stream = createReadStream(filePath)
+      const readable = new ReadableStream({
+        start(controller) {
+          stream.on('data', (chunk: Buffer) => controller.enqueue(chunk))
+          stream.on('end', () => controller.close())
+          stream.on('error', (err) => controller.error(err))
+        },
+        cancel() { stream.destroy() }
+      })
+
+      return new Response(readable, {
+        status: 200,
+        headers: {
+          'Content-Type': mimeType,
+          'Content-Length': String(fileSize),
+          'Accept-Ranges': 'bytes',
+        }
+      })
+    } catch (err) {
+      return new Response(`File error: ${(err as Error).message}`, { status: 404 })
+    }
   })
 
   createWindow()
