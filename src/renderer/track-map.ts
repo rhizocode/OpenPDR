@@ -19,6 +19,10 @@ let cachedLayout: TrackLayout | null = null
 let trackCache: HTMLCanvasElement | null = null
 let trackCacheCtx: CanvasRenderingContext2D | null = null
 
+// Last drawn dot position — skip redraw when unchanged
+let lastDotLat = NaN
+let lastDotLon = NaN
+
 // ── Projection ────────────────────────────────────────────────────────────────
 
 interface Proj {
@@ -252,6 +256,8 @@ export function initTrackMap(el: HTMLCanvasElement): void {
   drawEmpty()
 
   onTelemetryLoad(() => {
+    lastDotLat = NaN
+    lastDotLon = NaN
     const ld = lapData
     if (ld?.hasLapData && ld.trackLayout) {
       cachedLayout = ld.trackLayout
@@ -271,7 +277,26 @@ export function initTrackMap(el: HTMLCanvasElement): void {
     const resized = resizeCanvas()
     if (cachedLayout && proj) {
       if (resized) renderTrackCache()
-      // Per frame: blit cached track + draw only the moving dot
+
+      // Compute current GPS position to check if dot actually moved
+      let lat: number, lon: number
+      if (interpPrev && interpNext && interpPrev !== interpNext) {
+        const a = interpAlpha
+        lat = interpPrev.lat + (interpNext.lat - interpPrev.lat) * a
+        lon = interpPrev.lon + (interpNext.lon - interpPrev.lon) * a
+      } else if (currentRow) {
+        lat = currentRow.lat
+        lon = currentRow.lon
+      } else {
+        lat = NaN
+        lon = NaN
+      }
+
+      // Skip redraw when position unchanged and no resize
+      if (lat === lastDotLat && lon === lastDotLon && !resized) return
+      lastDotLat = lat
+      lastDotLon = lon
+
       blitTrack()
       drawPositionDot()
     }
