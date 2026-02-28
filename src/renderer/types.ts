@@ -12,6 +12,7 @@ export type {
   TrackLayout,
   LapData,
   ParseResult,
+  ExportScope,
 } from '../shared/types'
 
 export interface PdrApi {
@@ -21,6 +22,8 @@ export interface PdrApi {
   setAllowedVideoPath(filePath: string): Promise<void>
   getPathForFile(file: File): string
   getVideoUrl(filePath: string): string
+  exportCsv(scope: import('../shared/types').ExportScope): Promise<boolean>
+  exportGpx(scope: import('../shared/types').ExportScope): Promise<boolean>
 }
 
 declare global {

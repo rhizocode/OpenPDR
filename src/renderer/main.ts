@@ -16,8 +16,9 @@ import { initEditMode } from './edit-mode'
 import { initChartPanel, getIsChartScrubbing } from './strip-chart'
 import { initTrackMap } from './track-map'
 import { initLapTable } from './lap-table'
+import { initExportMenu } from './export-menu'
 
-const BUILD_ID = 'phase3-v1'
+const BUILD_ID = 'phase4-v1'
 dbg(`Renderer loaded [${BUILD_ID}], pdr API: ${window.pdr ? 'OK' : 'MISSING'}`)
 
 // ── Initialize modules ──
@@ -30,6 +31,7 @@ initEditMode()
 initChartPanel()
 initTrackMap(document.getElementById('track-canvas') as HTMLCanvasElement)
 initLapTable(document.getElementById('lap-table-container') as HTMLDivElement)
+initExportMenu()
 
 // ── Panel toggles ──
 const PANEL_STORAGE_KEY = 'pdr-panel-state'
