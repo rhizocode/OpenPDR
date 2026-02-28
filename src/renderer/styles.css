@@ -420,6 +420,35 @@ html, body {
   display: flex;
 }
 
+/* ── Session info display ── */
+#hud-session {
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: #aaa;
+  background: rgba(0,0,0,0.5);
+  padding: 6px 10px;
+  border-radius: 4px;
+  text-shadow: 0 0 4px rgba(0,0,0,0.8);
+  max-width: 250px;
+}
+
+#hud-session.active {
+  display: flex;
+}
+
+#hud-session .session-label {
+  color: #fff;
+  font-weight: bold;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#hud-session .session-value {
+  color: #ccc;
+}
+
 /* ── Resize handle ── */
 #resize-handle {
   height: 6px;

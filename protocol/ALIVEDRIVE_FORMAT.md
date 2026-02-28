@@ -1082,18 +1082,103 @@ description entry within `stsd`. To locate them:
 ## 13. Outing Properties (`adop`)
 
 The `adop` box contains metadata about the recording session, stored as
-key-value pairs. Known properties include:
+key-value pairs. Each entry has this format:
 
-- Vehicle model identifier (e.g., "A2LL" for Cadillac CT5)
-- VIN
-- Track/venue name
-- GPS bounding box (min/max lat/lon as float64)
-- Recording start timestamp
-- Firmware version
+```
+<null-terminated key string> <4-byte type tag> <value>
+```
 
-GPS bounding-box coordinates are stored as big-endian IEEE 754 float64 (double)
-values in degrees and can be used as a reference location for GPS search within
-data packets.
+Keys use the Cosworth namespace prefix `com.cosworth.outingproperty.`.
+
+### 13.1 Type Tags
+
+| Tag  | Type   | Value Format |
+|------|--------|-------------|
+| `strn` | string | null-terminated ASCII string |
+| `dtim` | datetime | fixed 25-byte ISO 8601 string (`YYYY-MM-DDTHH:MM:SS+HH:MM`), **not** null-terminated |
+| `vrsn` | version | u16 BE major + u16 BE minor + u16 BE patch (6 bytes) |
+| `siva` | SI value | 3-byte prefix + variable-size numeric value (see §13.2) |
+| `guid` | UUID   | 16 raw bytes |
+
+### 13.2 `siva` Value Format
+
+The `siva` tag encodes a numeric value with unit metadata. After the 4-byte
+tag, the value has this structure:
+
+```
+Offset  Size  Type    Field
+0       1     u8      reserved (always 0x00)
+1       1     u8      unit_id (maps to adud unit definitions, see §2.3)
+2       1     u8      value_type (determines payload size)
+3       var   ---     numeric payload
+```
+
+| value_type | Payload | Size | Description |
+|------------|---------|------|-------------|
+| `0x04` | u16 BE | 2 bytes | Unsigned 16-bit integer |
+| `0x09` | float32 BE | 4 bytes | IEEE 754 single-precision float |
+| `0x0a` | float64 BE | 8 bytes | IEEE 754 double-precision float |
+
+Total `siva` entry size = 3 (prefix) + payload size.
+
+> **Units:** All `siva` values are in SI units as defined by their `unit_id`.
+> GPS coordinates (unit 0 = `angle.si`) are stored in **radians** — multiply
+> by 180/π to convert to degrees. Tire pressures (unit 5 = `pressure.si`)
+> are in Pascals. Speeds (unit 4 = `velocity.si`) are in m/s. The rev limit
+> (unit 9 = `angularvelocity.si`) is in rad/s — multiply by 60/(2π) for RPM.
+
+### 13.3 Known Properties
+
+| Key Suffix | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `source.tag` | strn | Format source identifier | `com.cosworth.outing.source.pdr2_5` |
+| `source.app.tag` | strn | Application source identifier | `com.cosworth.app.source.pdr2_5` |
+| `source.app.version` | vrsn | App version | 1.22.20 |
+| `source.mmp.version` | vrsn | MMP firmware version | 2.4.85 |
+| `source.vip.version` | vrsn | VIP firmware version | 31.4.26616 |
+| `telemetry.id` | guid | Telemetry session UUID | |
+| `telemetry.schemaversion` | vrsn | Schema version | 1.0 |
+| `telemetry.version` | vrsn | Telemetry version | 7.0 |
+| `timestamp` | dtim | Recording start timestamp | `2026-01-13T13:03:28+00:00` |
+| `carname` | strn | Vehicle name | `Corvette` |
+| `vehicle.make` | strn | Make and model family | `Chevrolet (Corvette)` |
+| `vehicle.model` | strn | Model | `Corvette`, `CT5`, `A2LL (CT5)` |
+| `vehicle.enginetype` | strn | Engine | `6.2L V8 (LT2)`, `5.5L V8 (LT6)` |
+| `vehicle.modelyear` | strn | Model year | `2026` |
+| `vehicle.name` | strn | User-set vehicle name | `My Cadillac` |
+| `vehicle.vin` | strn | Vehicle Identification Number | `1G6D35R64S0810251` |
+| `powertrain.type` | strn | Powertrain type tag | `com.cosworth.vehicle.powertrain.type.ice` |
+| `vehicle.engine.revlimit` | siva | Rev limit (rad/s, f32, unit 9) | 680.7 (≈ 6500 RPM) |
+| `stopreason` | strn | Reason recording stopped | `com.cosworth.outing.stopreason.completed` |
+| `overlay.custom.timer.speed.startsat` | siva | Custom timer start speed (u16, unit 4) | 0 |
+| `overlay.custom.timer.speed.endsat` | siva | Custom timer end speed (u16, unit 4) | 14 |
+| `user.id` | guid | User UUID | |
+| `stat.fastestlaptime` | siva | Fastest lap time (seconds, f64, unit 1) | 78.914 |
+| `stat.totaldistance` | siva | Total distance (metres, f64, unit 2) | 11093.75 |
+| `stat.meanairtemperature` | siva | Mean air temperature (Kelvin, f64, unit 3) | 284.84 |
+| `stat.maximumspeed` | siva | Maximum speed (m/s, f64, unit 4) | 52.21 |
+| `stat.maximumabsolutelateralacceleration` | siva | Max lateral acceleration (m/s², f64, unit 7) | 13.69 |
+| `stat.tyre.{pos}.pressure.maximum` | siva | Max tire pressure (Pa, f64, unit 5) | 232000.0 |
+| `stat.tyre.{pos}.pressure.starting` | siva | Starting tire pressure (Pa, f64, unit 5) | 184000.0 |
+| `location.center.latitude` | siva | Center latitude (radians, f64, unit 0) | 0.6313 |
+| `location.center.longitude` | siva | Center longitude (radians, f64, unit 0) | -2.0230 |
+| `location.minimum.latitude` | siva | Min bounding box latitude (radians, f64) | |
+| `location.maximum.latitude` | siva | Max bounding box latitude (radians, f64) | |
+| `location.minimum.longitude` | siva | Min bounding box longitude (radians, f64) | |
+| `location.maximum.longitude` | siva | Max bounding box longitude (radians, f64) | |
+| `location.starting.latitude` | siva | Starting latitude (radians, f64) | |
+| `location.starting.longitude` | siva | Starting longitude (radians, f64) | |
+| `outing.id` | guid | Outing UUID | |
+| `outing.type.tag` | strn | Outing type | `com.cosworth.outingtype.circuit` |
+| `outing.trigger.tag` | strn | Trigger type | `com.cosworth.trigger.manual` |
+| `track.id` | guid | Track UUID | |
+| `stat.duration` | siva | Session duration (seconds, f64, unit 1) | 559.89 |
+
+> **`{pos}` positions:** `front.left`, `front.right`, `rear.left`, `rear.right`
+>
+> **VIN availability:** The `vehicle.vin` property was observed in gen 1 MMP 8
+> recordings but not in gen 2 MMP 3/4 recordings. It may depend on hardware
+> generation, firmware version, or user configuration.
 
 ---
 

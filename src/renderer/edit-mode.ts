@@ -22,6 +22,7 @@ const OVERLAY_LABELS: Record<OverlayKey, string> = {
   steering: 'Steering',
   gps: 'GPS',
   trackMap: 'Track Map',
+  session: 'Session',
 }
 
 // Default layout positions (pixel offsets from edges of video-container).
@@ -36,6 +37,7 @@ const DEFAULT_LAYOUT: OverlayLayout = {
   pedals:   { left: 68,  top: 84, scale: 1 },
   gps:      { left: 85,  top: 2,  scale: 1 },
   trackMap: { left: 1.5, top: 2,  scale: 1 },
+  session:  { left: 85,  top: 12, scale: 1 },
 }
 
 let layout: OverlayLayout
@@ -291,7 +293,7 @@ function buildPanel(panel: HTMLDivElement): void {
     // Re-enable all overlays
     const allOn: OverlayConfig = {
       speed: true, rpmGauge: true, gear: true, gforce: true,
-      pedals: true, steering: true, gps: true, trackMap: true,
+      pedals: true, steering: true, gps: true, trackMap: true, session: true,
     }
     setOverlayConfig(allOn)
     applyOverlayConfig(allOn)

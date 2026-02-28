@@ -17,7 +17,7 @@ const ffmpegPath: string | null = _require('ffmpeg-static')
 import type { TelemetryStore } from '../shared/telemetry-store'
 import type {
   OverlayConfig, OverlayLayout, RpmConfig, TrackLayout,
-  RenderOverlayRequest, IpcChannels,
+  RenderOverlayRequest, IpcChannels, SessionInfo,
 } from '../shared/types'
 import { probeVideo } from './ffprobe'
 
@@ -43,6 +43,7 @@ export async function exportVideo(
   overlayLayout: OverlayLayout,
   rpmConfig: RpmConfig,
   trackLayout: TrackLayout | null,
+  sessionInfo: SessionInfo | undefined,
   onProgress: (phase: string, pct: number) => void,
   mainWindow: BrowserWindow,
 ): Promise<void> {
@@ -175,7 +176,7 @@ export async function exportVideo(
         height: meta.height,
         fps: overlayFps,
         totalFrames,
-        overlayConfig, overlayLayout, rpmConfig, trackLayout,
+        overlayConfig, overlayLayout, rpmConfig, trackLayout, sessionInfo,
       }
       mainWindow.webContents.send('render-overlay-frames' satisfies Channel, request)
     })

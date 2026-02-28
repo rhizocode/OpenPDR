@@ -119,6 +119,17 @@ export interface AdviInfo {
   source?: string
 }
 
+/** Session metadata combined from adop + advi boxes */
+export interface SessionInfo {
+  vehicle?: string       // e.g. "Chevrolet (Corvette)"
+  model?: string         // e.g. "Corvette"
+  engine?: string        // e.g. "6.2L V8 (LT2)"
+  year?: string          // e.g. "2026"
+  timestamp?: string     // ISO 8601 recording start
+  generation?: number
+  mmpVersion?: number
+}
+
 /** Result returned by parsePdrFile() */
 export interface ParseResult {
   store: import('./telemetry-store').TelemetryStore
@@ -128,6 +139,7 @@ export interface ParseResult {
     sampleCount: number
     duration: number
     adviInfo?: AdviInfo
+    sessionInfo?: SessionInfo
     refLocation?: { lat: number; lon: number }
     maxSpeed_kph?: number
     maxRpm?: number
@@ -156,6 +168,7 @@ export interface OverlayConfig {
   steering: boolean
   gps: boolean
   trackMap: boolean
+  session: boolean
 }
 
 /** Overlay key — matches keys of OverlayConfig */
@@ -197,6 +210,7 @@ export interface RenderOverlayRequest {
   overlayLayout: OverlayLayout
   rpmConfig: RpmConfig
   trackLayout: TrackLayout | null
+  sessionInfo?: SessionInfo
 }
 
 // ── Typed IPC channel map (3.3) ──────────────────────────────────────────────

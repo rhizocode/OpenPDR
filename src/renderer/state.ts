@@ -6,7 +6,7 @@
  * loop in main.ts drives updates by calling setCurrentRow().
  */
 
-import type { TelemetryRow, LapData } from './types'
+import type { TelemetryRow, LapData, SessionInfo } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
 import { getRow, getRowInto, createEmptyRow } from '../shared/telemetry-store'
 
@@ -15,6 +15,7 @@ export let telemetryStore: TelemetryStore | null = null
 export let currentRow: TelemetryRow | null = null
 export let duration = 0
 export let lapData: LapData | null = null
+export let sessionInfo: SessionInfo | null = null
 
 // ── Interpolation state ──
 // Exposed so modules (track-map, hud) can interpolate between bracketing rows.
@@ -25,6 +26,10 @@ export let interpAlpha = 0  // 0..1 fraction between prev and next
 
 export function setLapData(data: LapData | null): void {
   lapData = data
+}
+
+export function setSessionInfo(info: SessionInfo | null): void {
+  sessionInfo = info
 }
 
 // ── Audio-to-video sync offset ──

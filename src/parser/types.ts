@@ -13,6 +13,7 @@ export type {
   TrackLayout,
   LapData,
   AdviInfo,
+  SessionInfo,
   ParseResult,
   ProgressCallback,
 } from '../shared/types'
@@ -60,10 +61,12 @@ export interface RateGroup {
   totalWidth: number
 }
 
-/** Outing properties from adop box */
+/** Outing properties from adop box (key-value pairs) */
 export interface AdopProps {
   lat?: number
   lon?: number
+  /** All decoded key-value string properties */
+  properties: Map<string, string>
 }
 
 /** GPS reference bounding box for search narrowing */

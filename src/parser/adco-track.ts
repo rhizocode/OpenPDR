@@ -95,22 +95,113 @@ export function parseAdvi(data: Uint8Array): AdviInfo {
 }
 
 /**
- * Parse outing properties from adop box data to get reference GPS location.
- * Searches for float64 pairs that look like plausible lat/lon coordinates.
+ * Parse outing properties from adop box data.
+ *
+ * The adop box stores key-value pairs in this format:
+ *   <null-terminated key> <4-byte type tag> <value>
+ *
+ * Type tags:
+ *   strn — null-terminated string value
+ *   vrsn — version (2-byte u16 major, 2-byte u16 minor)
+ *   siva — float32 BE value
+ *   dtim — null-terminated ISO 8601 datetime string
+ *   guid — 16-byte UUID
+ *
+ * Also extracts reference GPS location from the location properties.
  */
 export function parseAdop(data: Uint8Array): AdopProps {
-  const props: AdopProps = {}
+  const props: AdopProps = { properties: new Map() }
   const dv = dataViewFor(data)
+  let pos = 0
 
-  for (let i = 0; i <= data.length - 16; i++) {
-    if (i + 16 > data.length) break
-    const val = readDoubleBE(data, i, dv)
-    if (Math.abs(val) > 1.0 && Math.abs(val) < 85.0) {
-      const val2 = readDoubleBE(data, i + 8, dv)
-      if (Math.abs(val2) > 1.0 && Math.abs(val2) < 180.0) {
-        props.lat = val
-        props.lon = val2
-        break
+  while (pos < data.length) {
+    // Read null-terminated key string
+    const keyEnd = indexOf(data, 0, pos)
+    if (keyEnd === -1 || keyEnd === pos) break
+    const key = readAscii(data, pos, keyEnd)
+    pos = keyEnd + 1
+
+    // Read 4-byte type tag
+    if (pos + 4 > data.length) break
+    const tag = readAscii(data, pos, pos + 4)
+    pos += 4
+
+    // Decode value based on type tag
+    const shortKey = key.replace(/^com\.cosworth\.outingproperty\./, '')
+
+    if (tag === 'strn') {
+      const valEnd = indexOf(data, 0, pos)
+      if (valEnd === -1) break
+      props.properties.set(shortKey, readAscii(data, pos, valEnd))
+      pos = valEnd + 1
+    } else if (tag === 'dtim') {
+      // Fixed 25-byte ISO 8601 timestamp (YYYY-MM-DDTHH:MM:SS+HH:MM), not null-terminated
+      if (pos + 25 > data.length) break
+      props.properties.set(shortKey, readAscii(data, pos, pos + 25))
+      pos += 25
+    } else if (tag === 'vrsn') {
+      // 6 bytes: u16 major + u16 minor + u16 patch
+      if (pos + 6 > data.length) break
+      const major = readUint16BE(data, pos, dv)
+      const minor = readUint16BE(data, pos + 2, dv)
+      const patch = readUint16BE(data, pos + 4, dv)
+      pos += 6
+      props.properties.set(shortKey, patch ? `${major}.${minor}.${patch}` : `${major}.${minor}`)
+    } else if (tag === 'siva') {
+      // 3-byte prefix: u8 reserved(0) + u8 unit_id + u8 value_type
+      // Value types: 0x04=u16(2 bytes), 0x09=f32(4 bytes), 0x0a=f64(8 bytes)
+      if (pos + 3 > data.length) break
+      const valType = data[pos + 2]
+      pos += 3
+      const valSize = valType === 0x04 ? 2 : valType === 0x09 ? 4 : valType === 0x0a ? 8 : -1
+      if (valSize === -1 || pos + valSize > data.length) break
+      let value: number
+      if (valType === 0x04) {
+        value = readUint16BE(data, pos, dv)
+      } else if (valType === 0x09) {
+        value = dv.getFloat32(pos, false)
+      } else {
+        value = dv.getFloat64(pos, false)
+      }
+      pos += valSize
+      props.properties.set(shortKey, value.toString())
+    } else if (tag === 'guid') {
+      if (pos + 16 > data.length) break
+      pos += 16 // skip UUID, not useful for display
+    } else {
+      // Unknown tag — stop parsing to avoid corruption
+      break
+    }
+  }
+
+  // Extract GPS reference from location properties (stored as radians, convert to degrees)
+  const RAD_TO_DEG = 180 / Math.PI
+  const latStr = props.properties.get('location.center.latitude')
+    ?? props.properties.get('location.starting.latitude')
+  const lonStr = props.properties.get('location.center.longitude')
+    ?? props.properties.get('location.starting.longitude')
+  if (latStr && lonStr) {
+    const latRad = parseFloat(latStr)
+    const lonRad = parseFloat(lonStr)
+    const lat = latRad * RAD_TO_DEG
+    const lon = lonRad * RAD_TO_DEG
+    if (Math.abs(lat) > 1 && Math.abs(lat) < 85 && Math.abs(lon) > 1 && Math.abs(lon) < 180) {
+      props.lat = lat
+      props.lon = lon
+    }
+  }
+
+  // Fallback: heuristic float64 search if structured parsing didn't find GPS
+  if (props.lat === undefined) {
+    for (let i = 0; i <= data.length - 16; i++) {
+      const val = readDoubleBE(data, i, dv)
+      if (Math.abs(val) > 1.0 && Math.abs(val) < 85.0) {
+        const val2 = readDoubleBE(data, i + 8, dv)
+        if (Math.abs(val2) > 1.0 && Math.abs(val2) < 180.0) {
+          props.lat = val
+          props.lon = val2
+          break
+        }
       }
     }
   }
