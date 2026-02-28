@@ -36,7 +36,7 @@ export interface PdrApi {
   onRenderOverlayFrames(callback: (request: import('../shared/types').RenderOverlayRequest) => void): () => void
   cancelVideoExport(): void
   onExportVideoProgress(callback: (phase: string, pct: number) => void): () => void
-  sendOverlayFrameData(idx: number, buffer: Uint8Array): void
+  sendOverlayFrameData(idx: number, buffer: Uint8Array): Promise<void>
   sendOverlayFramesDone(): void
 }
 

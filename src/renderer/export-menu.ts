@@ -61,7 +61,7 @@ function getVideoExportOptions(): VideoExportOptions {
 
 // ── Export Progress UI ──
 
-const EXPORT_PHASES = ['Analyze video', 'Rendering overlays', 'Encoding video'] as const
+const EXPORT_PHASES = ['Analyze video', 'Encoding video'] as const
 
 let exportProgressEl: HTMLDivElement | null = null
 let phaseStartTime = 0

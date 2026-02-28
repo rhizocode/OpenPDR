@@ -45,9 +45,8 @@ contextBridge.exposeInMainWorld('pdr', {
     return () => ipcRenderer.removeListener('render-overlay-frames' satisfies Channel, handler)
   },
 
-  sendOverlayFrameData: (idx: number, buffer: Uint8Array): void => {
-    ipcRenderer.send('overlay-frame-data' satisfies Channel, idx, buffer)
-  },
+  sendOverlayFrameData: (idx: number, buffer: Uint8Array): Promise<void> =>
+    ipcRenderer.invoke('overlay-frame-data' satisfies Channel, idx, buffer),
 
   sendOverlayFramesDone: (): void => {
     ipcRenderer.send('overlay-frames-done' satisfies Channel)
