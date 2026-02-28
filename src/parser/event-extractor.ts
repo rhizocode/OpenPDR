@@ -12,7 +12,7 @@
  *   10      1     u8        event_id (0–19, maps to adeg definitions)
  */
 
-import { readUint32BE } from '../shared/binary-reader'
+import { readUint32BE, dataViewFor } from '../shared/binary-reader'
 import type { EmbeddedEvent } from './types'
 
 const EVENT_RECORD_SIZE = 11
@@ -42,13 +42,14 @@ export function extractEvents(
   const defMap = getEventDefMap(eventDefs)
   const events: EmbeddedEvent[] = []
   const numEvents = Math.floor(extra.length / EVENT_RECORD_SIZE)
+  const dv = dataViewFor(extra)
 
   for (let i = 0; i < numEvents; i++) {
     const off = i * EVENT_RECORD_SIZE
 
     // Read 8-byte timestamp as two u32s (JS doesn't have native u64)
-    const tsHi = readUint32BE(extra, off)
-    const tsLo = readUint32BE(extra, off + 4)
+    const tsHi = readUint32BE(extra, off, dv)
+    const tsLo = readUint32BE(extra, off + 4, dv)
     const timeSec = (tsHi * 0x100000000 + tsLo) / TICKS_PER_SECOND
 
     const eventId = extra[off + 10]

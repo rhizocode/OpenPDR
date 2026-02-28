@@ -5,7 +5,7 @@
  */
 
 import type { TelemetryRow, GpsRefRange } from './types'
-import { readUint16BE, readInt16BE, readUint32BE, readInt32BE, readFloatBE } from '../shared/binary-reader'
+import { readUint16BE, readInt16BE, readUint32BE, readInt32BE, readFloatBE, dataViewFor } from '../shared/binary-reader'
 import {
   PROPORTION_SCALE, ENGINE_SPEED_SCALE, RAD_TO_RPM, TORQUE_SCALE, TORQUE_OFFSET,
   STEERING_SCALE, RAD_TO_DEG, WHEEL_SPEED_SCALE, TIRE_RADIUS_M, MPS_TO_KPH,
@@ -123,24 +123,24 @@ interface Hz1Frame {
  *   wheel_FL(4) wheel_FR(4) wheel_RL(4) wheel_RR(4) gyro_yaw(2)
  *   — wheel speeds are float32 BE in m/s (direct)
  */
-function decode100HzFrame(packet: Uint8Array, offset: number, hz100Size: number = 17): Hz100Frame | null {
+function decode100HzFrame(packet: Uint8Array, offset: number, hz100Size: number, dv: DataView): Hz100Frame | null {
   if (offset < 0 || offset + hz100Size > packet.length) return null
 
-  const torqueRaw = readUint16BE(packet, offset + 3)
+  const torqueRaw = readUint16BE(packet, offset + 3, dv)
 
   if (hz100Size === 25) {
     // MMP v4: float32 wheel speeds in m/s
-    const wsFlMps = readFloatBE(packet, offset + 7)
-    const wsFrMps = readFloatBE(packet, offset + 11)
-    const wsRlMps = readFloatBE(packet, offset + 15)
-    const wsRrMps = readFloatBE(packet, offset + 19)
-    const gyroRaw = readInt16BE(packet, offset + 23)
+    const wsFlMps = readFloatBE(packet, offset + 7, dv)
+    const wsFrMps = readFloatBE(packet, offset + 11, dv)
+    const wsRlMps = readFloatBE(packet, offset + 15, dv)
+    const wsRrMps = readFloatBE(packet, offset + 19, dv)
+    const gyroRaw = readInt16BE(packet, offset + 23, dv)
 
     return {
       brake_position: packet[offset] * PROPORTION_SCALE,
-      engine_rpm: readUint16BE(packet, offset + 1) * ENGINE_SPEED_SCALE * RAD_TO_RPM,
+      engine_rpm: readUint16BE(packet, offset + 1, dv) * ENGINE_SPEED_SCALE * RAD_TO_RPM,
       engine_torque_nm: torqueRaw * TORQUE_SCALE + TORQUE_OFFSET,
-      steering_angle_deg: readInt16BE(packet, offset + 5) * STEERING_SCALE * RAD_TO_DEG,
+      steering_angle_deg: readInt16BE(packet, offset + 5, dv) * STEERING_SCALE * RAD_TO_DEG,
       wheel_speed_fl_kph: wsFlMps * MPS_TO_KPH,
       wheel_speed_fr_kph: wsFrMps * MPS_TO_KPH,
       wheel_speed_rl_kph: wsRlMps * MPS_TO_KPH,
@@ -149,17 +149,17 @@ function decode100HzFrame(packet: Uint8Array, offset: number, hz100Size: number 
     }
   } else {
     // MMP v3: u16 angular velocity wheel speeds
-    const wsFl = readUint16BE(packet, offset + 7)
-    const wsFr = readUint16BE(packet, offset + 9)
-    const wsRl = readUint16BE(packet, offset + 11)
-    const wsRr = readUint16BE(packet, offset + 13)
-    const gyroRaw = readInt16BE(packet, offset + 15)
+    const wsFl = readUint16BE(packet, offset + 7, dv)
+    const wsFr = readUint16BE(packet, offset + 9, dv)
+    const wsRl = readUint16BE(packet, offset + 11, dv)
+    const wsRr = readUint16BE(packet, offset + 13, dv)
+    const gyroRaw = readInt16BE(packet, offset + 15, dv)
 
     return {
       brake_position: packet[offset] * PROPORTION_SCALE,
-      engine_rpm: readUint16BE(packet, offset + 1) * ENGINE_SPEED_SCALE * RAD_TO_RPM,
+      engine_rpm: readUint16BE(packet, offset + 1, dv) * ENGINE_SPEED_SCALE * RAD_TO_RPM,
       engine_torque_nm: torqueRaw * TORQUE_SCALE + TORQUE_OFFSET,
-      steering_angle_deg: readInt16BE(packet, offset + 5) * STEERING_SCALE * RAD_TO_DEG,
+      steering_angle_deg: readInt16BE(packet, offset + 5, dv) * STEERING_SCALE * RAD_TO_DEG,
       wheel_speed_fl_kph: wsFl * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
       wheel_speed_fr_kph: wsFr * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
       wheel_speed_rl_kph: wsRl * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
@@ -175,16 +175,16 @@ function decode100HzFrame(packet: Uint8Array, offset: number, hz100Size: number 
  * - Device (ch 8-10): raw sensor frame
  * - Vehicle (ch 11-13): gravity-compensated vehicle-frame-aligned
  */
-function decode50HzFrame(packet: Uint8Array, offset: number): Hz50Frame | null {
+function decode50HzFrame(packet: Uint8Array, offset: number, dv: DataView): Hz50Frame | null {
   if (offset + 24 > packet.length) return null
 
   return {
-    accel_device_x_g: readFloatBE(packet, offset),
-    accel_device_y_g: readFloatBE(packet, offset + 4),
-    accel_device_z_g: readFloatBE(packet, offset + 8),
-    accel_vehicle_x_g: readFloatBE(packet, offset + 12),
-    accel_vehicle_y_g: readFloatBE(packet, offset + 16),
-    accel_vehicle_z_g: readFloatBE(packet, offset + 20),
+    accel_device_x_g: readFloatBE(packet, offset, dv),
+    accel_device_y_g: readFloatBE(packet, offset + 4, dv),
+    accel_device_z_g: readFloatBE(packet, offset + 8, dv),
+    accel_vehicle_x_g: readFloatBE(packet, offset + 12, dv),
+    accel_vehicle_y_g: readFloatBE(packet, offset + 16, dv),
+    accel_vehicle_z_g: readFloatBE(packet, offset + 20, dv),
   }
 }
 
@@ -194,25 +194,25 @@ function decode50HzFrame(packet: Uint8Array, offset: number): Hz50Frame | null {
  *         ABS(1) throttle(1) boost(2) emotor_power(2) engine_power(2)
  * Speed is 2 bytes BEFORE latOffset.
  */
-function decode10HzFrame(packet: Uint8Array, latOffset: number): Hz10Frame | null {
+function decode10HzFrame(packet: Uint8Array, latOffset: number, dv: DataView): Hz10Frame | null {
   if (latOffset + 26 > packet.length) return null
 
-  const latRaw = readInt32BE(packet, latOffset)
-  const lonRaw = readInt32BE(packet, latOffset + 4)
-  const altRaw = readUint32BE(packet, latOffset + 8)
-  const headingRaw = readInt32BE(packet, latOffset + 12)
+  const latRaw = readInt32BE(packet, latOffset, dv)
+  const lonRaw = readInt32BE(packet, latOffset + 4, dv)
+  const altRaw = readUint32BE(packet, latOffset + 8, dv)
+  const headingRaw = readInt32BE(packet, latOffset + 12, dv)
   const fixQuality = packet[latOffset + 16]
   const satellites = packet[latOffset + 17]
   const absStatus = packet[latOffset + 18]
   const throttleRaw = packet[latOffset + 19]
-  const boostRaw = readUint16BE(packet, latOffset + 20)
-  const emotorRaw = readUint16BE(packet, latOffset + 22)
-  const engineRaw = readUint16BE(packet, latOffset + 24)
+  const boostRaw = readUint16BE(packet, latOffset + 20, dv)
+  const emotorRaw = readUint16BE(packet, latOffset + 22, dv)
+  const engineRaw = readUint16BE(packet, latOffset + 24, dv)
 
   // Speed is 2 bytes BEFORE lat
   let speedRaw = 0
   if (latOffset >= 2) {
-    speedRaw = readUint16BE(packet, latOffset - 2)
+    speedRaw = readUint16BE(packet, latOffset - 2, dv)
   }
 
   return {
@@ -265,58 +265,59 @@ function decode5HzFrame(packet: Uint8Array, offset: number): Hz5Frame | null {
  * MMP ≤ 3 (31 bytes): drive_mode is u8 at b[3]
  * MMP ≥ 4 (34 bytes): drive_mode is u32 at b[3:7], shifting everything after by 3
  */
-function decode1HzFrame(packet: Uint8Array, latOffset: number, hz1Size: number = 31): Hz1Frame | null {
+function decode1HzFrame(packet: Uint8Array, latOffset: number, hz1Size: number, dv: DataView): Hz1Frame | null {
   const hz1Offset = latOffset + 26 + 4 + 1 // after group2 + group3 + group4
   if (hz1Offset + hz1Size > packet.length) return null
 
-  const b = packet.subarray(hz1Offset, hz1Offset + hz1Size)
-  const hvChargeRaw = readUint16BE(b, 1)
+  // Read directly from packet using absolute offsets (avoid subarray + new DataView)
+  const b0 = hz1Offset
+  const hvChargeRaw = readUint16BE(packet, b0 + 1, dv)
 
   // MMP v4: drive_mode is u32 (4 bytes) — use low byte for enum lookup
   let dmRaw: number
   let s: number // shift for all fields after drive_mode
   if (hz1Size === 34) {
-    dmRaw = readUint32BE(b, 3) & 0xFF
+    dmRaw = readUint32BE(packet, b0 + 3, dv) & 0xFF
     s = 3
   } else {
-    dmRaw = b[3]
+    dmRaw = packet[b0 + 3]
     s = 0
   }
 
-  const odometerRaw = readUint32BE(b, 16 + s)
+  const odometerRaw = readUint32BE(packet, b0 + 16 + s, dv)
 
   return {
-    emotor_powerlevel: b[0] * 0.01,
+    emotor_powerlevel: packet[b0] * 0.01,
     hv_battery_charge: hvChargeRaw * 1.5259e-5,
     drive_mode: dmRaw,
     drive_mode_label: enumLabel('drive_mode', dmRaw),
-    emotor_axle_available: b[4 + s],
-    emotor_axle_available_label: enumLabel('emotor_axle_available', b[4 + s]),
-    emotor_temp_rotor_c: b[5 + s] > 0 ? b[5 + s] - 40 : null,
-    emotor_temp_stator_c: b[6 + s] > 0 ? b[6 + s] - 40 : null,
-    engine_temp_coolant_c: b[7 + s] - 40,
-    engine_temp_airintake_c: b[8 + s] - 40,
-    engine_temp_oil_c: b[9 + s] - 40,
-    engine_powerlevel: b[10 + s] * 0.01,
-    outside_air_temp_c: b[11 + s] * 0.5 - 40,
-    fuel_level_pct: b[12 + s] * FUEL_LEVEL_SCALE * 100.0,
-    hv_battery_temp_avg_c: b[13 + s] > 0 ? b[13 + s] - 40 : null,
-    hv_battery_temp_max_c: b[14 + s] > 0 ? b[14 + s] * 0.5 - 40 : null,
-    hv_battery_temp_min_c: b[15 + s] > 0 ? b[15 + s] * 0.5 - 40 : null,
+    emotor_axle_available: packet[b0 + 4 + s],
+    emotor_axle_available_label: enumLabel('emotor_axle_available', packet[b0 + 4 + s]),
+    emotor_temp_rotor_c: packet[b0 + 5 + s] > 0 ? packet[b0 + 5 + s] - 40 : null,
+    emotor_temp_stator_c: packet[b0 + 6 + s] > 0 ? packet[b0 + 6 + s] - 40 : null,
+    engine_temp_coolant_c: packet[b0 + 7 + s] - 40,
+    engine_temp_airintake_c: packet[b0 + 8 + s] - 40,
+    engine_temp_oil_c: packet[b0 + 9 + s] - 40,
+    engine_powerlevel: packet[b0 + 10 + s] * 0.01,
+    outside_air_temp_c: packet[b0 + 11 + s] * 0.5 - 40,
+    fuel_level_pct: packet[b0 + 12 + s] * FUEL_LEVEL_SCALE * 100.0,
+    hv_battery_temp_avg_c: packet[b0 + 13 + s] > 0 ? packet[b0 + 13 + s] - 40 : null,
+    hv_battery_temp_max_c: packet[b0 + 14 + s] > 0 ? packet[b0 + 14 + s] * 0.5 - 40 : null,
+    hv_battery_temp_min_c: packet[b0 + 15 + s] > 0 ? packet[b0 + 15 + s] * 0.5 - 40 : null,
     odometer_km: odometerRaw * ODOMETER_SCALE / 1000.0,
-    ptm_mode: b[20 + s],
-    ptm_mode_label: enumLabel('ptm_mode', b[20 + s]),
-    trans_oil_temp_c: b[21 + s] - 40,
-    tire_pressure_fl_kpa: b[22 + s] * TIRE_PRESSURE_SCALE / 1000.0,
-    tire_pressure_fr_kpa: b[23 + s] * TIRE_PRESSURE_SCALE / 1000.0,
-    tire_pressure_rl_kpa: b[24 + s] * TIRE_PRESSURE_SCALE / 1000.0,
-    tire_pressure_rr_kpa: b[25 + s] * TIRE_PRESSURE_SCALE / 1000.0,
-    tire_temp_fl_c: b[26 + s] - 20,
-    tire_temp_fr_c: b[27 + s] - 20,
-    tire_temp_rl_c: b[28 + s] - 20,
-    tire_temp_rr_c: b[29 + s] - 20,
-    vse_status: b[30 + s],
-    vse_status_label: enumLabel('vse_status', b[30 + s]),
+    ptm_mode: packet[b0 + 20 + s],
+    ptm_mode_label: enumLabel('ptm_mode', packet[b0 + 20 + s]),
+    trans_oil_temp_c: packet[b0 + 21 + s] - 40,
+    tire_pressure_fl_kpa: packet[b0 + 22 + s] * TIRE_PRESSURE_SCALE / 1000.0,
+    tire_pressure_fr_kpa: packet[b0 + 23 + s] * TIRE_PRESSURE_SCALE / 1000.0,
+    tire_pressure_rl_kpa: packet[b0 + 24 + s] * TIRE_PRESSURE_SCALE / 1000.0,
+    tire_pressure_rr_kpa: packet[b0 + 25 + s] * TIRE_PRESSURE_SCALE / 1000.0,
+    tire_temp_fl_c: packet[b0 + 26 + s] - 20,
+    tire_temp_fr_c: packet[b0 + 27 + s] - 20,
+    tire_temp_rl_c: packet[b0 + 28 + s] - 20,
+    tire_temp_rr_c: packet[b0 + 29 + s] - 20,
+    vse_status: packet[b0 + 30 + s],
+    vse_status_label: enumLabel('vse_status', packet[b0 + 30 + s]),
   }
 }
 
@@ -390,6 +391,9 @@ export function decodePacket(
 ): { rows: TelemetryRow[]; offsets: CachedOffsets | undefined } {
   if (packet.length < 100) return { rows: [], offsets: cachedOffsets }
 
+  // Single DataView for all reads from this packet
+  const dv = dataViewFor(packet)
+
   // Derive 1Hz frame size from 100Hz frame size
   const hz1Size = hz100Size === 25 ? 34 : 31
 
@@ -419,7 +423,7 @@ export function decodePacket(
     const frameTime = baseTime + frameIdx * 0.1
 
     // Decode 10Hz data
-    const g2 = decode10HzFrame(packet, latOff)
+    const g2 = decode10HzFrame(packet, latOff, dv)
     if (!g2) continue
 
     // Find the float blocks and 100Hz frames for this 10Hz period
@@ -435,17 +439,17 @@ export function decodePacket(
       const f1Off = foff - 2 * hz100Size
       const f2Off = foff - hz100Size
       if (f1Off >= latOff) {
-        const f1 = decode100HzFrame(packet, f1Off, hz100Size)
+        const f1 = decode100HzFrame(packet, f1Off, hz100Size, dv)
         if (f1 && validate100Hz(f1)) hz100Frames.push(f1)
       }
-      const f2 = decode100HzFrame(packet, f2Off, hz100Size)
+      const f2 = decode100HzFrame(packet, f2Off, hz100Size, dv)
       if (f2 && validate100Hz(f2)) hz100Frames.push(f2)
     }
 
     // Decode 50Hz sub-frames
     const hz50Frames: Hz50Frame[] = []
     for (const foff of frameFloats) {
-      const f = decode50HzFrame(packet, foff)
+      const f = decode50HzFrame(packet, foff, dv)
       if (f) hz50Frames.push(f)
     }
 
@@ -539,7 +543,7 @@ export function decodePacket(
 
     // 1 Hz (frame 0 only)
     if (frameIdx === 0) {
-      const hz1Data = decode1HzFrame(packet, latOff, hz1Size)
+      const hz1Data = decode1HzFrame(packet, latOff, hz1Size, dv)
       if (hz1Data) {
         row.emotor_powerlevel = hz1Data.emotor_powerlevel
         row.hv_battery_charge = hz1Data.hv_battery_charge

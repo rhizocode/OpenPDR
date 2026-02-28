@@ -4,7 +4,7 @@
  */
 
 import type { PdrFileSource } from '../shared/file-source'
-import { readUint32BE, readBigUint64BE, readAscii, indexOf, asciiBytes } from '../shared/binary-reader'
+import { readUint32BE, readBigUint64BE, readAscii, indexOf, asciiBytes, dataViewFor } from '../shared/binary-reader'
 import type { BoxHeader, BoxResult } from './types'
 
 const CONTAINER_TYPES = new Set([
@@ -12,18 +12,18 @@ const CONTAINER_TYPES = new Set([
 ])
 
 /** Read an MP4 box header from a Uint8Array at the given offset. */
-export function readBoxHeader(buf: Uint8Array, offset: number, end?: number): BoxHeader | null {
+export function readBoxHeader(buf: Uint8Array, offset: number, end?: number, dv?: DataView): BoxHeader | null {
   const limit = end ?? buf.length
   if (offset + 8 > limit) return null
 
-  let size = readUint32BE(buf, offset)
+  let size = readUint32BE(buf, offset, dv)
   const type = readAscii(buf, offset + 4, offset + 8)
   let headerSize = 8
 
   if (size === 1) {
     // 64-bit extended size
     if (offset + 16 > limit) return null
-    size = Number(readBigUint64BE(buf, offset + 8))
+    size = Number(readBigUint64BE(buf, offset + 8, dv))
     headerSize = 16
   } else if (size === 0) {
     // Box extends to end of container
@@ -34,10 +34,10 @@ export function readBoxHeader(buf: Uint8Array, offset: number, end?: number): Bo
 }
 
 /** Find a box by type within [offset, end) in a buffer. */
-export function findBox(buf: Uint8Array, boxType: string, offset = 0, end?: number): BoxResult | null {
+export function findBox(buf: Uint8Array, boxType: string, offset = 0, end?: number, dv?: DataView): BoxResult | null {
   const limit = end ?? buf.length
   while (offset < limit - 8) {
-    const hdr = readBoxHeader(buf, offset, limit)
+    const hdr = readBoxHeader(buf, offset, limit, dv)
     if (!hdr || hdr.size < 8) break
     if (hdr.type === boxType) {
       return [hdr.offset, hdr.size, hdr.dataStart]
@@ -50,11 +50,12 @@ export function findBox(buf: Uint8Array, boxType: string, offset = 0, end?: numb
 /** Find a nested box by slash-separated path like 'moov/trak/mdia'. */
 export function findBoxPath(buf: Uint8Array, path: string): BoxResult | null {
   const parts = path.split('/')
+  const dv = dataViewFor(buf)
   let offset = 0
   let end = buf.length
 
   for (let i = 0; i < parts.length; i++) {
-    const result = findBox(buf, parts[i], offset, end)
+    const result = findBox(buf, parts[i], offset, end, dv)
     if (!result) return null
     const [boxOffset, boxSize, dataStart] = result
     if (i < parts.length - 1) {
@@ -70,11 +71,12 @@ export function findBoxPath(buf: Uint8Array, path: string): BoxResult | null {
 /** Brute-force scan for a box by its 4-byte type tag anywhere in the buffer. */
 export function scanForBox(buf: Uint8Array, boxType: string, startOffset = 0): BoxResult | null {
   const tag = asciiBytes(boxType)
+  const dv = dataViewFor(buf)
   let pos = startOffset
   while (true) {
     const idx = indexOf(buf, tag, pos)
     if (idx === -1 || idx < 4) return null
-    const size = readUint32BE(buf, idx - 4)
+    const size = readUint32BE(buf, idx - 4, dv)
     if (size > 8 && size < 100000) {
       return [idx - 4, size, idx + 4]
     }
@@ -89,16 +91,18 @@ export function findAllBoxes(
   offset = 0,
   end?: number,
   depth = 0,
-  maxDepth = 8
+  maxDepth = 8,
+  dv?: DataView
 ): BoxResult[] {
   const limit = end ?? buf.length
   if (depth > maxDepth) return []
 
+  const view = dv ?? dataViewFor(buf)
   const results: BoxResult[] = []
   let pos = offset
 
   while (pos < limit - 8) {
-    const hdr = readBoxHeader(buf, pos, limit)
+    const hdr = readBoxHeader(buf, pos, limit, view)
     if (!hdr || hdr.size < 8) break
     const boxEnd = pos + hdr.size
 
@@ -107,7 +111,7 @@ export function findAllBoxes(
     }
 
     if (CONTAINER_TYPES.has(hdr.type)) {
-      const children = findAllBoxes(buf, boxType, hdr.dataStart, boxEnd, depth + 1, maxDepth)
+      const children = findAllBoxes(buf, boxType, hdr.dataStart, boxEnd, depth + 1, maxDepth, view)
       results.push(...children)
     }
 
