@@ -165,8 +165,41 @@ export interface ParseResult {
     refLocation?: { lat: number; lon: number }
     maxSpeed_kph?: number
     maxRpm?: number
+    lapData?: LapData
   }
 }
 
 /** Progress callback for reporting parse progress */
 export type ProgressCallback = (phase: string, pct: number) => void
+
+/** A single detected lap */
+export interface LapInfo {
+  lapNumber: number
+  startTime: number  // seconds from recording start
+  endTime: number
+  lapTime: number    // endTime - startTime
+}
+
+/** GPS trace + bounds for the track layout */
+export interface TrackLayout {
+  points: Array<{ lat: number; lon: number }>
+  startFinishLat: number
+  startFinishLon: number
+  bounds: { minLat: number; maxLat: number; minLon: number; maxLon: number }
+}
+
+/** An embedded event extracted from an oversized telemetry packet */
+export interface EmbeddedEvent {
+  eventId: number          // 0–19, maps to adeg definitions
+  eventName: string        // e.g., "com.cosworth.event.lap.start"
+  time: number             // seconds from recording start
+}
+
+/** Result of lap detection */
+export interface LapData {
+  laps: LapInfo[]
+  trackLayout: TrackLayout | null
+  hasLapData: boolean
+  /** Which method detected laps: firmware S/F events or GPS density heuristic */
+  detectionMethod?: 'events' | 'gps-density'
+}

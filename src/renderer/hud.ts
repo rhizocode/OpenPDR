@@ -19,7 +19,7 @@ const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
 
 const DEFAULT_OVERLAY: OverlayConfig = {
   speed: true, rpmGauge: true, gear: true, gforce: true,
-  pedals: true, steering: true, gps: true,
+  pedals: true, steering: true, gps: true, trackMap: true,
 }
 
 // ── DOM refs ──
@@ -119,6 +119,7 @@ function updateHud(row: TelemetryRow | null): void {
     return
   }
 
+  const wasActive = hudActive
   hudActive = true
 
   // Set smoothing targets (canvas elements drawn in smoothAndDraw)
@@ -126,6 +127,16 @@ function updateHud(row: TelemetryRow | null): void {
   targetSteeringDeg = row.steering_deg
   targetGLat = row.gforce_lat
   targetGLon = row.gforce_lon
+
+  // First activation: snap displayed values and force-draw canvases
+  if (!wasActive) {
+    displayedRpm = targetRpm
+    displayedSteeringDeg = targetSteeringDeg
+    displayedGLat = targetGLat
+    displayedGLon = targetGLon
+    // Draw immediately (elements may already be visible via showHud)
+    smoothAndDraw()
+  }
 
   // Speed (cheap DOM text update)
   if (overlayConfig.speed) {
@@ -203,6 +214,8 @@ export function applyOverlayConfig(config: OverlayConfig): void {
 export function showHud(): void {
   // Activate all overlays that are enabled in config
   applyOverlayConfig(overlayConfig)
+  // Force-draw canvases if data was already seeded before elements became visible
+  if (hudActive) smoothAndDraw()
 }
 
 // ── Initialize ──
