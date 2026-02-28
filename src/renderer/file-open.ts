@@ -8,9 +8,6 @@ import { showHud, resetCarryForward } from './hud'
 import { showChartPanel } from './resizer'
 import { clampAllToViewport } from './edit-mode'
 
-/** Electron adds a `path` property to dropped File objects */
-interface ElectronFile extends File { path: string }
-
 const pdr = window.pdr
 
 // ── DOM refs ──
@@ -49,6 +46,9 @@ async function openFile(filePath?: string): Promise<void> {
   const removeProgressListener = pdr.onParseProgress((phase, pct) => {
     if (!parseDone) showProgress(`${phase} ${pct}%`)
   })
+
+  // Ensure protocol handler accepts this path (dialog sets it automatically, but drag-and-drop doesn't)
+  await pdr.setAllowedVideoPath(filePath)
 
   // Load video via pdr-file:// protocol
   const videoUrl = pdr.getVideoUrl(filePath)
@@ -123,9 +123,10 @@ export function initFileOpen(): void {
   videoContainer.addEventListener('drop', (e) => {
     e.preventDefault()
     videoContainer.classList.remove('drag-over')
-    const file = e.dataTransfer?.files[0] as ElectronFile | undefined
-    if (file?.path && file.name.toLowerCase().endsWith('.mp4')) {
-      openFile(file.path)
+    const file = e.dataTransfer?.files[0]
+    if (file && file.name.toLowerCase().endsWith('.mp4')) {
+      const filePath = pdr.getPathForFile(file)
+      if (filePath) openFile(filePath)
     }
   })
 
