@@ -21,6 +21,12 @@ let config: RpmConfig = DEFAULT_CONFIG
 let canvas: HTMLCanvasElement
 let ctx: CanvasRenderingContext2D
 
+// Offscreen cache for static elements (background arc, zone arcs, tick marks)
+let bgCache: HTMLCanvasElement | null = null
+let bgCacheCtx: CanvasRenderingContext2D | null = null
+let bgCacheW = 0
+let bgCacheH = 0
+
 // Arc geometry: 270-degree sweep from 7 o'clock to 5 o'clock
 const START_ANGLE = 0.75 * Math.PI    // 135 degrees
 const SWEEP = 1.5 * Math.PI           // 270 degrees
@@ -42,6 +48,7 @@ export function loadRpmConfig(): RpmConfig {
 export function saveRpmConfig(newConfig: RpmConfig): void {
   config = { ...newConfig }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
+  bgCache = null // invalidate so next draw rebuilds
 }
 
 export function getRpmConfig(): RpmConfig {
@@ -56,31 +63,68 @@ export function initRpmGauge(): void {
   loadRpmConfig()
 }
 
+/** Render static elements (background arc, zone arcs, tick marks) to offscreen cache. */
+function renderBgCache(w: number, h: number): void {
+  if (!bgCache) {
+    bgCache = document.createElement('canvas')
+    bgCacheCtx = bgCache.getContext('2d')!
+  }
+  bgCache.width = w
+  bgCache.height = h
+  bgCacheW = w
+  bgCacheH = h
+  const c = bgCacheCtx!
+
+  const cx = w / 2
+  const cy = h - 4
+  const radius = h - 16
+  const { yellowStart, redline, maxRpm } = config
+  const lineWidth = 10
+
+  // Background arc (dim)
+  c.beginPath()
+  c.arc(cx, cy, radius, START_ANGLE, START_ANGLE + SWEEP)
+  c.strokeStyle = 'rgba(255,255,255,0.08)'
+  c.lineWidth = lineWidth
+  c.lineCap = 'butt'
+  c.stroke()
+
+  // Color zone arcs
+  drawZoneArc(c, cx, cy, radius, 0, yellowStart / maxRpm, '#00cc66', 0.2)
+  drawZoneArc(c, cx, cy, radius, yellowStart / maxRpm, redline / maxRpm, '#ffaa00', 0.25)
+  drawZoneArc(c, cx, cy, radius, redline / maxRpm, 1, '#ff3333', 0.3)
+
+  // Tick marks at 1000 RPM intervals
+  c.strokeStyle = 'rgba(255,255,255,0.4)'
+  c.lineWidth = 1.5
+  for (let r = 0; r <= maxRpm; r += 1000) {
+    const angle = START_ANGLE + (r / maxRpm) * SWEEP
+    const inner = radius - 14
+    const outer = radius + 2
+    c.beginPath()
+    c.moveTo(cx + inner * Math.cos(angle), cy + inner * Math.sin(angle))
+    c.lineTo(cx + outer * Math.cos(angle), cy + outer * Math.sin(angle))
+    c.stroke()
+  }
+}
+
 export function drawRpmGauge(rpm: number): void {
   if (!ctx) return
   const w = canvas.width
   const h = canvas.height
   const cx = w / 2
-  const cy = h - 4      // center at bottom edge for half-circle look
-  const radius = h - 16  // margin for tick labels
+  const cy = h - 4
+  const radius = h - 16
+
+  // Rebuild background cache if needed (config change or canvas resize)
+  if (!bgCache || bgCacheW !== w || bgCacheH !== h) {
+    renderBgCache(w, h)
+  }
 
   ctx.clearRect(0, 0, w, h)
+  ctx.drawImage(bgCache!, 0, 0)
 
   const { yellowStart, redline, maxRpm } = config
-  const lineWidth = 10
-
-  // Background arc (dim)
-  ctx.beginPath()
-  ctx.arc(cx, cy, radius, START_ANGLE, START_ANGLE + SWEEP)
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)'
-  ctx.lineWidth = lineWidth
-  ctx.lineCap = 'butt'
-  ctx.stroke()
-
-  // Color zone arcs (dim background showing the zones)
-  drawZoneArc(cx, cy, radius, 0, yellowStart / maxRpm, '#00cc66', 0.2) // green
-  drawZoneArc(cx, cy, radius, yellowStart / maxRpm, redline / maxRpm, '#ffaa00', 0.25) // yellow
-  drawZoneArc(cx, cy, radius, redline / maxRpm, 1, '#ff3333', 0.3) // red
 
   // Active fill arc up to current RPM
   const pct = Math.min(1, Math.max(0, rpm / maxRpm))
@@ -94,21 +138,8 @@ export function drawRpmGauge(rpm: number): void {
     ctx.beginPath()
     ctx.arc(cx, cy, radius, START_ANGLE, endAngle)
     ctx.strokeStyle = fillColor
-    ctx.lineWidth = lineWidth
+    ctx.lineWidth = 10
     ctx.lineCap = 'butt'
-    ctx.stroke()
-  }
-
-  // Tick marks at 1000 RPM intervals
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)'
-  ctx.lineWidth = 1.5
-  for (let r = 0; r <= maxRpm; r += 1000) {
-    const angle = START_ANGLE + (r / maxRpm) * SWEEP
-    const inner = radius - 14
-    const outer = radius + 2
-    ctx.beginPath()
-    ctx.moveTo(cx + inner * Math.cos(angle), cy + inner * Math.sin(angle))
-    ctx.lineTo(cx + outer * Math.cos(angle), cy + outer * Math.sin(angle))
     ctx.stroke()
   }
 
@@ -125,15 +156,16 @@ export function drawRpmGauge(rpm: number): void {
 }
 
 function drawZoneArc(
+  c: CanvasRenderingContext2D,
   cx: number, cy: number, r: number,
   startPct: number, endPct: number, color: string, alpha: number
 ): void {
-  ctx.beginPath()
-  ctx.arc(cx, cy, r, START_ANGLE + startPct * SWEEP, START_ANGLE + endPct * SWEEP)
-  ctx.strokeStyle = color
-  ctx.globalAlpha = alpha
-  ctx.lineWidth = 10
-  ctx.lineCap = 'butt'
-  ctx.stroke()
-  ctx.globalAlpha = 1.0
+  c.beginPath()
+  c.arc(cx, cy, r, START_ANGLE + startPct * SWEEP, START_ANGLE + endPct * SWEEP)
+  c.strokeStyle = color
+  c.globalAlpha = alpha
+  c.lineWidth = 10
+  c.lineCap = 'butt'
+  c.stroke()
+  c.globalAlpha = 1.0
 }

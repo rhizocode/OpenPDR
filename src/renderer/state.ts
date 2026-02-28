@@ -103,8 +103,14 @@ export function fireFrameTick(): void {
   for (const fn of frameTickListeners) fn()
 }
 
+// Track the last row's time separately — findRowAtTime() reuses a singleton
+// scratch object, so by the time setCurrentRow is called the object has already
+// been mutated and field comparisons against currentRow see the new values.
+let lastRowTime = -1
+
 export function setCurrentRow(row: TelemetryRow | null): void {
-  if (row === currentRow) return  // Skip if same row — avoids redundant HUD/chart redraws
+  if (row && row.time === lastRowTime) return
+  lastRowTime = row ? row.time : -1
   currentRow = row
   for (const fn of rowListeners) fn()
 }
