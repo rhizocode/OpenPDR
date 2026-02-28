@@ -1195,6 +1195,41 @@ Events come in start/end pairs, defining 10 performance timing categories:
 > 402 m (events 16–17) are the same physical test expressed in different units.
 > Events 18–19 provide a user-configurable custom timer.
 
+### 15.3 Embedded Event Records in Telemetry Packets
+
+When events fire during a 1-second telemetry packet, the firmware appends
+event records to the end of the packet, making it larger than the nominal
+size (see §4.1). Each event record is **11 bytes**:
+
+```
+Offset  Size  Type      Field
+0       8     u64 BE    timestamp (100 ns ticks from recording start)
+8       2     u16 BE    flags (observed: 0x0200)
+10      1     u8        event_id (0–19, maps to adeg definitions)
+```
+
+Multiple events can be embedded in a single packet. The extra bytes at the
+end of an oversized packet are always a multiple of 11. The timestamp uses
+the same 100 ns tick resolution as the packet preamble timestamp (§4.5).
+
+**Example**: A packet of size 3258 (nominal 3247 + 11) contains one event.
+A packet of size 3269 (nominal + 22) contains two events. A packet of size
+3346 (nominal + 99) contains nine events (typically all performance timer
+start events firing simultaneously when the car first crosses S/F).
+
+**Lap timing events**: Event ID 0 (`event.lap.start`) fires at each S/F
+line crossing, as defined by the driver-set start/finish marker in the
+vehicle's PDR settings. Event ID 1 (`event.lap.end`) fires simultaneously
+with the next `event.lap.start`, marking the end of one lap and the start
+of the next. Lap times are computed from consecutive `event.lap.start`
+timestamps (start-to-start timing).
+
+> The driver configures the S/F line position through the vehicle's
+> infotainment PDR interface. The MMP firmware then triggers
+> `event.lap.start` / `event.lap.end` at the configured GPS crossing point.
+> This is more accurate than GPS density heuristics since it uses the exact
+> position the driver intended as the timing reference.
+
 ---
 
 ## 16. Comparison with Older Marlin Format

@@ -12,12 +12,14 @@
 
 import { open, stat } from 'fs/promises'
 import { readMoovBox, scanForBox } from './mp4-boxes'
-import { findAdcoTrack, parseAdvi, parseAdop } from './adco-track'
+import { findAdcoTrack, parseAdvi, parseAdop, parseAdeg } from './adco-track'
 import { parseSampleTable, getSampleOffsets } from './sample-table'
 import { decodePacket } from './telemetry-decoder'
 import { findGpsInPacket } from './gps-discovery'
 import { DEG_SCALE } from './constants'
-import type { ParseResult, TelemetryRow, GpsRefRange, ProgressCallback } from './types'
+import { extractEvents } from './event-extractor'
+import { detectLaps, detectLapsFromEvents } from '../lap-detection'
+import type { ParseResult, TelemetryRow, EmbeddedEvent, GpsRefRange, ProgressCallback } from './types'
 
 export type { TelemetryRow, ParseResult, ProgressCallback }
 
@@ -93,6 +95,12 @@ export async function parsePdrFile(
       }
     }
 
+    // Step 4c: Parse event definitions (adeg)
+    const adegBox = scanForBox(moovBuf, 'adeg')
+    const eventDefs = adegBox
+      ? parseAdeg(moovBuf.subarray(adegBox[2], adegBox[0] + adegBox[1]))
+      : []
+
     // Step 4b: If no ref from adop, find it from a middle packet
     if (!refLatRange && sampleOffsets.length > 0) {
       const midIdx = Math.floor(sampleOffsets.length / 2)
@@ -124,9 +132,10 @@ export async function parsePdrFile(
       }
     }
 
-    // Step 5: Decode all packets
+    // Step 5: Decode all packets and extract embedded events
     onProgress?.('Decoding telemetry...', 10)
     const allRows: TelemetryRow[] = []
+    const allEvents: EmbeddedEvent[] = []
     const maxPacketSize = Math.max(...sampleTable.sampleSizes, 8192)
     const packetBuf = Buffer.alloc(maxPacketSize)
 
@@ -143,6 +152,10 @@ export async function parsePdrFile(
       for (const row of rows) {
         allRows.push(row)
       }
+
+      // Extract embedded events from oversized packets
+      const events = extractEvents(packet, dominantPktSize, eventDefs)
+      for (const evt of events) allEvents.push(evt)
 
       // Report progress every 10 packets
       if (i % 10 === 0) {
@@ -165,6 +178,9 @@ export async function parsePdrFile(
       ? allRows[allRows.length - 1].time - allRows[0].time
       : 0
 
+    // Try event-based lap detection first, fall back to GPS density heuristic
+    const lapData = detectLapsFromEvents(allEvents, allRows) ?? detectLaps(allRows)
+
     return {
       rows: allRows,
       metadata: {
@@ -176,6 +192,7 @@ export async function parsePdrFile(
         refLocation,
         maxSpeed_kph: maxSpeed,
         maxRpm: maxRpm,
+        lapData,
       },
     }
   } finally {

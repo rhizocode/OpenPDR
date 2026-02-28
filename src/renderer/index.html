@@ -67,6 +67,9 @@
           <span id="hud-gps-lon">--</span>
           <span id="hud-gps-alt">--</span>
         </div>
+        <div class="hud-element" id="hud-trackMap" data-overlay="trackMap">
+          <canvas id="track-canvas"></canvas>
+        </div>
 
         <!-- No-file prompt -->
         <div id="no-file-prompt">
@@ -83,10 +86,22 @@
 
       <!-- Strip chart panel -->
       <div id="chart-panel">
-        <div id="chart-toolbar"></div>
-        <div id="chart-canvas-container">
-          <canvas id="chart-canvas"></canvas>
-          <div id="chart-empty">Open a file to view data</div>
+        <div id="chart-tabs">
+          <button class="panel-toggle active" data-panel="charts">Charts</button>
+          <button class="panel-toggle" data-panel="laps">Laps</button>
+          <div id="chart-toolbar"></div>
+        </div>
+        <div id="chart-content-row">
+          <div id="charts-panel" class="active">
+            <div id="chart-canvas-container">
+              <canvas id="chart-canvas"></canvas>
+              <div id="chart-empty">Open a file to view data</div>
+            </div>
+          </div>
+          <div id="laps-resize-handle" class="panel-resize-handle"></div>
+          <div id="laps-panel">
+            <div id="lap-table-container"></div>
+          </div>
         </div>
       </div>
     </div>

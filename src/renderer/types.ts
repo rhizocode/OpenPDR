@@ -5,6 +5,27 @@
  * (no Electron/Node imports) for future PWA portability.
  */
 
+export interface LapInfo {
+  lapNumber: number
+  startTime: number
+  endTime: number
+  lapTime: number
+}
+
+export interface TrackLayout {
+  points: Array<{ lat: number; lon: number }>
+  startFinishLat: number
+  startFinishLon: number
+  bounds: { minLat: number; maxLat: number; minLon: number; maxLon: number }
+}
+
+export interface LapData {
+  laps: LapInfo[]
+  trackLayout: TrackLayout | null
+  hasLapData: boolean
+  detectionMethod?: 'events' | 'gps-density'
+}
+
 export interface ParseResult {
   rows: TelemetryRow[]
   metadata: {
@@ -14,6 +35,7 @@ export interface ParseResult {
     duration: number
     maxSpeed_kph?: number
     maxRpm?: number
+    lapData?: LapData
   }
 }
 
@@ -110,6 +132,7 @@ export interface OverlayConfig {
   pedals: boolean
   steering: boolean
   gps: boolean
+  trackMap: boolean
 }
 
 /** RPM gauge zone configuration */
