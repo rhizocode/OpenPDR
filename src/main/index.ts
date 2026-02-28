@@ -4,15 +4,20 @@ import { createReadStream } from 'fs'
 import { stat } from 'fs/promises'
 import { parsePdrFile } from '../parser'
 import { NodeFileSource } from './file-source-node'
-import type { ParseResult, IpcChannels } from '../shared/types'
+import type { ParseResult, IpcChannels, ExportScope, VideoExportOptions } from '../shared/types'
+import { exportCsv } from './export-csv'
+import { exportGpx } from './export-gpx'
+import { exportVideo, cancelVideoExport } from './export-video'
 
 type Channel = keyof IpcChannels
 
-const BUILD_ID = 'phase3-v1'
+const BUILD_ID = 'phase4-v1'
 console.log(`[OpenPDR main] build=${BUILD_ID}`)
 
 let mainWindow: BrowserWindow | null = null
 let allowedVideoPath: string | null = null
+let lastParseResult: ParseResult | null = null
+let lastFilePath: string | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -162,10 +167,143 @@ ipcMain.handle('parse-pdr-file' satisfies Channel, async (_event, filePath: stri
   const source = await NodeFileSource.open(filePath)
   const fileName = filePath.replace(/\\/g, '/').split('/').pop() ?? ''
   try {
-    return await parsePdrFile(source, fileName, (phase, pct) => {
+    const result = await parsePdrFile(source, fileName, (phase, pct) => {
       mainWindow?.webContents.send('parse-progress' satisfies Channel, phase, pct)
     })
+    lastParseResult = result
+    lastFilePath = filePath
+    return result
   } finally {
     await source.close()
   }
+})
+
+// ── Export helpers ──
+
+/** Binary search: find the first index where time[i] >= target. */
+function searchTimeIndex(times: Float64Array, target: number, length: number): number {
+  let lo = 0
+  let hi = length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (times[mid] < target) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+/** Resolve an ExportScope to a row range + label. Returns null if invalid. */
+function getExportRange(scope: ExportScope): { startIdx: number; endIdx: number; label: string } | null {
+  if (!lastParseResult) return null
+  const store = lastParseResult.store
+  const lapData = lastParseResult.metadata.lapData
+
+  if (scope.type === 'full') {
+    return { startIdx: 0, endIdx: store.length, label: 'Full' }
+  }
+
+  if (!lapData?.hasLapData || !scope.lapNumber) return null
+  const lap = lapData.laps.find(l => l.lapNumber === scope.lapNumber)
+  if (!lap) return null
+
+  const startIdx = searchTimeIndex(store.time, lap.startTime, store.length)
+  const endIdx = searchTimeIndex(store.time, lap.endTime, store.length)
+  return { startIdx, endIdx, label: `Lap_${lap.lapNumber}` }
+}
+
+/** Base file name without extension, derived from the last parsed file. */
+function getBaseName(): string {
+  return (lastParseResult?.metadata.fileName ?? 'export').replace(/\.mp4$/i, '')
+}
+
+// IPC: Export CSV
+ipcMain.handle('export-csv' satisfies Channel, async (_event, scope: ExportScope): Promise<boolean> => {
+  if (!mainWindow || !lastParseResult) return false
+
+  const range = getExportRange(scope)
+  if (!range) return false
+
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export CSV',
+    defaultPath: `${getBaseName()}_${range.label}.csv`,
+    filters: [
+      { name: 'CSV Files', extensions: ['csv'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  })
+
+  if (result.canceled || !result.filePath) return false
+  await exportCsv(lastParseResult.store, result.filePath, range.startIdx, range.endIdx)
+  return true
+})
+
+// IPC: Export GPX
+ipcMain.handle('export-gpx' satisfies Channel, async (_event, scope: ExportScope): Promise<boolean> => {
+  if (!mainWindow || !lastParseResult || !lastFilePath) return false
+
+  const range = getExportRange(scope)
+  if (!range) return false
+
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export GPX',
+    defaultPath: `${getBaseName()}_${range.label}.gpx`,
+    filters: [
+      { name: 'GPX Files', extensions: ['gpx'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  })
+
+  if (result.canceled || !result.filePath) return false
+
+  // Estimate recording start: file mtime minus recording duration
+  const fileInfo = await stat(lastFilePath)
+  const baseDate = new Date(fileInfo.mtimeMs - lastParseResult.metadata.duration * 1000)
+  const trackName = `${getBaseName()} ${range.label.replace(/_/g, ' ')}`
+
+  await exportGpx(lastParseResult.store, result.filePath, range.startIdx, range.endIdx, trackName, baseDate)
+  return true
+})
+
+// IPC: Export Video with baked overlays
+ipcMain.handle('export-video' satisfies Channel, async (_event, scope: ExportScope, options: VideoExportOptions): Promise<boolean> => {
+  if (!mainWindow || !lastParseResult || !lastFilePath) return false
+
+  const range = getExportRange(scope)
+  if (!range) return false
+
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export Video with Overlays',
+    defaultPath: `${getBaseName()}_${range.label}.mp4`,
+    filters: [
+      { name: 'MP4 Video', extensions: ['mp4'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  })
+
+  if (result.canceled || !result.filePath) return false
+
+  try {
+    await exportVideo(
+      lastParseResult.store,
+      lastFilePath,
+      result.filePath,
+      range.startIdx,
+      range.endIdx,
+      options.overlayConfig,
+      options.overlayLayout,
+      options.rpmConfig,
+      lastParseResult.metadata.lapData?.trackLayout ?? null,
+      (phase, pct) => mainWindow?.webContents.send('export-video-progress' satisfies Channel, phase, pct),
+      mainWindow,
+    )
+    return true
+  } catch (err) {
+    console.error('[export-video] Failed:', err)
+    return false
+  }
+})
+
+// IPC: Cancel video export
+ipcMain.on('export-video-cancel' satisfies Channel, () => {
+  cancelVideoExport()
 })

@@ -49,9 +49,9 @@ export function initResizer(): void {
   else chartPanel.style.height = '200px'
 }
 
-/** Show the resize handle and chart panel (call after file loads) */
+/** Show the chart panel (call after file loads).
+ *  Resize handle visibility is managed by updateChartPanelCollapse() in main.ts. */
 export function showChartPanel(): void {
-  document.getElementById('resize-handle')!.classList.add('active')
   document.getElementById('chart-panel')!.classList.add('active')
   document.getElementById('chart-empty')?.classList.remove('hidden')
 }
