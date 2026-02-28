@@ -14,7 +14,10 @@ import { mkdtemp, writeFile, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { BrowserWindow, ipcMain } from 'electron'
-import ffmpegPath from 'ffmpeg-static'
+import { createRequire } from 'module'
+
+const _require = createRequire(import.meta.url)
+const ffmpegPath: string | null = _require('ffmpeg-static')
 import type { TelemetryStore } from '../shared/telemetry-store'
 import type {
   OverlayConfig, OverlayLayout, RpmConfig, TrackLayout,
@@ -112,29 +115,30 @@ function renderOverlayFrames(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     let receivedCount = 0
+    const pendingWrites: Promise<void>[] = []
 
     // Listen for frame data from renderer
-    const onFrameData = async (
+    const onFrameData = (
       _event: Electron.IpcMainEvent,
       idx: number,
       buffer: Uint8Array,
     ) => {
-      try {
-        // Write PNG with zero-padded filename (ffmpeg expects sequential numbering)
-        const filename = `${String(idx + 1).padStart(6, '0')}.png`
-        await writeFile(join(tempDir, filename), Buffer.from(buffer))
-        receivedCount++
+      // Count synchronously — async writeFile can still be in-flight when onDone fires
+      receivedCount++
+      const pct = Math.round((receivedCount / totalFrames) * 100)
+      onProgress('Rendering overlays', pct)
 
-        const pct = Math.round((receivedCount / totalFrames) * 100)
-        onProgress('Rendering overlays', pct)
-      } catch (err) {
+      const filename = `${String(idx + 1).padStart(6, '0')}.png`
+      const p = writeFile(join(tempDir, filename), Buffer.from(buffer)).catch((err) => {
         cleanup()
         reject(err)
-      }
+      })
+      pendingWrites.push(p as Promise<void>)
     }
 
-    const onDone = () => {
+    const onDone = async () => {
       cleanup()
+      await Promise.all(pendingWrites)
       if (receivedCount >= totalFrames) {
         resolve()
       } else {
