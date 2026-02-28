@@ -58,7 +58,7 @@ export async function exportVideo(
   if (endIdx <= startIdx) throw new Error('No frames to export')
 
   // 1. Probe source video
-  onProgress('Probing video', 0)
+  onProgress('Analyze video', 0)
   const meta = await probeVideo(sourceVideoPath)
 
   // Render overlay PNGs at video frame rate (capped at 30 fps) for smooth animation

@@ -34,6 +34,7 @@ export interface PdrApi {
   exportGpx(scope: import('../shared/types').ExportScope): Promise<boolean>
   exportVideo(scope: import('../shared/types').ExportScope, options: import('../shared/types').VideoExportOptions): Promise<boolean>
   onRenderOverlayFrames(callback: (request: import('../shared/types').RenderOverlayRequest) => void): () => void
+  cancelVideoExport(): void
   onExportVideoProgress(callback: (phase: string, pct: number) => void): () => void
   sendOverlayFrameData(idx: number, buffer: Uint8Array): void
   sendOverlayFramesDone(): void
