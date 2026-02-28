@@ -211,7 +211,7 @@ export interface IpcChannels {
   'export-gpx': { args: [ExportScope]; return: boolean }
   'export-video': { args: [ExportScope, VideoExportOptions]; return: boolean }
   'render-overlay-frames': { args: [RenderOverlayRequest]; return: void }
-  'overlay-frame-data': { args: [number, Uint8Array]; return: void }
+  'overlay-frame-data': { args: [number, Uint8Array]; return: void }  // invoke-based (backpressure)
   'overlay-frames-done': { args: []; return: void }
   'export-video-progress': { args: [string, number]; return: void }
   'export-video-cancel': { args: []; return: void }

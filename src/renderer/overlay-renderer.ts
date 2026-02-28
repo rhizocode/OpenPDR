@@ -697,17 +697,10 @@ async function handleRenderRequest(request: RenderOverlayRequest): Promise<void>
         lastKnownGear,
       )
 
-      // Convert to PNG blob and send to main
-      const blob = await new Promise<Blob>((resolve) => {
-        canvas.toBlob((b) => resolve(b!), 'image/png')
-      })
-      const buffer = new Uint8Array(await blob.arrayBuffer())
-      window.pdr.sendOverlayFrameData(f, buffer)
-
-      // Yield to event loop every 50 frames for progress updates / cancellation
-      if (f % 50 === 49) {
-        await new Promise((r) => setTimeout(r, 0))
-      }
+      // Extract raw RGBA pixels (instant — no PNG compression)
+      const pixels = ctx.getImageData(0, 0, width, height)
+      // invoke-based IPC: await provides backpressure + natural event-loop yield
+      await window.pdr.sendOverlayFrameData(f, new Uint8Array(pixels.data.buffer))
     }
   } catch (err) {
     console.error('[overlay-renderer] Error rendering frame:', err)
