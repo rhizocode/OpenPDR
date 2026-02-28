@@ -8,7 +8,7 @@
 
 import type { TelemetryRow, LapData } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
-import { getRow } from '../shared/telemetry-store'
+import { getRow, getRowInto, createEmptyRow } from '../shared/telemetry-store'
 
 // ── State ──
 export let telemetryStore: TelemetryStore | null = null
@@ -116,6 +116,9 @@ export function setTelemetry(store: TelemetryStore, dur: number): void {
 }
 
 // ── Binary search: find the telemetry row closest to a given time ──
+// Pre-allocated scratch row — reused every frame, never hold a reference across frames.
+const _findRow = createEmptyRow()
+
 export function findRowAtTime(t: number): TelemetryRow | null {
   const store = telemetryStore
   if (!store || store.length === 0) return null
@@ -124,8 +127,8 @@ export function findRowAtTime(t: number): TelemetryRow | null {
   let lo = 0
   let hi = store.length - 1
 
-  if (t <= times[0]) return getRow(store, 0)
-  if (t >= times[hi]) return getRow(store, hi)
+  if (t <= times[0]) return getRowInto(store, 0, _findRow)
+  if (t >= times[hi]) return getRowInto(store, hi, _findRow)
 
   while (lo <= hi) {
     const mid = (lo + hi) >>> 1
@@ -134,14 +137,14 @@ export function findRowAtTime(t: number): TelemetryRow | null {
     } else if (times[mid] > t) {
       hi = mid - 1
     } else {
-      return getRow(store, mid)
+      return getRowInto(store, mid, _findRow)
     }
   }
 
-  if (lo >= store.length) return getRow(store, hi)
-  if (hi < 0) return getRow(store, lo)
+  if (lo >= store.length) return getRowInto(store, hi, _findRow)
+  if (hi < 0) return getRowInto(store, lo, _findRow)
   const idx = (t - times[hi]) <= (times[lo] - t) ? hi : lo
-  return getRow(store, idx)
+  return getRowInto(store, idx, _findRow)
 }
 
 /**
@@ -149,6 +152,10 @@ export function findRowAtTime(t: number): TelemetryRow | null {
  * Finds the two bracketing telemetry rows and computes a 0..1 alpha between them.
  * Called every animation frame from main.ts.
  */
+// Pre-allocated interp scratch rows — reused every frame.
+const _interpPrevRow = createEmptyRow()
+const _interpNextRow = createEmptyRow()
+
 export function updateInterpolation(t: number): void {
   const store = telemetryStore
   if (!store || store.length === 0) {
@@ -162,12 +169,14 @@ export function updateInterpolation(t: number): void {
   let hi = store.length - 1
 
   if (t <= times[0]) {
-    interpPrev = interpNext = getRow(store, 0)
+    getRowInto(store, 0, _interpPrevRow)
+    interpPrev = interpNext = _interpPrevRow
     interpAlpha = 0
     return
   }
   if (t >= times[hi]) {
-    interpPrev = interpNext = getRow(store, hi)
+    getRowInto(store, hi, _interpPrevRow)
+    interpPrev = interpNext = _interpPrevRow
     interpAlpha = 0
     return
   }
@@ -179,8 +188,8 @@ export function updateInterpolation(t: number): void {
     else hi = mid
   }
 
-  interpPrev = getRow(store, lo)
-  interpNext = getRow(store, hi)
+  interpPrev = getRowInto(store, lo, _interpPrevRow)
+  interpNext = getRowInto(store, hi, _interpNextRow)
 
   const span = interpNext.time - interpPrev.time
   interpAlpha = span > 0 ? (t - interpPrev.time) / span : 0
