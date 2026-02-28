@@ -55,12 +55,18 @@ export async function exportVideo(
 ): Promise<void> {
   if (!ffmpegPath) throw new Error('ffmpeg-static binary not found')
 
-  const totalFrames = endIdx - startIdx
-  if (totalFrames <= 0) throw new Error('No frames to export')
+  if (endIdx <= startIdx) throw new Error('No frames to export')
 
   // 1. Probe source video
   onProgress('Probing video', 0)
   const meta = await probeVideo(sourceVideoPath)
+
+  // Render overlay PNGs at video frame rate (capped at 30 fps) for smooth animation
+  const overlayFps = Math.min(meta.fps, 30)
+  const startTime = store.time[startIdx]
+  const endTime = store.time[Math.min(endIdx - 1, store.length - 1)]
+  const duration = endTime - startTime
+  const totalFrames = Math.max(1, Math.ceil(duration * overlayFps))
 
   // 2. Create temp directory for overlay PNGs
   const tempDir = await mkdtemp(join(tmpdir(), 'openpdr-export-'))
@@ -74,6 +80,8 @@ export async function exportVideo(
       startIdx, endIdx,
       width: meta.width,
       height: meta.height,
+      fps: overlayFps,
+      totalFrames,
       overlayConfig, overlayLayout, rpmConfig, trackLayout,
     }
 
@@ -83,14 +91,12 @@ export async function exportVideo(
     // 4. Run ffmpeg to composite
     onProgress('Encoding video', 0)
 
-    const startTime = store.time[startIdx]
-    const endTime = store.time[Math.min(endIdx - 1, store.length - 1)]
     const isFullExport = startIdx === 0 && endIdx === store.length
 
     await runFfmpeg(
       sourceVideoPath, outputPath, tempDir,
       startTime, endTime, isFullExport,
-      meta.fps, totalFrames,
+      overlayFps, totalFrames,
       onProgress,
     )
 
@@ -169,14 +175,12 @@ function runFfmpeg(
   startTime: number,
   endTime: number,
   isFullExport: boolean,
-  _fps: number,
+  overlayFps: number,
   totalFrames: number,
   onProgress: (phase: string, pct: number) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const duration = endTime - startTime
-    // Overlay PNGs are at 10 Hz (telemetry rate)
-    const overlayFps = totalFrames / duration
 
     const args: string[] = ['-y']  // overwrite output
 

@@ -191,6 +191,8 @@ export interface RenderOverlayRequest {
   endIdx: number
   width: number
   height: number
+  fps: number
+  totalFrames: number
   overlayConfig: OverlayConfig
   overlayLayout: OverlayLayout
   rpmConfig: RpmConfig
