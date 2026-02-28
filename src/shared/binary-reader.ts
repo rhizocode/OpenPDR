@@ -3,41 +3,49 @@
  *
  * DataView-based replacements for Node.js Buffer read methods.
  * All functions operate on Uint8Array (works in both Node.js and browsers).
+ *
+ * Hot-path callers should create a DataView once via dataViewFor() and pass it
+ * to avoid per-call allocation.
  */
 
+/** Create a DataView covering the same ArrayBuffer region as `buf`. */
+export function dataViewFor(buf: Uint8Array): DataView {
+  return new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
+}
+
 /** Read unsigned 32-bit big-endian integer */
-export function readUint32BE(buf: Uint8Array, offset: number): number {
-  return new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getUint32(offset, false)
+export function readUint32BE(buf: Uint8Array, offset: number, dv?: DataView): number {
+  return (dv ?? new DataView(buf.buffer, buf.byteOffset, buf.byteLength)).getUint32(offset, false)
 }
 
 /** Read signed 32-bit big-endian integer */
-export function readInt32BE(buf: Uint8Array, offset: number): number {
-  return new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getInt32(offset, false)
+export function readInt32BE(buf: Uint8Array, offset: number, dv?: DataView): number {
+  return (dv ?? new DataView(buf.buffer, buf.byteOffset, buf.byteLength)).getInt32(offset, false)
 }
 
 /** Read unsigned 16-bit big-endian integer */
-export function readUint16BE(buf: Uint8Array, offset: number): number {
-  return new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getUint16(offset, false)
+export function readUint16BE(buf: Uint8Array, offset: number, dv?: DataView): number {
+  return (dv ?? new DataView(buf.buffer, buf.byteOffset, buf.byteLength)).getUint16(offset, false)
 }
 
 /** Read signed 16-bit big-endian integer */
-export function readInt16BE(buf: Uint8Array, offset: number): number {
-  return new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getInt16(offset, false)
+export function readInt16BE(buf: Uint8Array, offset: number, dv?: DataView): number {
+  return (dv ?? new DataView(buf.buffer, buf.byteOffset, buf.byteLength)).getInt16(offset, false)
 }
 
 /** Read 32-bit big-endian float */
-export function readFloatBE(buf: Uint8Array, offset: number): number {
-  return new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getFloat32(offset, false)
+export function readFloatBE(buf: Uint8Array, offset: number, dv?: DataView): number {
+  return (dv ?? new DataView(buf.buffer, buf.byteOffset, buf.byteLength)).getFloat32(offset, false)
 }
 
 /** Read 64-bit big-endian double */
-export function readDoubleBE(buf: Uint8Array, offset: number): number {
-  return new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getFloat64(offset, false)
+export function readDoubleBE(buf: Uint8Array, offset: number, dv?: DataView): number {
+  return (dv ?? new DataView(buf.buffer, buf.byteOffset, buf.byteLength)).getFloat64(offset, false)
 }
 
 /** Read unsigned 64-bit big-endian integer as bigint */
-export function readBigUint64BE(buf: Uint8Array, offset: number): bigint {
-  return new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getBigUint64(offset, false)
+export function readBigUint64BE(buf: Uint8Array, offset: number, dv?: DataView): bigint {
+  return (dv ?? new DataView(buf.buffer, buf.byteOffset, buf.byteLength)).getBigUint64(offset, false)
 }
 
 /** Read ASCII string from byte range [start, end) */

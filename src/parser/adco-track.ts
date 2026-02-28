@@ -4,7 +4,7 @@
  */
 
 import { readBoxHeader, findAllBoxes } from './mp4-boxes'
-import { readUint16BE, readAscii, indexOf, readDoubleBE } from '../shared/binary-reader'
+import { readUint16BE, readAscii, indexOf, readDoubleBE, dataViewFor } from '../shared/binary-reader'
 import type { TrackInfo, AdviInfo, AdopProps } from './types'
 
 /**
@@ -12,14 +12,15 @@ import type { TrackInfo, AdviInfo, AdopProps } from './types'
  * The moovBuf is expected to start with the moov box header.
  */
 export function findAdcoTrack(moovBuf: Uint8Array): TrackInfo | null {
-  const moovHdr = readBoxHeader(moovBuf, 0)
+  const dv = dataViewFor(moovBuf)
+  const moovHdr = readBoxHeader(moovBuf, 0, undefined, dv)
   if (!moovHdr) return null
   const moovData = moovHdr.dataStart
   const moovEnd = moovHdr.size
 
   let pos = moovData
   while (pos < moovEnd - 8) {
-    const hdr = readBoxHeader(moovBuf, pos, moovEnd)
+    const hdr = readBoxHeader(moovBuf, pos, moovEnd, dv)
     if (!hdr || hdr.size < 8) break
 
     if (hdr.type === 'trak') {
@@ -29,7 +30,7 @@ export function findAdcoTrack(moovBuf: Uint8Array): TrackInfo | null {
       const trakEnd = trakOffset + trakSize
 
       // Search for hdlr with handler_type "adrv"
-      const hdlrResults = findAllBoxes(moovBuf, 'hdlr', trakData, trakEnd)
+      const hdlrResults = findAllBoxes(moovBuf, 'hdlr', trakData, trakEnd, 0, 8, dv)
       for (const [hOff, hSize, hData] of hdlrResults) {
         if (hData + 12 <= hOff + hSize) {
           // hdlr box: version(4) + predefined(4) + handler_type(4)
@@ -41,7 +42,7 @@ export function findAdcoTrack(moovBuf: Uint8Array): TrackInfo | null {
       }
 
       // Also check for 'adco' codec in stsd
-      const stsdResults = findAllBoxes(moovBuf, 'stsd', trakData, trakEnd)
+      const stsdResults = findAllBoxes(moovBuf, 'stsd', trakData, trakEnd, 0, 8, dv)
       for (const [sOff, sSize, sData] of stsdResults) {
         if (sData + 16 <= sOff + sSize) {
           const entryStart = sData + 8 // skip version + count
@@ -76,9 +77,10 @@ export function parseAdvi(data: Uint8Array): AdviInfo {
   const info: AdviInfo = { formatVersion: 0 }
   if (data.length < 24) return info
 
-  info.formatVersion = readUint16BE(data, 0)
-  info.generation = readUint16BE(data, 4)
-  info.mmpVersion = readUint16BE(data, 6)
+  const dv = dataViewFor(data)
+  info.formatVersion = readUint16BE(data, 0, dv)
+  info.generation = readUint16BE(data, 4, dv)
+  info.mmpVersion = readUint16BE(data, 6, dv)
 
   // Find null-terminated source identifier string after 22 bytes of numeric header
   const strStart = 22
@@ -98,12 +100,13 @@ export function parseAdvi(data: Uint8Array): AdviInfo {
  */
 export function parseAdop(data: Uint8Array): AdopProps {
   const props: AdopProps = {}
+  const dv = dataViewFor(data)
 
   for (let i = 0; i <= data.length - 16; i++) {
     if (i + 16 > data.length) break
-    const val = readDoubleBE(data, i)
+    const val = readDoubleBE(data, i, dv)
     if (Math.abs(val) > 1.0 && Math.abs(val) < 85.0) {
-      const val2 = readDoubleBE(data, i + 8)
+      const val2 = readDoubleBE(data, i + 8, dv)
       if (Math.abs(val2) > 1.0 && Math.abs(val2) < 180.0) {
         props.lat = val
         props.lon = val2
