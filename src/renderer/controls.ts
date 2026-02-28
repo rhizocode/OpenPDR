@@ -96,11 +96,8 @@ export function initControls(): Controls {
       e.preventDefault()
       toggleDebugPanel()
     } else if (e.code === 'KeyC') {
-      // Toggle chart panel visibility
-      const chartPanel = document.getElementById('chart-panel')!
-      const resizeHandle = document.getElementById('resize-handle')!
-      chartPanel.classList.toggle('active')
-      resizeHandle.classList.toggle('active')
+      // Toggle chart panel visibility via button click to keep state in sync
+      document.querySelector<HTMLButtonElement>('.panel-toggle[data-panel="charts"]')?.click()
     }
   })
 
