@@ -19,6 +19,7 @@ export type {
   OverlayPosition,
   OverlayLayout,
   RpmConfig,
+  SessionInfo,
   VideoExportOptions,
   RenderOverlayRequest,
 } from '../shared/types'

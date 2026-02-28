@@ -25,7 +25,7 @@ import { extractEvents } from './event-extractor'
 import { createTelemetryStore, writeRow, trimStore } from '../shared/telemetry-store'
 import type { TelemetryStore } from '../shared/telemetry-store'
 import { detectLaps, detectLapsFromEvents } from './lap-detection'
-import type { ParseResult, TelemetryRow, EmbeddedEvent, GpsRefRange, ProgressCallback } from './types'
+import type { ParseResult, SessionInfo, TelemetryRow, EmbeddedEvent, GpsRefRange, ProgressCallback } from './types'
 
 export type { TelemetryRow, ParseResult, ProgressCallback }
 export type { TelemetryStore }
@@ -84,9 +84,11 @@ export async function parsePdrFile(
   const adopBox = scanForBox(moovBuf, 'adop')
   let refLatRange: GpsRefRange | undefined
   let refLocation: { lat: number; lon: number } | undefined
+  let sessionInfo: SessionInfo | undefined
 
   if (adopBox) {
-    const props = parseAdop(moovBuf.subarray(adopBox[2], adopBox[0] + adopBox[1]))
+    const adopData = moovBuf.subarray(adopBox[2], adopBox[0] + adopBox[1])
+    const props = parseAdop(adopData)
     if (props.lat !== undefined && props.lon !== undefined) {
       refLocation = { lat: props.lat, lon: props.lon }
       refLatRange = {
@@ -95,6 +97,22 @@ export async function parsePdrFile(
         lonMin: props.lon - 1.0,
         lonMax: props.lon + 1.0,
       }
+    }
+    // Build session info from decoded adop properties + advi fields
+    const p = props.properties
+    sessionInfo = {
+      vehicle: p.get('vehicle.make'),
+      model: p.get('vehicle.model') ?? p.get('carname'),
+      engine: p.get('vehicle.enginetype'),
+      year: p.get('vehicle.modelyear'),
+      timestamp: p.get('timestamp'),
+      generation: adviInfo?.generation,
+      mmpVersion: adviInfo?.mmpVersion,
+    }
+  } else if (adviInfo) {
+    sessionInfo = {
+      generation: adviInfo.generation,
+      mmpVersion: adviInfo.mmpVersion,
     }
   }
 
@@ -195,6 +213,7 @@ export async function parsePdrFile(
       sampleCount: sampleTable.sampleCount,
       duration,
       adviInfo,
+      sessionInfo,
       refLocation,
       maxSpeed_kph: maxSpeed,
       maxRpm: maxRpm,

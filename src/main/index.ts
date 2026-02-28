@@ -293,6 +293,7 @@ ipcMain.handle('export-video' satisfies Channel, async (_event, scope: ExportSco
       options.overlayLayout,
       options.rpmConfig,
       lastParseResult.metadata.lapData?.trackLayout ?? null,
+      lastParseResult.metadata.sessionInfo,
       (phase, pct) => mainWindow?.webContents.send('export-video-progress' satisfies Channel, phase, pct),
       mainWindow,
     )

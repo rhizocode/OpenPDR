@@ -10,7 +10,7 @@
  */
 
 import type { TelemetryRow, OverlayConfig, OverlayKey } from './types'
-import { onRowUpdate, onFrameTick, currentRow, interpPrev, interpNext, interpAlpha } from './state'
+import { onRowUpdate, onTelemetryLoad, onFrameTick, currentRow, interpPrev, interpNext, interpAlpha, sessionInfo } from './state'
 import { initGForceBall, drawGForce } from './gforce-ball'
 import { initRpmGauge, drawRpmGauge } from './rpm-gauge'
 import { initSteeringIndicator, drawSteering } from './steering'
@@ -19,7 +19,7 @@ const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
 
 const DEFAULT_OVERLAY: OverlayConfig = {
   speed: true, rpmGauge: true, gear: true, gforce: true,
-  pedals: true, steering: true, gps: true, trackMap: true,
+  pedals: true, steering: true, gps: true, trackMap: true, session: true,
 }
 
 // ── DOM refs ──
@@ -31,6 +31,7 @@ const videoContainer = document.getElementById('video-container') as HTMLDivElem
 const gpsLat = document.getElementById('hud-gps-lat') as HTMLSpanElement
 const gpsLon = document.getElementById('hud-gps-lon') as HTMLSpanElement
 const gpsAlt = document.getElementById('hud-gps-alt') as HTMLSpanElement
+const sessionContent = document.getElementById('hud-session-content') as HTMLDivElement
 
 // ── Overlay config (cached for skipping disabled canvas draws) ──
 let overlayConfig: OverlayConfig = loadOverlayConfig()
@@ -229,6 +230,44 @@ export function showHud(): void {
   if (hudActive) smoothAndDraw()
 }
 
+// ── Session overlay (static — set once on file load) ──
+function populateSessionOverlay(): void {
+  sessionContent.innerHTML = ''
+  const info = sessionInfo
+  if (!info) return
+
+  // Format timestamp for display: "2026-01-13T13:03:28+00:00" → "Jan 13, 2026 1:03 PM"
+  let dateStr: string | undefined
+  if (info.timestamp) {
+    try {
+      const d = new Date(info.timestamp)
+      dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+        + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    } catch { dateStr = info.timestamp }
+  }
+
+  const fields: Array<[string, string | undefined]> = [
+    ['Vehicle', info.vehicle],
+    ['Engine', info.engine],
+    ['Year', info.year],
+    ['Date', dateStr],
+  ]
+
+  for (const [label, value] of fields) {
+    if (!value) continue
+    const row = document.createElement('div')
+    const lbl = document.createElement('span')
+    lbl.className = 'session-label'
+    lbl.textContent = label + ' '
+    const val = document.createElement('span')
+    val.className = 'session-value'
+    val.textContent = value
+    row.appendChild(lbl)
+    row.appendChild(val)
+    sessionContent.appendChild(row)
+  }
+}
+
 // ── Initialize ──
 export function initHud(): void {
   initGForceBall()
@@ -240,4 +279,7 @@ export function initHud(): void {
 
   // Every frame: smooth-lerp canvas indicators toward targets
   onFrameTick(() => smoothAndDraw())
+
+  // Session info: populate once when telemetry is loaded
+  onTelemetryLoad(() => populateSessionOverlay())
 }

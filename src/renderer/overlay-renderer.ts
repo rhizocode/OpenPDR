@@ -12,7 +12,7 @@
 
 import type {
   TelemetryRow, OverlayConfig, OverlayLayout, OverlayPosition,
-  RpmConfig, TrackLayout, RenderOverlayRequest,
+  RpmConfig, TrackLayout, RenderOverlayRequest, SessionInfo,
 } from './types'
 import { telemetryStore } from './state'
 import { getRowInto, createEmptyRow } from '../shared/telemetry-store'
@@ -520,6 +520,66 @@ function drawTrackMapOverlay(
   ctx.restore()
 }
 
+function drawSessionOverlay(
+  ctx: CanvasRenderingContext2D,
+  info: SessionInfo,
+  x: number, y: number, scale: number,
+): void {
+  const fields: Array<[string, string]> = []
+  if (info.vehicle) fields.push(['Vehicle', info.vehicle])
+  if (info.engine) fields.push(['Engine', info.engine])
+  if (info.year) fields.push(['Year', info.year])
+  if (fields.length === 0) return
+
+  ctx.save()
+  ctx.translate(x, y)
+  if (scale !== 1) ctx.scale(scale, scale)
+
+  const lineH = 14
+  const padX = 10, padY = 6
+  const labelFont = 'bold 9px Consolas, monospace'
+  const valueFont = '11px Consolas, monospace'
+
+  // Measure max width
+  ctx.font = valueFont
+  let maxW = 0
+  for (const [label, value] of fields) {
+    ctx.font = labelFont
+    const lw = ctx.measureText(label + ' ').width
+    ctx.font = valueFont
+    const vw = ctx.measureText(value).width
+    if (lw + vw > maxW) maxW = lw + vw
+  }
+
+  const boxW = maxW + padX * 2
+  const boxH = fields.length * lineH + padY * 2
+
+  // Background
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'
+  ctx.beginPath()
+  ctx.roundRect(0, 0, boxW, boxH, 4)
+  ctx.fill()
+
+  // Text
+  setShadow(ctx, 4, 'rgba(0,0,0,0.8)')
+  let ty = padY + 10
+  for (const [label, value] of fields) {
+    ctx.font = labelFont
+    ctx.fillStyle = '#fff'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
+    const lw = ctx.measureText(label + ' ').width
+    ctx.fillText(label + ' ', padX, ty)
+    ctx.font = valueFont
+    ctx.fillStyle = '#ccc'
+    ctx.fillText(value, padX + lw, ty)
+    ty += lineH
+  }
+  clearShadow(ctx)
+
+  ctx.restore()
+}
+
 // ── Composite frame renderer ──
 
 /** Track map canvas size — must match the CSS dimensions of #hud-trackMap (200×160)
@@ -538,6 +598,7 @@ function renderOverlayFrame(
   rpmConfig: RpmConfig,
   trackLayout: TrackLayout | null,
   gearDisplay: string,
+  sessionInfo?: SessionInfo,
 ): void {
   ctx.clearRect(0, 0, width, height)
 
@@ -588,6 +649,11 @@ function renderOverlayFrame(
     const mapSize = getTrackMapSize()
     drawTrackMapOverlay(ctx, row, p.x, p.y, mapSize.w, mapSize.h, p.s, trackLayout)
   }
+
+  if (config.session && sessionInfo) {
+    const p = px(layout.session)
+    drawSessionOverlay(ctx, sessionInfo, p.x, p.y, p.s)
+  }
 }
 
 // ── Interpolation helpers ──
@@ -620,7 +686,7 @@ async function handleRenderRequest(request: RenderOverlayRequest): Promise<void>
 
   const {
     startIdx, endIdx, width, height,
-    overlayConfig, overlayLayout, rpmConfig, trackLayout,
+    overlayConfig, overlayLayout, rpmConfig, trackLayout, sessionInfo,
   } = request
 
   const store = telemetryStore
@@ -694,7 +760,7 @@ async function handleRenderRequest(request: RenderOverlayRequest): Promise<void>
       renderOverlayFrame(
         ctx, row, width, height,
         overlayLayout, overlayConfig, rpmConfig, trackLayout,
-        lastKnownGear,
+        lastKnownGear, sessionInfo,
       )
 
       // Extract raw RGBA pixels (instant — no PNG compression)

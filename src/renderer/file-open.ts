@@ -2,7 +2,7 @@
  * OpenPDR Viewer — File open, drag-and-drop, parse flow
  */
 
-import { video, setTelemetry, setCurrentRow, setLapData, dbg, getEditMode } from './state'
+import { video, setTelemetry, setCurrentRow, setLapData, setSessionInfo, dbg, getEditMode } from './state'
 import { getRow, createTelemetryStore } from '../shared/telemetry-store'
 import { showHud, resetCarryForward } from './hud'
 import { showChartPanel } from './resizer'
@@ -66,7 +66,17 @@ async function openFile(filePath?: string): Promise<void> {
     dbg(`Parsed ${store.length} rows, duration ${meta.duration.toFixed(1)}s`)
     if (meta.maxSpeed_kph) dbg(`Max speed: ${meta.maxSpeed_kph.toFixed(1)} kph`)
     if (meta.maxRpm) dbg(`Max RPM: ${meta.maxRpm.toFixed(0)}`)
+    if (meta.sessionInfo) {
+      const si = meta.sessionInfo
+      if (si.vehicle) dbg(`Vehicle: ${si.vehicle}`)
+      if (si.engine) dbg(`Engine: ${si.engine}`)
+      if (si.year) dbg(`Year: ${si.year}`)
+      if (si.timestamp) dbg(`Recorded: ${si.timestamp}`)
+      if (si.generation !== undefined) dbg(`Generation: ${si.generation}`)
+      if (si.mmpVersion !== undefined) dbg(`MMP firmware: v${si.mmpVersion}`)
+    }
     setLapData(meta.lapData ?? null)
+    setSessionInfo(meta.sessionInfo ?? null)
     setTelemetry(store, meta.duration)
     // Seed HUD with first row so indicators aren't blank on load
     if (store.length > 0) setCurrentRow(getRow(store, 0))
