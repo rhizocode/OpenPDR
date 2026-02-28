@@ -77,6 +77,59 @@ export function findGpsInPacket(packet: Buffer, refRange?: GpsRefRange): number[
 }
 
 /**
+ * Verify previously-discovered GPS offsets in a new packet.
+ * Returns the offsets if they still contain valid GPS data, or null if stale.
+ */
+export function verifyGpsOffsets(
+  packet: Buffer,
+  knownOffsets: number[],
+  refRange?: GpsRefRange
+): number[] | null {
+  if (knownOffsets.length === 0) return null
+  for (const off of knownOffsets) {
+    if (off + 12 > packet.length) return null
+    const latDeg = packet.readInt32BE(off) * DEG_SCALE
+    const lonDeg = packet.readInt32BE(off + 4) * DEG_SCALE
+    const altM = packet.readUInt32BE(off + 8) * ALT_SCALE
+    if (refRange) {
+      if (
+        latDeg < refRange.latMin || latDeg > refRange.latMax ||
+        lonDeg < refRange.lonMin || lonDeg > refRange.lonMax ||
+        altM <= 0 || altM >= 10000
+      ) return null
+    } else {
+      if (
+        Math.abs(latDeg) <= 10.0 || Math.abs(latDeg) >= 80.0 ||
+        Math.abs(lonDeg) <= 10.0 || Math.abs(lonDeg) >= 180.0 ||
+        altM <= 0 || altM >= 10000
+      ) return null
+    }
+  }
+  return knownOffsets
+}
+
+/**
+ * Verify previously-discovered float block offsets in a new packet.
+ * Returns the offsets if they still contain valid float data, or null if stale.
+ */
+export function verifyFloatOffsets(
+  packet: Buffer,
+  knownOffsets: number[]
+): number[] | null {
+  if (knownOffsets.length === 0) return null
+  for (const start of knownOffsets) {
+    if (start + 24 > packet.length) return null
+    for (let j = 0; j < 6; j++) {
+      const fval = packet.readFloatBE(start + j * 4)
+      if (Math.abs(fval) > 5.0 || (Math.abs(fval) < 1e-10 && fval !== 0.0)) {
+        return null
+      }
+    }
+  }
+  return knownOffsets
+}
+
+/**
  * Find all 50Hz float blocks (6 x float32 accelerometer data) in a packet.
  * Each block is 24 bytes: 3 device-frame + 3 vehicle-frame acceleration values.
  * Blocks must be at least 20 bytes apart (50 Hz spacing).

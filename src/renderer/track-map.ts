@@ -14,6 +14,11 @@ let canvas: HTMLCanvasElement
 let ctx: CanvasRenderingContext2D
 let cachedLayout: TrackLayout | null = null
 
+// Offscreen cache for the static track polyline + S/F marker.
+// Rebuilt only on telemetry load or canvas resize; per-frame work is just blit + dot.
+let trackCache: HTMLCanvasElement | null = null
+let trackCacheCtx: CanvasRenderingContext2D | null = null
+
 // ── Projection ────────────────────────────────────────────────────────────────
 
 interface Proj {
@@ -124,45 +129,61 @@ function drawEmpty(): void {
   ctx.textBaseline = 'alphabetic'
 }
 
-function drawTrack(): void {
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
+/** Render the static track polyline + S/F marker to the offscreen cache. */
+function renderTrackCache(): void {
+  if (!cachedLayout || !proj) return
 
-  if (!cachedLayout || !proj) { drawEmpty(); return }
+  // Create or resize offscreen cache to match the visible canvas
+  if (!trackCache) {
+    trackCache = document.createElement('canvas')
+    trackCacheCtx = trackCache.getContext('2d')!
+  }
+  trackCache.width = canvas.width
+  trackCache.height = canvas.height
+  const c = trackCacheCtx!
 
   const { points, startFinishLat, startFinishLon } = cachedLayout
 
   // Track polyline
-  ctx.beginPath()
-  ctx.strokeStyle = 'rgba(255,255,255,0.6)'
-  ctx.lineWidth = 5
-  ctx.lineJoin = 'round'
-  ctx.lineCap = 'round'
+  c.beginPath()
+  c.strokeStyle = 'rgba(255,255,255,0.6)'
+  c.lineWidth = 5
+  c.lineJoin = 'round'
+  c.lineCap = 'round'
   let first = true
   for (const pt of points) {
     const px = gpsToCanvas(pt.lat, pt.lon)
     if (!px) continue
-    if (first) { ctx.moveTo(px.x, px.y); first = false }
-    else { ctx.lineTo(px.x, px.y) }
+    if (first) { c.moveTo(px.x, px.y); first = false }
+    else { c.lineTo(px.x, px.y) }
   }
-  ctx.stroke()
+  c.stroke()
 
   // Start/finish marker — perpendicular to track direction
   const sfPx = gpsToCanvas(startFinishLat, startFinishLon)
   if (sfPx) {
     const perpAngle = computePerpendicularAngle(points, startFinishLat, startFinishLon)
     const halfLen = 10
-    ctx.save()
-    ctx.strokeStyle = '#fff'
-    ctx.lineWidth = 2.5
-    ctx.setLineDash([4, 4])
-    ctx.beginPath()
-    ctx.moveTo(sfPx.x + Math.cos(perpAngle) * halfLen,
-               sfPx.y + Math.sin(perpAngle) * halfLen)
-    ctx.lineTo(sfPx.x - Math.cos(perpAngle) * halfLen,
-               sfPx.y - Math.sin(perpAngle) * halfLen)
-    ctx.stroke()
-    ctx.setLineDash([])
-    ctx.restore()
+    c.save()
+    c.strokeStyle = '#fff'
+    c.lineWidth = 2.5
+    c.setLineDash([4, 4])
+    c.beginPath()
+    c.moveTo(sfPx.x + Math.cos(perpAngle) * halfLen,
+             sfPx.y + Math.sin(perpAngle) * halfLen)
+    c.lineTo(sfPx.x - Math.cos(perpAngle) * halfLen,
+             sfPx.y - Math.sin(perpAngle) * halfLen)
+    c.stroke()
+    c.setLineDash([])
+    c.restore()
+  }
+}
+
+/** Blit the cached track background to the visible canvas. */
+function blitTrack(): void {
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  if (trackCache && trackCache.width > 0 && trackCache.height > 0) {
+    ctx.drawImage(trackCache, 0, 0)
   }
 }
 
@@ -222,7 +243,9 @@ export function initTrackMap(el: HTMLCanvasElement): void {
       cachedLayout = ld.trackLayout
       resizeCanvas()
       buildProjection(cachedLayout)
-      drawTrack()
+      renderTrackCache()
+      blitTrack()
+      drawPositionDot()
     } else {
       cachedLayout = null
       proj = null
@@ -233,18 +256,22 @@ export function initTrackMap(el: HTMLCanvasElement): void {
   onFrameTick(() => {
     const resized = resizeCanvas()
     if (cachedLayout && proj) {
-      if (resized) drawTrack()
-      else {
-        // Redraw track then overlay dot (cheap — canvas is small)
-        drawTrack()
-        drawPositionDot()
-      }
+      if (resized) renderTrackCache()
+      // Per frame: blit cached track + draw only the moving dot
+      blitTrack()
+      drawPositionDot()
     }
   })
 
   new ResizeObserver(() => {
     resizeCanvas()
-    if (cachedLayout) { buildProjection(cachedLayout); drawTrack() }
-    else drawEmpty()
+    if (cachedLayout) {
+      buildProjection(cachedLayout)
+      renderTrackCache()
+      blitTrack()
+      drawPositionDot()
+    } else {
+      drawEmpty()
+    }
   }).observe(canvas)
 }
