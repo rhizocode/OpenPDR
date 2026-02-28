@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol } from 'electron'
 import { join } from 'path'
-import { createReadStream, statSync } from 'fs'
+import { createReadStream } from 'fs'
+import { stat } from 'fs/promises'
 import { parsePdrFile } from './parser'
 import type { ParseResult } from './parser'
 
@@ -46,7 +47,7 @@ protocol.registerSchemesAsPrivileged([
 app.whenReady().then(() => {
   // Handle serving local files via pdr-file:// protocol
   // Manually handle Range requests so HTML5 video seeking works
-  protocol.handle('pdr-file', (request) => {
+  protocol.handle('pdr-file', async (request) => {
     const url = new URL(request.url)
     const filePath = decodeURIComponent(url.pathname).replace(/^\//, '')
 
@@ -56,7 +57,8 @@ app.whenReady().then(() => {
 
     const rangeHeader = request.headers.get('Range')
 
-    const fileSize = statSync(filePath).size
+    const fileInfo = await stat(filePath)
+    const fileSize = fileInfo.size
     const mimeType = filePath.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'application/octet-stream'
 
     if (rangeHeader) {
