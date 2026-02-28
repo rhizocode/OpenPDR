@@ -76,7 +76,7 @@ app.whenReady().then(() => {
           const stream = createReadStream(filePath, { start, end })
           const readable = new ReadableStream({
             start(controller) {
-              stream.on('data', (chunk: Buffer) => controller.enqueue(chunk))
+              stream.on('data', (chunk: Buffer | string) => controller.enqueue(typeof chunk === 'string' ? Buffer.from(chunk) : chunk))
               stream.on('end', () => controller.close())
               stream.on('error', (err) => controller.error(err))
             },
@@ -99,7 +99,7 @@ app.whenReady().then(() => {
       const stream = createReadStream(filePath)
       const readable = new ReadableStream({
         start(controller) {
-          stream.on('data', (chunk: Buffer) => controller.enqueue(chunk))
+          stream.on('data', (chunk: Buffer | string) => controller.enqueue(typeof chunk === 'string' ? Buffer.from(chunk) : chunk))
           stream.on('end', () => controller.close())
           stream.on('error', (err) => controller.error(err))
         },
