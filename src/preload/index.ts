@@ -53,6 +53,10 @@ contextBridge.exposeInMainWorld('pdr', {
     ipcRenderer.send('overlay-frames-done' satisfies Channel)
   },
 
+  cancelVideoExport: (): void => {
+    ipcRenderer.send('export-video-cancel' satisfies Channel)
+  },
+
   onExportVideoProgress: (callback: (phase: string, pct: number) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, phase: string, pct: number) => callback(phase, pct)
     ipcRenderer.on('export-video-progress' satisfies Channel, handler)

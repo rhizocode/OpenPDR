@@ -59,18 +59,98 @@ function getVideoExportOptions(): VideoExportOptions {
   return { overlayConfig, overlayLayout, rpmConfig }
 }
 
-// ── Progress UI ──
+// ── Export Progress UI ──
 
-const progressOverlay = document.getElementById('parse-progress') as HTMLDivElement
+const EXPORT_PHASES = ['Analyze video', 'Rendering overlays', 'Encoding video'] as const
 
-function showProgress(phase: string, pct: number): void {
-  progressOverlay.textContent = `${phase}... ${pct}%`
-  progressOverlay.style.display = 'flex'
+let exportProgressEl: HTMLDivElement | null = null
+let phaseStartTime = 0
+let currentPhase = ''
+let smoothedEta = 0
+
+function formatEta(seconds: number): string {
+  if (seconds < 60) return `~${Math.ceil(seconds)}s remaining`
+  const m = Math.floor(seconds / 60)
+  const s = Math.ceil(seconds % 60)
+  return `~${m}:${s.toString().padStart(2, '0')} remaining`
 }
 
-function hideProgress(): void {
-  progressOverlay.style.display = ''
-  progressOverlay.textContent = ''
+function ensureExportProgressEl(): HTMLDivElement {
+  if (exportProgressEl) return exportProgressEl
+
+  const el = document.createElement('div')
+  el.id = 'export-progress'
+  el.innerHTML =
+    '<div class="ep-title">Exporting Video</div>' +
+    '<div class="ep-steps"></div>' +
+    '<div class="ep-bar"><div class="ep-bar-fill"></div></div>' +
+    '<div class="ep-info"><span class="ep-pct"></span><span class="ep-eta"></span></div>' +
+    '<button class="ep-cancel">Cancel</button>'
+
+  document.getElementById('video-container')!.appendChild(el)
+
+  el.querySelector('.ep-cancel')!.addEventListener('click', () => {
+    window.pdr.cancelVideoExport()
+    hideExportProgress()
+  })
+
+  exportProgressEl = el
+  return el
+}
+
+function showExportProgress(): void {
+  const el = ensureExportProgressEl()
+  currentPhase = ''
+  phaseStartTime = 0
+  el.style.display = 'flex'
+  updateExportSteps('', 0)
+}
+
+function hideExportProgress(): void {
+  if (exportProgressEl) exportProgressEl.style.display = ''
+}
+
+function updateExportSteps(phase: string, pct: number): void {
+  const el = ensureExportProgressEl()
+  const phaseIdx = EXPORT_PHASES.indexOf(phase as typeof EXPORT_PHASES[number])
+
+  // Steps
+  const stepsHtml = EXPORT_PHASES.map((p, i) => {
+    let icon: string, cls: string
+    if (i < phaseIdx) { icon = '\u2713'; cls = 'done' }
+    else if (i === phaseIdx) { icon = '\u25B8'; cls = 'active' }
+    else { icon = '\u25CB'; cls = 'pending' }
+    return `<div class="ep-step ${cls}"><span class="ep-step-icon">${icon}</span> ${p}</div>`
+  }).join('')
+  el.querySelector('.ep-steps')!.innerHTML = stepsHtml
+
+  // Progress bar
+  const fill = el.querySelector('.ep-bar-fill') as HTMLDivElement
+  fill.style.width = `${pct}%`
+
+  // Percentage
+  el.querySelector('.ep-pct')!.textContent = `${pct}%`
+
+  // ETA — smoothed with exponential moving average to avoid jumpiness
+  const elapsed = (performance.now() - phaseStartTime) / 1000
+  let etaText = ''
+  if (pct > 2 && elapsed > 0.5) {
+    const rawEta = (100 - pct) / (pct / elapsed)
+    smoothedEta = smoothedEta > 0 ? smoothedEta * 0.8 + rawEta * 0.2 : rawEta
+    etaText = formatEta(smoothedEta)
+  }
+  el.querySelector('.ep-eta')!.textContent = etaText
+}
+
+function onExportProgress(phase: string, pct: number): void {
+  if (phase === 'Complete') { hideExportProgress(); return }
+
+  if (phase !== currentPhase) {
+    currentPhase = phase
+    phaseStartTime = performance.now()
+    smoothedEta = 0
+  }
+  updateExportSteps(phase, pct)
 }
 
 export function initExportMenu(): void {
@@ -101,13 +181,7 @@ export function initExportMenu(): void {
   })
 
   // Listen for video export progress from main process
-  window.pdr.onExportVideoProgress((phase, pct) => {
-    if (phase === 'Complete') {
-      hideProgress()
-    } else {
-      showProgress(phase, pct)
-    }
-  })
+  window.pdr.onExportVideoProgress(onExportProgress)
 }
 
 function buildPanel(panel: HTMLDivElement): void {
@@ -169,12 +243,12 @@ async function doExport(format: 'csv' | 'gpx' | 'video', scope: ExportScope): Pr
       await window.pdr.exportGpx(scope)
     } else {
       const options = getVideoExportOptions()
-      showProgress('Starting export', 0)
+      showExportProgress()
       const success = await window.pdr.exportVideo(scope, options)
-      if (!success) hideProgress()
+      if (!success) hideExportProgress()
     }
   } catch (err) {
-    hideProgress()
+    hideExportProgress()
     console.error(`Export ${format} failed:`, err)
   }
 }
