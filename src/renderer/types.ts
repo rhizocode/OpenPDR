@@ -23,6 +23,7 @@ export interface LapData {
   laps: LapInfo[]
   trackLayout: TrackLayout | null
   hasLapData: boolean
+  detectionMethod?: 'events' | 'gps-density'
 }
 
 export interface ParseResult {
