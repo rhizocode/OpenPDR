@@ -13,6 +13,7 @@
       <button id="btn-open" title="Open PDR file">Open File</button>
       <span id="file-name">No file loaded</span>
       <div id="toolbar-spacer"></div>
+      <button id="btn-export" title="Export data" disabled>Export</button>
       <span id="fps-counter" title="Render FPS"></span>
       <button id="btn-edit" title="Edit overlay layout">&#9998;</button>
       <button id="btn-settings" title="Overlay settings">&#9881;</button>
@@ -24,13 +25,17 @@
     <!-- Settings dropdown (hidden by default) -->
     <div id="overlay-settings-panel"></div>
 
+    <!-- Export dropdown (hidden by default) -->
+    <div id="export-panel"></div>
+
     <!-- Main content: video + chart panel with resize handle -->
     <div id="main-content">
       <!-- Video + overlay container -->
       <div id="video-container">
         <video id="video" preload="auto"></video>
 
-        <!-- HUD overlays (independently positioned) -->
+        <!-- HUD overlays — positioned inside anchor that matches video bounds -->
+        <div id="video-overlay-anchor">
         <div class="hud-element" id="hud-speed" data-overlay="speed">
           <span id="hud-speed-value">--</span>
           <span id="hud-speed-unit">mph</span>
@@ -69,6 +74,7 @@
         <div class="hud-element" id="hud-trackMap" data-overlay="trackMap">
           <canvas id="track-canvas"></canvas>
         </div>
+        </div><!-- /video-overlay-anchor -->
 
         <!-- No-file prompt -->
         <div id="no-file-prompt">

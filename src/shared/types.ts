@@ -138,6 +138,67 @@ export interface ParseResult {
 /** Progress callback for reporting parse progress */
 export type ProgressCallback = (phase: string, pct: number) => void
 
+/** Export scope — full recording or a specific lap */
+export interface ExportScope {
+  type: 'full' | 'lap'
+  lapNumber?: number  // 1-based, only when type === 'lap'
+}
+
+// ── Overlay types (shared for video export) ─────────────────────────────────
+
+/** Overlay visibility configuration */
+export interface OverlayConfig {
+  speed: boolean
+  rpmGauge: boolean
+  gear: boolean
+  gforce: boolean
+  pedals: boolean
+  steering: boolean
+  gps: boolean
+  trackMap: boolean
+}
+
+/** Overlay key — matches keys of OverlayConfig */
+export type OverlayKey = keyof OverlayConfig
+
+/** Position + scale for a single overlay element (% of video-container) */
+export interface OverlayPosition {
+  left: number
+  top: number
+  scale: number
+}
+
+/** Stored layout for all overlay elements */
+export type OverlayLayout = Record<OverlayKey, OverlayPosition>
+
+/** RPM gauge zone configuration */
+export interface RpmConfig {
+  yellowStart: number
+  redline: number
+  maxRpm: number
+}
+
+/** Options passed from renderer to main for video export */
+export interface VideoExportOptions {
+  overlayConfig: OverlayConfig
+  overlayLayout: OverlayLayout
+  rpmConfig: RpmConfig
+}
+
+/** Parameters sent from main to renderer to request overlay frame rendering */
+export interface RenderOverlayRequest {
+  startIdx: number
+  endIdx: number
+  width: number
+  height: number
+  fps: number
+  totalFrames: number
+  overlayConfig: OverlayConfig
+  overlayLayout: OverlayLayout
+  rpmConfig: RpmConfig
+  trackLayout: TrackLayout | null
+}
+
 // ── Typed IPC channel map (3.3) ──────────────────────────────────────────────
 
 /** Type-safe mapping of IPC channel names to their argument and return types. */
@@ -146,4 +207,12 @@ export interface IpcChannels {
   'parse-pdr-file': { args: [string]; return: ParseResult }
   'parse-progress': { args: [string, number]; return: void }
   'set-allowed-video-path': { args: [string]; return: void }
+  'export-csv': { args: [ExportScope]; return: boolean }
+  'export-gpx': { args: [ExportScope]; return: boolean }
+  'export-video': { args: [ExportScope, VideoExportOptions]; return: boolean }
+  'render-overlay-frames': { args: [RenderOverlayRequest]; return: void }
+  'overlay-frame-data': { args: [number, Uint8Array]; return: void }
+  'overlay-frames-done': { args: []; return: void }
+  'export-video-progress': { args: [string, number]; return: void }
+  'export-video-cancel': { args: []; return: void }
 }

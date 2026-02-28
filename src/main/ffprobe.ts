@@ -1,0 +1,64 @@
+/**
+ * OpenPDR — Video metadata probe via ffmpeg
+ *
+ * Uses `ffmpeg -i` to extract video resolution, frame rate, and duration.
+ * ffmpeg-static does not bundle ffprobe, so we parse ffmpeg's stderr output.
+ */
+
+import { execFile } from 'child_process'
+import { createRequire } from 'module'
+
+// Resolve ffmpeg binary at runtime so the bundler doesn't inline
+// ffmpeg-static's __dirname-based path resolution (which breaks after bundling).
+const _require = createRequire(import.meta.url)
+const ffmpegPath: string | null = _require('ffmpeg-static')
+
+export interface VideoMeta {
+  width: number
+  height: number
+  fps: number
+  duration: number
+}
+
+/**
+ * Probe a video file for metadata using ffmpeg -i.
+ * Parses the "Stream #0:0" video line and "Duration:" line from stderr.
+ */
+export function probeVideo(filePath: string): Promise<VideoMeta> {
+  return new Promise((resolve, reject) => {
+    if (!ffmpegPath) {
+      reject(new Error('ffmpeg-static binary not found'))
+      return
+    }
+
+    // ffmpeg -i exits with code 1 when no output is specified, but still prints info
+    execFile(ffmpegPath, ['-i', filePath], { timeout: 15000 }, (error, _stdout, stderr) => {
+      // ffmpeg always "errors" with -i and no output — that's expected
+      const output = stderr || ''
+
+      // Parse duration: "Duration: HH:MM:SS.ss"
+      const durMatch = output.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/)
+      let duration = 0
+      if (durMatch) {
+        duration = parseInt(durMatch[1]) * 3600 + parseInt(durMatch[2]) * 60 + parseFloat(durMatch[3])
+      }
+
+      // Parse video stream: "Stream #0:0... Video: ... WxH ... fps"
+      // Example: "Stream #0:0(und): Video: h264 (avc1 / ...), yuv420p, 1920x1080, 5985 kb/s, 29.97 fps"
+      const streamMatch = output.match(/Stream\s+#\d+:\d+.*Video:.*?(\d{2,5})x(\d{2,5})/)
+      if (!streamMatch) {
+        reject(new Error(`Could not parse video dimensions from ffmpeg output:\n${output.slice(0, 500)}`))
+        return
+      }
+
+      const width = parseInt(streamMatch[1])
+      const height = parseInt(streamMatch[2])
+
+      // Parse fps: look for "NN.NN fps" or "NN fps"
+      const fpsMatch = output.match(/(\d+(?:\.\d+)?)\s+fps/)
+      const fps = fpsMatch ? parseFloat(fpsMatch[1]) : 30
+
+      resolve({ width, height, fps, duration })
+    })
+  })
+}

@@ -39,7 +39,8 @@ const DEFAULT_LAYOUT: OverlayLayout = {
 }
 
 let layout: OverlayLayout
-const container = document.getElementById('video-container') as HTMLDivElement
+const container = document.getElementById('video-overlay-anchor') as HTMLDivElement
+const videoContainer = document.getElementById('video-container') as HTMLDivElement
 const hudElements = new Map<OverlayKey, HTMLElement>()
 
 // ── Layout persistence ──
@@ -216,6 +217,9 @@ function enterEditMode(): void {
     }
   }
 
+  // Show centre guide lines
+  container.classList.add('edit-guides')
+
   // Attach global move/up listeners
   document.addEventListener('pointermove', onPointerMove)
   document.addEventListener('pointerup', onPointerUp)
@@ -228,6 +232,8 @@ function exitEditMode(): void {
     el.classList.remove('edit-mode')
     el.classList.remove('dragging')
   }
+
+  container.classList.remove('edit-guides')
 
   document.removeEventListener('pointermove', onPointerMove)
   document.removeEventListener('pointerup', onPointerUp)
@@ -324,14 +330,9 @@ export function initEditMode(): void {
     }
   }
 
-  // Load and apply saved layout (don't clamp yet — elements are hidden)
+  // Load and apply saved layout
   layout = loadLayout()
   applyAllPositions()
-
-  // Re-clamp when the window resizes (elements are visible by then)
-  window.addEventListener('resize', () => {
-    clampAllToViewport()
-  })
 
   // Build panel
   buildPanel(panel)
