@@ -3,26 +3,27 @@
  * Ported from alivedrive_parser.py (read_box_header, find_box, etc.)
  */
 
-import type { FileHandle } from 'fs/promises'
+import type { PdrFileSource } from '../shared/file-source'
+import { readUint32BE, readBigUint64BE, readAscii, indexOf, asciiBytes } from '../shared/binary-reader'
 import type { BoxHeader, BoxResult } from './types'
 
 const CONTAINER_TYPES = new Set([
   'moov', 'trak', 'mdia', 'minf', 'stbl', 'dinf', 'edts', 'udta'
 ])
 
-/** Read an MP4 box header from a Buffer at the given offset. */
-export function readBoxHeader(buf: Buffer, offset: number, end?: number): BoxHeader | null {
+/** Read an MP4 box header from a Uint8Array at the given offset. */
+export function readBoxHeader(buf: Uint8Array, offset: number, end?: number): BoxHeader | null {
   const limit = end ?? buf.length
   if (offset + 8 > limit) return null
 
-  let size = buf.readUInt32BE(offset)
-  const type = buf.toString('ascii', offset + 4, offset + 8)
+  let size = readUint32BE(buf, offset)
+  const type = readAscii(buf, offset + 4, offset + 8)
   let headerSize = 8
 
   if (size === 1) {
     // 64-bit extended size
     if (offset + 16 > limit) return null
-    size = Number(buf.readBigUInt64BE(offset + 8))
+    size = Number(readBigUint64BE(buf, offset + 8))
     headerSize = 16
   } else if (size === 0) {
     // Box extends to end of container
@@ -33,7 +34,7 @@ export function readBoxHeader(buf: Buffer, offset: number, end?: number): BoxHea
 }
 
 /** Find a box by type within [offset, end) in a buffer. */
-export function findBox(buf: Buffer, boxType: string, offset = 0, end?: number): BoxResult | null {
+export function findBox(buf: Uint8Array, boxType: string, offset = 0, end?: number): BoxResult | null {
   const limit = end ?? buf.length
   while (offset < limit - 8) {
     const hdr = readBoxHeader(buf, offset, limit)
@@ -47,7 +48,7 @@ export function findBox(buf: Buffer, boxType: string, offset = 0, end?: number):
 }
 
 /** Find a nested box by slash-separated path like 'moov/trak/mdia'. */
-export function findBoxPath(buf: Buffer, path: string): BoxResult | null {
+export function findBoxPath(buf: Uint8Array, path: string): BoxResult | null {
   const parts = path.split('/')
   let offset = 0
   let end = buf.length
@@ -67,13 +68,13 @@ export function findBoxPath(buf: Buffer, path: string): BoxResult | null {
 }
 
 /** Brute-force scan for a box by its 4-byte type tag anywhere in the buffer. */
-export function scanForBox(buf: Buffer, boxType: string, startOffset = 0): BoxResult | null {
-  const tag = Buffer.from(boxType, 'ascii')
+export function scanForBox(buf: Uint8Array, boxType: string, startOffset = 0): BoxResult | null {
+  const tag = asciiBytes(boxType)
   let pos = startOffset
   while (true) {
-    const idx = buf.indexOf(tag, pos)
+    const idx = indexOf(buf, tag, pos)
     if (idx === -1 || idx < 4) return null
-    const size = buf.readUInt32BE(idx - 4)
+    const size = readUint32BE(buf, idx - 4)
     if (size > 8 && size < 100000) {
       return [idx - 4, size, idx + 4]
     }
@@ -83,7 +84,7 @@ export function scanForBox(buf: Buffer, boxType: string, startOffset = 0): BoxRe
 
 /** Recursively find ALL boxes of a given type within a range. */
 export function findAllBoxes(
-  buf: Buffer,
+  buf: Uint8Array,
   boxType: string,
   offset = 0,
   end?: number,
@@ -120,20 +121,20 @@ export function findAllBoxes(
  * Read the moov box from an MP4 file.
  * Scans top-level boxes (skipping mdat) and reads only the moov box into memory.
  */
-export async function readMoovBox(fh: FileHandle, fileSize: number): Promise<Buffer> {
+export async function readMoovBox(source: PdrFileSource): Promise<Uint8Array> {
   let offset = 0
-  const headerBuf = Buffer.alloc(16)
+  const fileSize = source.size
 
   while (offset < fileSize) {
-    const { bytesRead } = await fh.read(headerBuf, 0, 16, offset)
-    if (bytesRead < 8) break
+    const headerBuf = await source.read(offset, 16)
+    if (headerBuf.length < 8) break
 
-    let size = headerBuf.readUInt32BE(0)
-    const type = headerBuf.toString('ascii', 4, 8)
+    let size = readUint32BE(headerBuf, 0)
+    const type = readAscii(headerBuf, 4, 8)
 
     if (size === 1) {
-      if (bytesRead < 16) break
-      size = Number(headerBuf.readBigUInt64BE(8))
+      if (headerBuf.length < 16) break
+      size = Number(readBigUint64BE(headerBuf, 8))
     } else if (size === 0) {
       size = fileSize - offset
     }
@@ -141,9 +142,7 @@ export async function readMoovBox(fh: FileHandle, fileSize: number): Promise<Buf
     if (size < 8) break
 
     if (type === 'moov') {
-      const moovBuf = Buffer.alloc(size)
-      await fh.read(moovBuf, 0, size, offset)
-      return moovBuf
+      return source.read(offset, size)
     }
 
     offset += size

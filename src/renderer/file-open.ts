@@ -3,6 +3,7 @@
  */
 
 import { video, setTelemetry, setCurrentRow, setLapData, dbg, getEditMode } from './state'
+import { getRow, createTelemetryStore } from '../shared/telemetry-store'
 import { showHud, resetCarryForward } from './hud'
 import { showChartPanel } from './resizer'
 import { clampAllToViewport } from './edit-mode'
@@ -44,8 +45,9 @@ async function openFile(filePath?: string): Promise<void> {
 
   showProgress('Parsing...')
 
-  pdr.onParseProgress((phase, pct) => {
-    showProgress(`${phase} ${pct}%`)
+  let parseDone = false
+  const removeProgressListener = pdr.onParseProgress((phase, pct) => {
+    if (!parseDone) showProgress(`${phase} ${pct}%`)
   })
 
   // Load video via pdr-file:// protocol
@@ -57,15 +59,17 @@ async function openFile(filePath?: string): Promise<void> {
   // Parse telemetry directly from the MP4 file
   try {
     const result = await pdr.parsePdrFile(filePath)
-    const rows = result.rows
+    parseDone = true
+    removeProgressListener()
+    const store = result.store
     const meta = result.metadata
-    dbg(`Parsed ${rows.length} rows, duration ${meta.duration.toFixed(1)}s`)
+    dbg(`Parsed ${store.length} rows, duration ${meta.duration.toFixed(1)}s`)
     if (meta.maxSpeed_kph) dbg(`Max speed: ${meta.maxSpeed_kph.toFixed(1)} kph`)
     if (meta.maxRpm) dbg(`Max RPM: ${meta.maxRpm.toFixed(0)}`)
     setLapData(meta.lapData ?? null)
-    setTelemetry(rows, meta.duration)
+    setTelemetry(store, meta.duration)
     // Seed HUD with first row so indicators aren't blank on load
-    if (rows.length > 0) setCurrentRow(rows[0])
+    if (store.length > 0) setCurrentRow(getRow(store, 0))
     if (meta.lapData?.hasLapData) {
       const method = meta.lapData.detectionMethod === 'events'
         ? 'start/finish line events from device' : 'GPS density heuristic'
@@ -75,9 +79,11 @@ async function openFile(filePath?: string): Promise<void> {
     }
     hideProgress()
   } catch (err) {
+    parseDone = true
+    removeProgressListener()
     dbg('Parse failed: ' + (err instanceof Error ? err.message : String(err)))
     hideProgress()
-    setTelemetry([], 0)
+    setTelemetry(createTelemetryStore(0), 0)
   }
 
   resetCarryForward()

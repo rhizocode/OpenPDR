@@ -2,7 +2,8 @@ import { app, BrowserWindow, dialog, ipcMain, protocol } from 'electron'
 import { join } from 'path'
 import { createReadStream } from 'fs'
 import { stat } from 'fs/promises'
-import { parsePdrFile } from './parser'
+import { parsePdrFile } from '../parser'
+import { NodeFileSource } from './file-source-node'
 import type { ParseResult, IpcChannels } from '../shared/types'
 
 type Channel = keyof IpcChannels
@@ -149,7 +150,13 @@ ipcMain.handle('open-file-dialog' satisfies Channel, async () => {
 
 // IPC: Parse PDR file — extracts telemetry directly from MP4
 ipcMain.handle('parse-pdr-file' satisfies Channel, async (_event, filePath: string): Promise<ParseResult> => {
-  return parsePdrFile(filePath, (phase, pct) => {
-    mainWindow?.webContents.send('parse-progress' satisfies Channel, phase, pct)
-  })
+  const source = await NodeFileSource.open(filePath)
+  const fileName = filePath.replace(/\\/g, '/').split('/').pop() ?? ''
+  try {
+    return await parsePdrFile(source, fileName, (phase, pct) => {
+      mainWindow?.webContents.send('parse-progress' satisfies Channel, phase, pct)
+    })
+  } finally {
+    await source.close()
+  }
 })

@@ -4,6 +4,7 @@
  */
 
 import { findBox } from './mp4-boxes'
+import { readUint32BE, readBigUint64BE } from '../shared/binary-reader'
 import type { SampleTable } from './types'
 
 /**
@@ -11,7 +12,7 @@ import type { SampleTable } from './types'
  * All offsets are relative to moovBuf.
  */
 export function parseSampleTable(
-  moovBuf: Buffer,
+  moovBuf: Uint8Array,
   trakData: number,
   trakEnd: number
 ): SampleTable | null {
@@ -39,8 +40,8 @@ export function parseSampleTable(
 
   const stszData = stsz[2]
   // stsz: version(4) + sample_size(4) + count(4) + [sizes...]
-  const defaultSize = moovBuf.readUInt32BE(stszData + 4)
-  const sampleCount = moovBuf.readUInt32BE(stszData + 8)
+  const defaultSize = readUint32BE(moovBuf, stszData + 4)
+  const sampleCount = readUint32BE(moovBuf, stszData + 8)
 
   let sampleSizes: number[]
   if (defaultSize !== 0) {
@@ -48,7 +49,7 @@ export function parseSampleTable(
   } else {
     sampleSizes = []
     for (let i = 0; i < sampleCount; i++) {
-      sampleSizes.push(moovBuf.readUInt32BE(stszData + 12 + i * 4))
+      sampleSizes.push(readUint32BE(moovBuf, stszData + 12 + i * 4))
     }
   }
 
@@ -59,15 +60,15 @@ export function parseSampleTable(
   const chunkOffsets: number[] = []
   if (co64) {
     const coData = co64[2]
-    const coCount = moovBuf.readUInt32BE(coData + 4)
+    const coCount = readUint32BE(moovBuf, coData + 4)
     for (let i = 0; i < coCount; i++) {
-      chunkOffsets.push(Number(moovBuf.readBigUInt64BE(coData + 8 + i * 8)))
+      chunkOffsets.push(Number(readBigUint64BE(moovBuf, coData + 8 + i * 8)))
     }
   } else if (stco) {
     const coData = stco[2]
-    const coCount = moovBuf.readUInt32BE(coData + 4)
+    const coCount = readUint32BE(moovBuf, coData + 4)
     for (let i = 0; i < coCount; i++) {
-      chunkOffsets.push(moovBuf.readUInt32BE(coData + 8 + i * 4))
+      chunkOffsets.push(readUint32BE(moovBuf, coData + 8 + i * 4))
     }
   }
 
@@ -76,13 +77,13 @@ export function parseSampleTable(
   const stscEntries: Array<{ firstChunk: number; samplesPerChunk: number; descriptionIndex: number }> = []
   if (stsc) {
     const stscData = stsc[2]
-    const stscCount = moovBuf.readUInt32BE(stscData + 4)
+    const stscCount = readUint32BE(moovBuf, stscData + 4)
     for (let i = 0; i < stscCount; i++) {
       const base = stscData + 8 + i * 12
       stscEntries.push({
-        firstChunk: moovBuf.readUInt32BE(base),
-        samplesPerChunk: moovBuf.readUInt32BE(base + 4),
-        descriptionIndex: moovBuf.readUInt32BE(base + 8),
+        firstChunk: readUint32BE(moovBuf, base),
+        samplesPerChunk: readUint32BE(moovBuf, base + 4),
+        descriptionIndex: readUint32BE(moovBuf, base + 8),
       })
     }
   }

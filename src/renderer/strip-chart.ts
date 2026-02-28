@@ -13,7 +13,8 @@
  */
 
 import type { TelemetryRow } from './types'
-import { telemetry, duration, video, onRowUpdate, onFrameTick, onTelemetryLoad, currentRow, setCurrentRow, findRowAtTime, lapData } from './state'
+import type { TelemetryStore } from '../shared/telemetry-store'
+import { telemetryStore, duration, video, onRowUpdate, onFrameTick, onTelemetryLoad, currentRow, setCurrentRow, findRowAtTime, lapData } from './state'
 
 // ── Channel configuration ──
 
@@ -21,7 +22,12 @@ interface ChartChannel {
   key: string
   label: string
   color: string
-  accessor: (row: TelemetryRow) => number
+  /** Extract values array from the columnar store */
+  storeAccessor: (store: TelemetryStore) => ArrayLike<number>
+  /** Scale factor applied to raw store values (e.g. 100 for 0-1 → 0-100%) */
+  scale: number
+  /** Read a single value for HUD current-value display */
+  rowAccessor: (row: TelemetryRow) => number
   unit: string
   min: number
   max: number
@@ -30,13 +36,13 @@ interface ChartChannel {
 }
 
 const CHANNELS: ChartChannel[] = [
-  { key: 'speed', label: 'Speed', color: '#3399ff', accessor: r => r.speed_mph, unit: 'mph', min: 0, max: 200, precision: 0, defaultEnabled: true },
-  { key: 'rpm', label: 'RPM', color: '#ff6b00', accessor: r => r.rpm, unit: 'rpm', min: 0, max: 7000, precision: 0, defaultEnabled: true },
-  { key: 'throttle', label: 'Throttle', color: '#00cc66', accessor: r => r.throttle * 100, unit: '%', min: 0, max: 100, precision: 0, defaultEnabled: true },
-  { key: 'brake', label: 'Brake', color: '#ff3333', accessor: r => r.brake * 100, unit: '%', min: 0, max: 100, precision: 0, defaultEnabled: true },
-  { key: 'gforce_lat', label: 'G Lat', color: '#66ccff', accessor: r => r.gforce_lat, unit: 'g', min: -1.5, max: 1.5, precision: 2, defaultEnabled: false },
-  { key: 'gforce_lon', label: 'G Lon', color: '#cc66ff', accessor: r => r.gforce_lon, unit: 'g', min: -1.5, max: 1.5, precision: 2, defaultEnabled: false },
-  { key: 'steering', label: 'Steering', color: '#ffcc00', accessor: r => r.steering_deg, unit: '\u00B0', min: -400, max: 400, precision: 0, defaultEnabled: false },
+  { key: 'speed', label: 'Speed', color: '#3399ff', storeAccessor: s => s.speed_mph, scale: 1, rowAccessor: r => r.speed_mph, unit: 'mph', min: 0, max: 200, precision: 0, defaultEnabled: true },
+  { key: 'rpm', label: 'RPM', color: '#ff6b00', storeAccessor: s => s.rpm, scale: 1, rowAccessor: r => r.rpm, unit: 'rpm', min: 0, max: 7000, precision: 0, defaultEnabled: true },
+  { key: 'throttle', label: 'Throttle', color: '#00cc66', storeAccessor: s => s.throttle, scale: 100, rowAccessor: r => r.throttle * 100, unit: '%', min: 0, max: 100, precision: 0, defaultEnabled: true },
+  { key: 'brake', label: 'Brake', color: '#ff3333', storeAccessor: s => s.brake, scale: 100, rowAccessor: r => r.brake * 100, unit: '%', min: 0, max: 100, precision: 0, defaultEnabled: true },
+  { key: 'gforce_lat', label: 'G Lat', color: '#66ccff', storeAccessor: s => s.gforce_lat, scale: 1, rowAccessor: r => r.gforce_lat, unit: 'g', min: -1.5, max: 1.5, precision: 2, defaultEnabled: false },
+  { key: 'gforce_lon', label: 'G Lon', color: '#cc66ff', storeAccessor: s => s.gforce_lon, scale: 1, rowAccessor: r => r.gforce_lon, unit: 'g', min: -1.5, max: 1.5, precision: 2, defaultEnabled: false },
+  { key: 'steering', label: 'Steering', color: '#ffcc00', storeAccessor: s => s.steering_deg, scale: 1, rowAccessor: r => r.steering_deg, unit: '\u00B0', min: -400, max: 400, precision: 0, defaultEnabled: false },
 ]
 
 const CHANNELS_STORAGE_KEY = 'pdr-chart-channels'
@@ -46,8 +52,8 @@ const LABEL_WIDTH = 80  // px reserved for axis labels on left
 
 interface ChannelData {
   config: ChartChannel
-  values: number[]
-  times: number[]
+  values: ArrayLike<number>  // typed array from store (or scaled copy)
+  times: Float64Array        // store.time — shared across all channels
   offscreen: HTMLCanvasElement  // use HTMLCanvasElement (not OffscreenCanvas) for broader compat
   ctx: CanvasRenderingContext2D
 }
@@ -193,17 +199,26 @@ function buildToolbar(): void {
 }
 
 function rebuildChannelData(): void {
-  const rows = telemetry
-  const dur = duration
-  if (rows.length === 0) {
+  const store = telemetryStore
+  if (!store || store.length === 0) {
     channelData = []
     return
   }
 
   const enabled = CHANNELS.filter(c => enabledKeys.has(c.key))
+  const times = store.time  // shared across all channels
+
   channelData = enabled.map(config => {
-    const values = rows.map(config.accessor)
-    const times = rows.map(r => r.time)
+    const raw = config.storeAccessor(store)
+    // Apply scale factor if needed (e.g. throttle 0-1 → 0-100%)
+    let values: ArrayLike<number>
+    if (config.scale !== 1) {
+      const scaled = new Float32Array(store.length)
+      for (let i = 0; i < store.length; i++) scaled[i] = raw[i] * config.scale
+      values = scaled
+    } else {
+      values = raw
+    }
     const offscreen = document.createElement('canvas')
     const offCtx = offscreen.getContext('2d')!
     return { config, values, times, offscreen, ctx: offCtx }
@@ -409,7 +424,7 @@ function renderFrameCache(): void {
   for (let i = 0; i < chartCount; i++) {
     const cd = channelData[i]
     const y = i * chartH
-    const val = cd.config.accessor(currentRow)
+    const val = cd.config.rowAccessor(currentRow)
     frameCacheCtx.fillStyle = '#fff'
     frameCacheCtx.font = `bold ${11 * dpr}px Consolas, monospace`
     frameCacheCtx.textAlign = 'left'

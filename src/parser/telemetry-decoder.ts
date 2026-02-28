@@ -5,6 +5,7 @@
  */
 
 import type { TelemetryRow, GpsRefRange } from './types'
+import { readUint16BE, readInt16BE, readUint32BE, readInt32BE, readFloatBE } from '../shared/binary-reader'
 import {
   PROPORTION_SCALE, ENGINE_SPEED_SCALE, RAD_TO_RPM, TORQUE_SCALE, TORQUE_OFFSET,
   STEERING_SCALE, RAD_TO_DEG, WHEEL_SPEED_SCALE, TIRE_RADIUS_M, MPS_TO_KPH,
@@ -122,24 +123,24 @@ interface Hz1Frame {
  *   wheel_FL(4) wheel_FR(4) wheel_RL(4) wheel_RR(4) gyro_yaw(2)
  *   — wheel speeds are float32 BE in m/s (direct)
  */
-function decode100HzFrame(packet: Buffer, offset: number, hz100Size: number = 17): Hz100Frame | null {
+function decode100HzFrame(packet: Uint8Array, offset: number, hz100Size: number = 17): Hz100Frame | null {
   if (offset < 0 || offset + hz100Size > packet.length) return null
 
-  const torqueRaw = packet.readUInt16BE(offset + 3)
+  const torqueRaw = readUint16BE(packet, offset + 3)
 
   if (hz100Size === 25) {
     // MMP v4: float32 wheel speeds in m/s
-    const wsFlMps = packet.readFloatBE(offset + 7)
-    const wsFrMps = packet.readFloatBE(offset + 11)
-    const wsRlMps = packet.readFloatBE(offset + 15)
-    const wsRrMps = packet.readFloatBE(offset + 19)
-    const gyroRaw = packet.readInt16BE(offset + 23)
+    const wsFlMps = readFloatBE(packet, offset + 7)
+    const wsFrMps = readFloatBE(packet, offset + 11)
+    const wsRlMps = readFloatBE(packet, offset + 15)
+    const wsRrMps = readFloatBE(packet, offset + 19)
+    const gyroRaw = readInt16BE(packet, offset + 23)
 
     return {
       brake_position: packet[offset] * PROPORTION_SCALE,
-      engine_rpm: packet.readUInt16BE(offset + 1) * ENGINE_SPEED_SCALE * RAD_TO_RPM,
+      engine_rpm: readUint16BE(packet, offset + 1) * ENGINE_SPEED_SCALE * RAD_TO_RPM,
       engine_torque_nm: torqueRaw * TORQUE_SCALE + TORQUE_OFFSET,
-      steering_angle_deg: packet.readInt16BE(offset + 5) * STEERING_SCALE * RAD_TO_DEG,
+      steering_angle_deg: readInt16BE(packet, offset + 5) * STEERING_SCALE * RAD_TO_DEG,
       wheel_speed_fl_kph: wsFlMps * MPS_TO_KPH,
       wheel_speed_fr_kph: wsFrMps * MPS_TO_KPH,
       wheel_speed_rl_kph: wsRlMps * MPS_TO_KPH,
@@ -148,17 +149,17 @@ function decode100HzFrame(packet: Buffer, offset: number, hz100Size: number = 17
     }
   } else {
     // MMP v3: u16 angular velocity wheel speeds
-    const wsFl = packet.readUInt16BE(offset + 7)
-    const wsFr = packet.readUInt16BE(offset + 9)
-    const wsRl = packet.readUInt16BE(offset + 11)
-    const wsRr = packet.readUInt16BE(offset + 13)
-    const gyroRaw = packet.readInt16BE(offset + 15)
+    const wsFl = readUint16BE(packet, offset + 7)
+    const wsFr = readUint16BE(packet, offset + 9)
+    const wsRl = readUint16BE(packet, offset + 11)
+    const wsRr = readUint16BE(packet, offset + 13)
+    const gyroRaw = readInt16BE(packet, offset + 15)
 
     return {
       brake_position: packet[offset] * PROPORTION_SCALE,
-      engine_rpm: packet.readUInt16BE(offset + 1) * ENGINE_SPEED_SCALE * RAD_TO_RPM,
+      engine_rpm: readUint16BE(packet, offset + 1) * ENGINE_SPEED_SCALE * RAD_TO_RPM,
       engine_torque_nm: torqueRaw * TORQUE_SCALE + TORQUE_OFFSET,
-      steering_angle_deg: packet.readInt16BE(offset + 5) * STEERING_SCALE * RAD_TO_DEG,
+      steering_angle_deg: readInt16BE(packet, offset + 5) * STEERING_SCALE * RAD_TO_DEG,
       wheel_speed_fl_kph: wsFl * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
       wheel_speed_fr_kph: wsFr * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
       wheel_speed_rl_kph: wsRl * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
@@ -174,16 +175,16 @@ function decode100HzFrame(packet: Buffer, offset: number, hz100Size: number = 17
  * - Device (ch 8-10): raw sensor frame
  * - Vehicle (ch 11-13): gravity-compensated vehicle-frame-aligned
  */
-function decode50HzFrame(packet: Buffer, offset: number): Hz50Frame | null {
+function decode50HzFrame(packet: Uint8Array, offset: number): Hz50Frame | null {
   if (offset + 24 > packet.length) return null
 
   return {
-    accel_device_x_g: packet.readFloatBE(offset),
-    accel_device_y_g: packet.readFloatBE(offset + 4),
-    accel_device_z_g: packet.readFloatBE(offset + 8),
-    accel_vehicle_x_g: packet.readFloatBE(offset + 12),
-    accel_vehicle_y_g: packet.readFloatBE(offset + 16),
-    accel_vehicle_z_g: packet.readFloatBE(offset + 20),
+    accel_device_x_g: readFloatBE(packet, offset),
+    accel_device_y_g: readFloatBE(packet, offset + 4),
+    accel_device_z_g: readFloatBE(packet, offset + 8),
+    accel_vehicle_x_g: readFloatBE(packet, offset + 12),
+    accel_vehicle_y_g: readFloatBE(packet, offset + 16),
+    accel_vehicle_z_g: readFloatBE(packet, offset + 20),
   }
 }
 
@@ -193,25 +194,25 @@ function decode50HzFrame(packet: Buffer, offset: number): Hz50Frame | null {
  *         ABS(1) throttle(1) boost(2) emotor_power(2) engine_power(2)
  * Speed is 2 bytes BEFORE latOffset.
  */
-function decode10HzFrame(packet: Buffer, latOffset: number): Hz10Frame | null {
+function decode10HzFrame(packet: Uint8Array, latOffset: number): Hz10Frame | null {
   if (latOffset + 26 > packet.length) return null
 
-  const latRaw = packet.readInt32BE(latOffset)
-  const lonRaw = packet.readInt32BE(latOffset + 4)
-  const altRaw = packet.readUInt32BE(latOffset + 8)
-  const headingRaw = packet.readInt32BE(latOffset + 12)
+  const latRaw = readInt32BE(packet, latOffset)
+  const lonRaw = readInt32BE(packet, latOffset + 4)
+  const altRaw = readUint32BE(packet, latOffset + 8)
+  const headingRaw = readInt32BE(packet, latOffset + 12)
   const fixQuality = packet[latOffset + 16]
   const satellites = packet[latOffset + 17]
   const absStatus = packet[latOffset + 18]
   const throttleRaw = packet[latOffset + 19]
-  const boostRaw = packet.readUInt16BE(latOffset + 20)
-  const emotorRaw = packet.readUInt16BE(latOffset + 22)
-  const engineRaw = packet.readUInt16BE(latOffset + 24)
+  const boostRaw = readUint16BE(packet, latOffset + 20)
+  const emotorRaw = readUint16BE(packet, latOffset + 22)
+  const engineRaw = readUint16BE(packet, latOffset + 24)
 
   // Speed is 2 bytes BEFORE lat
   let speedRaw = 0
   if (latOffset >= 2) {
-    speedRaw = packet.readUInt16BE(latOffset - 2)
+    speedRaw = readUint16BE(packet, latOffset - 2)
   }
 
   return {
@@ -236,7 +237,7 @@ function decode10HzFrame(packet: Buffer, latOffset: number): Hz10Frame | null {
 /**
  * Decode 5Hz data (4 bytes): gear, startstop, ESC, TCS.
  */
-function decode5HzFrame(packet: Buffer, offset: number): Hz5Frame | null {
+function decode5HzFrame(packet: Uint8Array, offset: number): Hz5Frame | null {
   if (offset + 4 > packet.length) return null
 
   const gearRaw = packet[offset]
@@ -264,25 +265,25 @@ function decode5HzFrame(packet: Buffer, offset: number): Hz5Frame | null {
  * MMP ≤ 3 (31 bytes): drive_mode is u8 at b[3]
  * MMP ≥ 4 (34 bytes): drive_mode is u32 at b[3:7], shifting everything after by 3
  */
-function decode1HzFrame(packet: Buffer, latOffset: number, hz1Size: number = 31): Hz1Frame | null {
+function decode1HzFrame(packet: Uint8Array, latOffset: number, hz1Size: number = 31): Hz1Frame | null {
   const hz1Offset = latOffset + 26 + 4 + 1 // after group2 + group3 + group4
   if (hz1Offset + hz1Size > packet.length) return null
 
   const b = packet.subarray(hz1Offset, hz1Offset + hz1Size)
-  const hvChargeRaw = b.readUInt16BE(1)
+  const hvChargeRaw = readUint16BE(b, 1)
 
   // MMP v4: drive_mode is u32 (4 bytes) — use low byte for enum lookup
   let dmRaw: number
   let s: number // shift for all fields after drive_mode
   if (hz1Size === 34) {
-    dmRaw = b.readUInt32BE(3) & 0xFF
+    dmRaw = readUint32BE(b, 3) & 0xFF
     s = 3
   } else {
     dmRaw = b[3]
     s = 0
   }
 
-  const odometerRaw = b.readUInt32BE(16 + s)
+  const odometerRaw = readUint32BE(b, 16 + s)
 
   return {
     emotor_powerlevel: b[0] * 0.01,
@@ -381,7 +382,7 @@ function avg50Hz(frames: Hz50Frame[]): { lat: number; lon: number; vert: number 
  * Returns up to 10 TelemetryRow records (one per 100ms frame at 10 Hz).
  */
 export function decodePacket(
-  packet: Buffer,
+  packet: Uint8Array,
   packetIdx: number,
   refLatRange?: GpsRefRange,
   hz100Size: number = 17,

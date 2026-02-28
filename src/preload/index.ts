@@ -10,8 +10,10 @@ contextBridge.exposeInMainWorld('pdr', {
   parsePdrFile: (filePath: string): Promise<ParseResult> =>
     ipcRenderer.invoke('parse-pdr-file' satisfies Channel, filePath),
 
-  onParseProgress: (callback: (phase: string, pct: number) => void): void => {
-    ipcRenderer.on('parse-progress' satisfies Channel, (_event, phase, pct) => callback(phase, pct))
+  onParseProgress: (callback: (phase: string, pct: number) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, phase: string, pct: number) => callback(phase, pct)
+    ipcRenderer.on('parse-progress' satisfies Channel, handler)
+    return () => ipcRenderer.removeListener('parse-progress' satisfies Channel, handler)
   },
 
   getVideoUrl: (filePath: string): string => {

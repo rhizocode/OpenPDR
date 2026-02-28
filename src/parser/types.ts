@@ -15,7 +15,7 @@ export type {
   AdviInfo,
   ParseResult,
   ProgressCallback,
-} from '../../shared/types'
+} from '../shared/types'
 
 /** MP4 box header result */
 export interface BoxHeader {
