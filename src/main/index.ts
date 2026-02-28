@@ -144,7 +144,7 @@ ipcMain.handle('open-file-dialog' satisfies Channel, async () => {
   })
 
   if (result.canceled || result.filePaths.length === 0) return null
-  allowedVideoPath = result.filePaths[0]
+  allowedVideoPath = result.filePaths[0].replace(/\\/g, '/')
   return result.filePaths[0]
 })
 
