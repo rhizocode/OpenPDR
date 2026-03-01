@@ -7,6 +7,7 @@ import { getRow, createTelemetryStore } from '../shared/telemetry-store'
 import { showHud, resetCarryForward } from './hud'
 import { showChartPanel } from './resizer'
 import { clampAllToViewport } from './edit-mode'
+import { setCompareFilePath } from './compare-ui'
 
 const pdr = window.pdr
 
@@ -46,6 +47,9 @@ async function openFile(filePath?: string): Promise<void> {
   const removeProgressListener = pdr.onParseProgress((phase, pct) => {
     if (!parseDone) showProgress(`${phase} ${pct}%`)
   })
+
+  // Track file path for compare mode
+  setCompareFilePath(filePath)
 
   // Ensure protocol handler accepts this path (dialog sets it automatically, but drag-and-drop doesn't)
   await pdr.setAllowedVideoPath(filePath)

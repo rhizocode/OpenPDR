@@ -6,7 +6,7 @@
  */
 
 import './types' // side-effect: augments Window with pdr
-import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg } from './state'
+import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg, lapData, duration, viewRange, setViewRange, selectedLapIdx, getSyncedTime, seekToTelemetryTime, onTelemetryLoad, onViewRangeChange, avSyncOffset, setInterpState } from './state'
 import { initHud } from './hud'
 import { initControls, getIsScrubbing } from './controls'
 import { initFileOpen } from './file-open'
@@ -18,8 +18,28 @@ import { initTrackMap } from './track-map'
 import { initLapTable } from './lap-table'
 import { initExportMenu } from './export-menu'
 import { initOverlayRenderer } from './overlay-renderer'
+import { initCompareUI } from './compare-ui'
+import {
+  isCompareMode,
+  videoA as getVideoA,
+  videoB as getVideoB,
+  storeA, storeB,
+  syncDataA, syncDataB,
+  setTrackPosition,
+  setCurrentRowA, setCurrentRowB,
+  updateInterpolationA, updateInterpolationB,
+  findRowInStore,
+  onCompareEnter, onCompareExit,
+  interpPrevA, interpNextA, interpAlphaA,
+  interpPrevB, interpNextB, interpAlphaB,
+  currentRowB,
+} from './compare-state'
+import { updateOverlayBRow, smoothAndDrawB, updateAnchorBBounds } from './compare-overlay-b'
+import { timeToTrackPosition, trackPositionToTime } from './compare-sync'
+import { createEmptyRow } from '../shared/telemetry-store'
 
 const BUILD_ID = 'phase4-v1'
+const btnPlay = document.getElementById('btn-play') as HTMLButtonElement
 dbg(`Renderer loaded [${BUILD_ID}], pdr API: ${window.pdr ? 'OK' : 'MISSING'}`)
 
 // ── Initialize modules ──
@@ -34,6 +54,8 @@ initTrackMap(document.getElementById('track-canvas') as HTMLCanvasElement)
 initLapTable(document.getElementById('lap-table-container') as HTMLDivElement)
 initExportMenu()
 initOverlayRenderer()
+initCompareUI()
+initLapSelector()
 
 // ── Video overlay anchor sizing ──
 // The anchor div matches the video's rendered bounds inside the container,
@@ -44,12 +66,14 @@ const overlayAnchor = document.getElementById('video-overlay-anchor') as HTMLDiv
 function updateAnchorBounds(): void {
   const vw = video.videoWidth
   const vh = video.videoHeight
-  const cw = videoContainer.clientWidth
-  const ch = videoContainer.clientHeight
+  // In compare mode #video is 50% wide; use its clientWidth/Height as the slot
+  // so the anchor covers only video A's rendered area, not the full container.
+  const cw = video.clientWidth || videoContainer.clientWidth
+  const ch = video.clientHeight || videoContainer.clientHeight
   if (!cw || !ch) return
 
   if (!vw || !vh) {
-    // No video loaded — anchor fills container at natural size
+    // No video loaded — anchor fills the video's slot
     overlayAnchor.style.left = '0px'
     overlayAnchor.style.top = '0px'
     overlayAnchor.style.width = `${cw}px`
@@ -58,7 +82,7 @@ function updateAnchorBounds(): void {
     return
   }
 
-  // Compute rendered video rectangle (object-fit: contain)
+  // Compute rendered video rectangle (object-fit: contain) within the slot
   const videoAR = vw / vh
   const containerAR = cw / ch
   let rw: number, rh: number
@@ -83,6 +107,10 @@ function updateAnchorBounds(): void {
 
 new ResizeObserver(() => {
   updateAnchorBounds()
+  if (isCompareMode()) {
+    const vB = getVideoB
+    if (vB) updateAnchorBBounds(vB)
+  }
   updateChartPanelCollapse()
 }).observe(videoContainer)
 
@@ -219,12 +247,100 @@ function updateFpsCounter(): void {
   }
 }
 
+// ── Compare mode scratch rows (pre-allocated, reused every frame) ──
+const _scratchRowA = createEmptyRow()
+const _scratchRowB = createEmptyRow()
+
 // ── Animation loop (demand-driven) ──
 // Only schedules frames when the video is playing, scrubbing, or a seek occurred.
 let lastVideoTime = -1
 let animationRunning = false
 
+function onCompareAnimationFrame(): void {
+  const vA = getVideoA
+  const vB = getVideoB
+  if (!vA || !vB || !syncDataA || !syncDataB || !storeA || !storeB) return
+
+  const tA = vA.currentTime
+  const telTimeA = tA + avSyncOffset
+
+  // Master track position from video A
+  const pos = timeToTrackPosition(syncDataA, telTimeA)
+  setTrackPosition(pos)
+
+  // Sync video B to match track position
+  const telTimeB = trackPositionToTime(syncDataB, pos)
+  const videoTimeB = telTimeB - avSyncOffset
+  const errorB = videoTimeB - vB.currentTime
+
+  if (vA.paused) {
+    // When paused, hard-seek for precise frame positioning
+    if (Math.abs(errorB) > 0.02) {
+      vB.currentTime = videoTimeB
+    }
+  } else {
+    // While playing, use playbackRate adjustment for smooth sync.
+    // Compute ideal rate: how fast should B advance per unit of A time
+    // at this track position (local slope of B-time vs A-time).
+    const dp = 0.005
+    const posNext = Math.min(1, pos + dp)
+    const dtA = trackPositionToTime(syncDataA, posNext) - trackPositionToTime(syncDataA, pos)
+    const dtB = trackPositionToTime(syncDataB, posNext) - trackPositionToTime(syncDataB, pos)
+    const idealRate = dtA > 0.0001 ? (dtB / dtA) : 1.0
+
+    if (Math.abs(errorB) > 0.5) {
+      // Large desync — hard-seek to recover
+      vB.currentTime = videoTimeB
+      vB.playbackRate = Math.max(0.1, Math.min(4.0, idealRate * vA.playbackRate))
+    } else {
+      // Proportional correction: nudge rate to close the gap
+      const correctedRate = idealRate + errorB * 3.0
+      vB.playbackRate = Math.max(0.1, Math.min(4.0, correctedRate * vA.playbackRate))
+    }
+  }
+
+  // Update rows + interpolation for both sides
+  setCurrentRowA(findRowInStore(storeA, telTimeA, _scratchRowA))
+  setCurrentRowB(findRowInStore(storeB, telTimeB, _scratchRowB))
+  updateInterpolationA(telTimeA)
+  updateInterpolationB(telTimeB)
+
+  // Feed side A into the single-video HUD path so overlays render side A telemetry.
+  // hud.ts subscribes to onRowUpdate (state.ts) and reads state.interpPrev/Next/Alpha.
+  setInterpState(interpPrevA, interpNextA, interpAlphaA)
+  setCurrentRow(_scratchRowA)
+
+  // Update side B overlay anchor
+  updateOverlayBRow(currentRowB)
+  smoothAndDrawB(interpPrevB, interpNextB, interpAlphaB)
+
+  // Update controls
+  controls.updateCompareScrubBar(pos)
+  controls.updateCompareTimeDisplay(telTimeA, telTimeB)
+  fireFrameTick()
+  updateFpsCounter()
+
+  // Clamp: pause when reaching end of lap A
+  if (!vA.paused && pos >= 0.999) {
+    vA.pause()
+    vB.pause()
+    btnPlay.innerHTML = '&#9654;'
+  }
+
+  // Keep looping while playing or scrubbing
+  if (!vA.paused || getIsScrubbing() || getIsChartScrubbing()) {
+    requestAnimationFrame(onAnimationFrame)
+  } else {
+    animationRunning = false
+  }
+}
+
 function onAnimationFrame(): void {
+  if (isCompareMode()) {
+    onCompareAnimationFrame()
+    return
+  }
+
   const t = video.currentTime
   lastVideoTime = t
   setCurrentRow(findRowAtTime(t))    // A/V sync offset applied internally
@@ -233,6 +349,13 @@ function onAnimationFrame(): void {
   controls.updateTimeDisplay(t)
   fireFrameTick()
   updateFpsCounter()
+
+  // Playback clamping: pause when reaching end of view range
+  if (!video.paused && getSyncedTime() >= viewRange.endTime) {
+    video.pause()
+    btnPlay.innerHTML = '&#9654;'
+    seekToTelemetryTime(viewRange.endTime - 0.001)
+  }
 
   // Keep looping while playing or scrubbing; stop when idle
   if (!video.paused || getIsScrubbing() || getIsChartScrubbing()) {
@@ -258,5 +381,107 @@ video.addEventListener('seeked', startAnimationLoop)
 // Also restart on timeupdate as a safety net
 video.addEventListener('timeupdate', startAnimationLoop)
 
+// When entering compare mode, wire video A events to restart the animation loop
+onCompareEnter(() => {
+  const vA = getVideoA
+  if (vA && vA !== video) {
+    vA.addEventListener('play', startAnimationLoop)
+    vA.addEventListener('seeked', startAnimationLoop)
+  }
+  // Re-measure anchor bounds: #video is now 50% wide; position B anchor too.
+  // Use two rAF passes: first lets the flex layout settle, second measures.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    updateAnchorBounds()
+    const vB = getVideoB
+    if (vB) {
+      updateAnchorBBounds(vB)
+      // Also re-measure once video B has its native dimensions
+      vB.addEventListener('loadedmetadata', () => updateAnchorBBounds(vB), { once: true })
+    }
+  }))
+  startAnimationLoop()
+})
+
+onCompareExit(() => {
+  // Stop video B and reset its playback rate
+  const vB = getVideoB
+  if (vB) {
+    vB.pause()
+    vB.playbackRate = 1.0
+  }
+  // Animation loop already falls through to normal mode when isCompareMode() is false
+  // Re-measure anchor bounds: #video returns to full width
+  requestAnimationFrame(updateAnchorBounds)
+  startAnimationLoop()
+})
+
 // Initial kick — render the first frame if anything is loaded
 startAnimationLoop()
+
+// ── Lap selector dropdown ──
+function initLapSelector(): void {
+  const selector = document.getElementById('lap-selector') as HTMLSelectElement
+
+  function formatLapTime(seconds: number): string {
+    const m = Math.floor(seconds / 60)
+    const s = seconds - m * 60
+    const sFmt = s < 10 ? '0' + s.toFixed(3) : s.toFixed(3)
+    return `${m}:${sFmt}`
+  }
+
+  onTelemetryLoad(() => {
+    selector.innerHTML = ''
+
+    const fullOpt = document.createElement('option')
+    fullOpt.value = 'full'
+    fullOpt.textContent = 'Full Recording'
+    selector.appendChild(fullOpt)
+
+    const ld = lapData
+    if (ld?.hasLapData && ld.laps.length > 0) {
+      const bestTime = Math.min(...ld.laps.map(l => l.lapTime))
+
+      for (const lap of ld.laps) {
+        const opt = document.createElement('option')
+        opt.value = String(lap.lapNumber - 1)
+        let label = `Lap ${lap.lapNumber}  ${formatLapTime(lap.lapTime)}`
+        if (lap.lapTime === bestTime) {
+          label += '  best'
+        } else {
+          label += `  +${(lap.lapTime - bestTime).toFixed(3)}`
+        }
+        opt.textContent = label
+        selector.appendChild(opt)
+      }
+
+      selector.style.display = ''
+    } else {
+      selector.style.display = 'none'
+    }
+
+    selector.value = 'full'
+  })
+
+  selector.addEventListener('change', () => {
+    const val = selector.value
+    if (val === 'full') {
+      setViewRange({ startTime: 0, endTime: duration }, null)
+    } else {
+      const idx = parseInt(val, 10)
+      const ld = lapData
+      if (ld?.hasLapData && ld.laps[idx]) {
+        const lap = ld.laps[idx]
+        setViewRange({ startTime: lap.startTime, endTime: lap.endTime }, idx)
+        seekToTelemetryTime(lap.startTime)
+      }
+    }
+  })
+
+  onViewRangeChange(() => {
+    if (selectedLapIdx === null) {
+      selector.value = 'full'
+    } else {
+      selector.value = String(selectedLapIdx)
+    }
+  })
+}

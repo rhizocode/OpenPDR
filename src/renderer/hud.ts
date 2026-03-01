@@ -14,6 +14,7 @@ import { onRowUpdate, onTelemetryLoad, onFrameTick, currentRow, interpPrev, inte
 import { initGForceBall, drawGForce } from './gforce-ball'
 import { initRpmGauge, drawRpmGauge } from './rpm-gauge'
 import { initSteeringIndicator, drawSteering } from './steering'
+import { applyOverlayConfigB } from './compare-overlay-b'
 
 const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
 
@@ -221,6 +222,8 @@ export function applyOverlayConfig(config: OverlayConfig): void {
       }
     }
   }
+  // Keep B-side overlay visibility in sync
+  applyOverlayConfigB(config)
 }
 
 export function showHud(): void {

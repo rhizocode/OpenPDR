@@ -111,6 +111,23 @@ html, body {
   white-space: nowrap;
 }
 
+#lap-selector {
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: Consolas, monospace;
+  cursor: pointer;
+  max-width: 260px;
+}
+
+#lap-selector:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+}
+
 #fps-counter {
   display: none;
   font-size: 11px;
@@ -152,11 +169,13 @@ html, body {
   display: block;
 }
 
-#video-overlay-anchor {
+#video-overlay-anchor,
+#video-overlay-anchor-b {
   position: absolute;
   pointer-events: none;
   overflow: visible;
   transform-origin: 0 0;
+  z-index: 1;
 }
 
 /* Centre guide lines shown in edit mode */
@@ -241,7 +260,8 @@ html, body {
 }
 
 /* Speed */
-#hud-speed {
+#hud-speed,
+#hud-speed-b {
   align-items: baseline;
   gap: 4px;
 }
@@ -250,7 +270,8 @@ html, body {
   display: flex;
 }
 
-#hud-speed-value {
+#hud-speed-value,
+#hud-speed-value-b {
   font-size: 56px;
   font-weight: 700;
   color: #fff;
@@ -258,7 +279,8 @@ html, body {
   line-height: 1;
 }
 
-#hud-speed-unit {
+#hud-speed-unit,
+#hud-speed-unit-b {
   font-size: 18px;
   color: #ccc;
   text-shadow: 0 0 8px rgba(0,0,0,0.8);
@@ -270,13 +292,15 @@ html, body {
   display: block;
 }
 
-#rpm-gauge-canvas {
+#rpm-gauge-canvas,
+#rpm-gauge-canvas-b {
   display: block;
   background: transparent;
 }
 
 /* Gear */
-#hud-gear {
+#hud-gear,
+#hud-gear-b {
   align-items: center;
   justify-content: center;
   width: 48px;
@@ -290,7 +314,8 @@ html, body {
   display: flex;
 }
 
-#hud-gear-value {
+#hud-gear-value,
+#hud-gear-value-b {
   font-size: 28px;
   font-weight: 700;
   color: #fff;
@@ -359,14 +384,16 @@ html, body {
   display: block;
 }
 
-#gforce-canvas {
+#gforce-canvas,
+#gforce-canvas-b {
   display: block;
   background: rgba(0,0,0,0.5);
   border-radius: 50%;
 }
 
 /* Pedal bars */
-#hud-pedals {
+#hud-pedals,
+#hud-pedals-b {
   flex-direction: column;
   gap: 3px;
   width: 100px;
@@ -412,7 +439,8 @@ html, body {
 }
 
 /* ── GPS display ── */
-#hud-gps {
+#hud-gps,
+#hud-gps-b {
   flex-direction: column;
   gap: 2px;
   font-size: 11px;
@@ -428,7 +456,8 @@ html, body {
 }
 
 /* ── Session info display ── */
-#hud-session {
+#hud-session,
+#hud-session-b {
   flex-direction: column;
   gap: 2px;
   font-size: 11px;
@@ -444,7 +473,8 @@ html, body {
   display: flex;
 }
 
-#hud-session .session-label {
+#hud-session .session-label,
+#hud-session-b .session-label {
   color: #fff;
   font-weight: bold;
   font-size: 9px;
@@ -452,7 +482,8 @@ html, body {
   letter-spacing: 0.5px;
 }
 
-#hud-session .session-value {
+#hud-session .session-value,
+#hud-session-b .session-value {
   color: #ccc;
 }
 
@@ -705,6 +736,12 @@ html, body {
   padding-left: 5px;
 }
 
+.lap-row.selected {
+  background: rgba(255, 107, 0, 0.15);
+  border-left: 3px solid var(--accent);
+  padding-left: 5px;
+}
+
 .lap-num {
   font-weight: 600;
 }
@@ -730,6 +767,89 @@ html, body {
 
 .lap-delta-best {
   color: #4caf50;
+}
+
+/* ── Compare mode lap table ── */
+
+.lap-heading-a {
+  color: #00e5ff;
+  border-bottom-color: rgba(0, 229, 255, 0.3);
+}
+
+.lap-heading-b {
+  color: #ff40ff;
+  border-bottom-color: rgba(255, 64, 255, 0.3);
+  margin-top: 10px;
+}
+
+/* Small colored dot indicating which side (A/B) the lap belongs to */
+.lap-side-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 5px;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.lap-side-dot-a {
+  background: #00e5ff;
+}
+
+.lap-side-dot-b {
+  background: #ff40ff;
+}
+
+/* Selected lap in compare section A: cyan accent */
+.lap-row.compare-selected-a {
+  background: rgba(0, 229, 255, 0.12);
+  border-left: 3px solid #00e5ff;
+  color: #00e5ff;
+}
+
+/* Selected lap in compare section B: magenta accent */
+.lap-row.compare-selected-b {
+  background: rgba(255, 64, 255, 0.12);
+  border-left: 3px solid #ff40ff;
+  color: #ff40ff;
+}
+
+/* Summary block at the bottom of the compare lap panel */
+.lap-compare-summary {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #333;
+}
+
+.lap-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  font-size: 11px;
+  font-family: 'Consolas', monospace;
+}
+
+.lap-summary-label {
+  font-weight: bold;
+  min-width: 16px;
+}
+
+.summary-label-a {
+  color: #00e5ff;
+}
+
+.summary-label-b {
+  color: #ff40ff;
+}
+
+.lap-summary-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.lap-summary-delta {
+  margin-top: 2px;
 }
 
 .lap-empty {
@@ -1191,4 +1311,149 @@ html, body {
 .ep-cancel:hover {
   border-color: var(--text-primary);
   color: var(--text-primary);
+}
+
+/* ── Compare mode ── */
+#btn-compare {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid #444 !important;
+  font-size: 13px !important;
+  padding: 0 10px !important;
+  height: 26px;
+  line-height: 26px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#btn-compare:hover {
+  background: #3a3a3a !important;
+}
+
+#btn-compare.active {
+  background: var(--accent) !important;
+  color: #fff !important;
+  border-color: var(--accent) !important;
+}
+
+/* Compare dropdown menu */
+.compare-dropdown {
+  display: none;
+  position: absolute;
+  top: 38px;
+  left: 0;
+  background: var(--bg-secondary);
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 6px 0;
+  z-index: 1000;
+  font-size: 13px;
+  min-width: 220px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.compare-dropdown.visible {
+  display: block;
+}
+
+.compare-dropdown-item {
+  padding: 6px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.compare-dropdown-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.compare-dropdown-item.disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Color-coded lap selectors */
+.compare-select {
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: Consolas, monospace;
+  cursor: pointer;
+  max-width: 260px;
+}
+
+.compare-select.compare-a {
+  border-color: #00e5ff;
+  color: #00e5ff;
+}
+
+.compare-select.compare-b {
+  border-color: #ff4081;
+  color: #ff4081;
+}
+
+.compare-select:focus {
+  outline: none;
+}
+
+/* Video container in compare mode: side-by-side videos */
+#video-container.compare-mode {
+  flex-direction: row;
+}
+
+#video-container.compare-mode #video {
+  width: 50%;
+  object-fit: contain;
+}
+
+#video-container.compare-mode #video-b {
+  width: 50%;
+  height: 100%;
+  object-fit: contain;
+  border-left: 2px solid #444;
+  display: block;
+}
+
+/* Compare mode video labels */
+.compare-video-label {
+  position: absolute;
+  top: 8px;
+  font-size: 13px;
+  font-family: Consolas, monospace;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 3px;
+  background: rgba(0,0,0,0.6);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.compare-video-label.label-a {
+  left: 8px;
+  color: #00e5ff;
+}
+
+.compare-video-label.label-b {
+  left: calc(50% + 8px);
+  color: #ff4081;
+}
+
+/* Compare time display */
+.compare-time {
+  font-family: Consolas, monospace;
+  font-size: 13px;
+}
+
+.compare-time-a {
+  color: #00e5ff;
+}
+
+.compare-time-b {
+  color: #ff4081;
 }

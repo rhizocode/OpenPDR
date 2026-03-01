@@ -14,10 +14,13 @@ export function initSteeringIndicator(): void {
   labelEl = document.getElementById('steering-label') as HTMLSpanElement
 }
 
-export function drawSteering(deg: number): void {
+export function drawSteering(deg: number, targetSvg?: SVGSVGElement, targetLabel?: HTMLSpanElement): void {
+  const svg = targetSvg ?? svgEl
+  const lbl = targetLabel ?? labelEl
+
   // Update numeric label (non-rotated)
-  labelEl.textContent = `${Math.abs(Math.round(deg))}\u00B0`
+  lbl.textContent = `${Math.abs(Math.round(deg))}\u00B0`
 
   // Negate: PDR positive = left turn
-  svgEl.style.transform = `rotate(${-deg}deg)`
+  svg.style.transform = `rotate(${-deg}deg)`
 }

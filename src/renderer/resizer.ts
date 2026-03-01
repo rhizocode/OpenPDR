@@ -5,6 +5,8 @@
  * for touch/PWA compatibility.
  */
 
+import { telemetryStore } from './state'
+
 const STORAGE_KEY = 'pdr-chart-height'
 const MIN_HEIGHT = 80
 const MAX_RATIO = 0.6
@@ -53,5 +55,7 @@ export function initResizer(): void {
  *  Resize handle visibility is managed by updateChartPanelCollapse() in main.ts. */
 export function showChartPanel(): void {
   document.getElementById('chart-panel')!.classList.add('active')
-  document.getElementById('chart-empty')?.classList.remove('hidden')
+  if (!telemetryStore || telemetryStore.length === 0) {
+    document.getElementById('chart-empty')?.classList.remove('hidden')
+  }
 }

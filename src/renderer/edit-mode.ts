@@ -9,6 +9,7 @@
 import type { OverlayConfig, OverlayKey, OverlayPosition, OverlayLayout } from './types'
 import { getEditMode, setEditMode, onEditModeChange } from './state'
 import { applyOverlayConfig, getOverlayConfig, setOverlayConfig } from './hud'
+import { syncPositionsToB } from './compare-overlay-b'
 
 const LAYOUT_STORAGE_KEY = 'pdr-overlay-layout'
 const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
@@ -81,6 +82,7 @@ export function applyAllPositions(): void {
   for (const key of Object.keys(layout) as OverlayKey[]) {
     applyPosition(key)
   }
+  syncPositionsToB(container)
 }
 
 /**
@@ -166,6 +168,7 @@ function onPointerMove(e: PointerEvent): void {
     top: Math.max(0, Math.min(95, newTop)),
   }
   applyPosition(dragTarget)
+  syncPositionsToB(container)
 }
 
 function onPointerUp(): void {
@@ -197,6 +200,7 @@ function onResizePointerMove(e: PointerEvent): void {
   const newScale = Math.max(0.4, Math.min(2.5, resizeStartScale + delta))
   layout[resizeTarget] = { ...layout[resizeTarget], scale: newScale }
   applyPosition(resizeTarget)
+  syncPositionsToB(container)
 }
 
 function onResizePointerUp(): void {
