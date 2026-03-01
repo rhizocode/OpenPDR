@@ -3,15 +3,16 @@
  *
  * Renders a list of detected laps with times.
  * Highlights the current lap as the video plays.
- * Click a lap to seek the video to its start.
+ * Click a lap to select it as the view range and seek to its start.
  */
 
-import { lapData, currentRow, video, seekToTelemetryTime, getSyncedTime } from './state'
+import { lapData, currentRow, duration, seekToTelemetryTime, getSyncedTime, setViewRange, selectedLapIdx, onViewRangeChange } from './state'
 import { onTelemetryLoad, onFrameTick } from './state'
 import type { LapInfo } from './types'
 
 let container: HTMLElement
 let lapRows: HTMLElement[] = []
+let fullRecordingRow: HTMLElement | null = null
 let laps: LapInfo[] = []
 let currentLapIdx = -1
 
@@ -26,6 +27,7 @@ function formatLapTime(seconds: number): string {
 function buildTable(): void {
   container.innerHTML = ''
   lapRows = []
+  fullRecordingRow = null
   currentLapIdx = -1
 
   const ld = lapData
@@ -45,6 +47,18 @@ function buildTable(): void {
   heading.className = 'lap-heading'
   heading.textContent = `${laps.length} lap${laps.length !== 1 ? 's' : ''}`
   container.appendChild(heading)
+
+  // "Full Recording" row
+  fullRecordingRow = document.createElement('div')
+  fullRecordingRow.className = 'lap-row selected'
+  const fullLabel = document.createElement('span')
+  fullLabel.className = 'lap-num'
+  fullLabel.textContent = 'Full Recording'
+  fullRecordingRow.appendChild(fullLabel)
+  fullRecordingRow.addEventListener('click', () => {
+    setViewRange({ startTime: 0, endTime: duration }, null)
+  })
+  container.appendChild(fullRecordingRow)
 
   for (const lap of laps) {
     const row = document.createElement('div')
@@ -78,6 +92,8 @@ function buildTable(): void {
     row.appendChild(rightEl)
 
     row.addEventListener('click', () => {
+      const idx = lap.lapNumber - 1
+      setViewRange({ startTime: lap.startTime, endTime: lap.endTime }, idx)
       seekToTelemetryTime(lap.startTime)
     })
 
@@ -108,6 +124,15 @@ function updateHighlight(): void {
   }
 }
 
+function updateSelection(): void {
+  if (fullRecordingRow) {
+    fullRecordingRow.classList.toggle('selected', selectedLapIdx === null)
+  }
+  for (let i = 0; i < lapRows.length; i++) {
+    lapRows[i].classList.toggle('selected', i === selectedLapIdx)
+  }
+}
+
 export function initLapTable(el: HTMLElement): void {
   container = el
 
@@ -118,4 +143,5 @@ export function initLapTable(el: HTMLElement): void {
 
   onTelemetryLoad(() => buildTable())
   onFrameTick(() => updateHighlight())
+  onViewRangeChange(() => updateSelection())
 }

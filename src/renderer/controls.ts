@@ -5,7 +5,7 @@
  * Uses pointer events for future PWA/touch compatibility.
  */
 
-import { video, formatTime, toggleDebugPanel } from './state'
+import { video, formatTime, toggleDebugPanel, viewRange, getViewDuration, viewFractionToTime, getSyncedTime, seekToTelemetryTime, avSyncOffset, onViewRangeChange } from './state'
 
 let isScrubbing = false
 
@@ -29,15 +29,19 @@ export function initControls(): Controls {
 
   // ── Scrub bar update (called from animation loop) ──
   function updateScrubBar(t: number): void {
-    if (video.duration && isFinite(video.duration)) {
-      const pct = (t / video.duration) * 100
+    const d = getViewDuration()
+    if (d > 0) {
+      const telTime = t + avSyncOffset
+      const pct = Math.max(0, Math.min(100, ((telTime - viewRange.startTime) / d) * 100))
       scrubProgress.style.width = `${pct}%`
       scrubThumb.style.left = `${pct}%`
     }
   }
 
   function updateTimeDisplay(t: number): void {
-    timeCurrent.textContent = formatTime(t)
+    const telTime = t + avSyncOffset
+    const lapRelative = Math.max(0, telTime - viewRange.startTime)
+    timeCurrent.textContent = formatTime(lapRelative)
   }
 
 
@@ -45,9 +49,7 @@ export function initControls(): Controls {
   function scrubToPosition(e: PointerEvent): void {
     const rect = scrubContainer.getBoundingClientRect()
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    if (video.duration && isFinite(video.duration)) {
-      video.currentTime = pct * video.duration
-    }
+    seekToTelemetryTime(viewFractionToTime(pct))
   }
 
   scrubContainer.addEventListener('pointerdown', (e) => {
@@ -68,6 +70,10 @@ export function initControls(): Controls {
   // ── Play/pause ──
   btnPlay.addEventListener('click', () => {
     if (video.paused) {
+      // If at or past end of view range, wrap to start
+      if (getSyncedTime() >= viewRange.endTime - 0.05) {
+        seekToTelemetryTime(viewRange.startTime)
+      }
       video.play()
       btnPlay.innerHTML = '&#9646;&#9646;'
     } else {
@@ -85,13 +91,13 @@ export function initControls(): Controls {
       e.preventDefault()
       btnPlay.click()
     } else if (e.code === 'ArrowRight') {
-      video.currentTime = Math.min(video.duration || 0, video.currentTime + 5)
+      seekToTelemetryTime(Math.min(viewRange.endTime, getSyncedTime() + 5))
     } else if (e.code === 'ArrowLeft') {
-      video.currentTime = Math.max(0, video.currentTime - 5)
+      seekToTelemetryTime(Math.max(viewRange.startTime, getSyncedTime() - 5))
     } else if (e.code === 'Period' && video.paused) {
-      video.currentTime = Math.min(video.duration || 0, video.currentTime + 1 / 30)
+      seekToTelemetryTime(Math.min(viewRange.endTime, getSyncedTime() + 1 / 30))
     } else if (e.code === 'Comma' && video.paused) {
-      video.currentTime = Math.max(0, video.currentTime - 1 / 30)
+      seekToTelemetryTime(Math.max(viewRange.startTime, getSyncedTime() - 1 / 30))
     } else if (e.code === 'F2') {
       e.preventDefault()
       toggleDebugPanel()
@@ -113,6 +119,11 @@ export function initControls(): Controls {
 
   video.addEventListener('ended', () => {
     btnPlay.innerHTML = '&#9654;'
+  })
+
+  // ── View range changes ──
+  onViewRangeChange(() => {
+    timeTotal.textContent = formatTime(getViewDuration())
   })
 
   return { updateScrubBar, updateTimeDisplay }
