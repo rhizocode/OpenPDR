@@ -6,7 +6,7 @@
  */
 
 import './types' // side-effect: augments Window with pdr
-import { video, findRowAtTime, setCurrentRow, updateInterpolation, avSyncOffset, fireFrameTick, isDebugVisible, dbg } from './state'
+import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg } from './state'
 import { initHud } from './hud'
 import { initControls, getIsScrubbing } from './controls'
 import { initFileOpen } from './file-open'
@@ -227,10 +227,8 @@ let animationRunning = false
 function onAnimationFrame(): void {
   const t = video.currentTime
   lastVideoTime = t
-  // Apply A/V sync offset: telemetry lookup leads the video frame to match audio timing
-  const tSync = t + avSyncOffset
-  setCurrentRow(findRowAtTime(tSync))  // Only fires listeners if row changed
-  updateInterpolation(tSync)           // Compute bracketing rows + alpha for smooth lerp
+  setCurrentRow(findRowAtTime(t))    // A/V sync offset applied internally
+  updateInterpolation(t)             // A/V sync offset applied internally
   controls.updateScrubBar(t)
   controls.updateTimeDisplay(t)
   fireFrameTick()
