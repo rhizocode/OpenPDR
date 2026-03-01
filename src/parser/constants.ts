@@ -28,6 +28,11 @@ export const TIRE_RADIUS_M = 0.321
 // Proportions
 export const PROPORTION_SCALE = 1.0 / 255.0
 
+// Brake pedal remap — GM CAN "brake.position" is pedal travel (0–1 proportion).
+// Power-assisted brakes mean hard braking only uses ~40% of pedal travel.
+// Remap so 40% pedal travel displays as 100% for intuitive UI.
+export const BRAKE_PEDAL_MAX = 0.40
+
 // Pressures
 export const OIL_PRESSURE_SCALE = 4000
 export const BOOST_PRESSURE_SCALE = 1000
