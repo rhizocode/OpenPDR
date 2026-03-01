@@ -72,9 +72,8 @@ export function createOverlayB(videoContainer: HTMLDivElement, overlayAnchorA: H
   steeringSvgB = anchorB.querySelector('#steering-svg-b') as unknown as SVGSVGElement
   steeringLabelB = anchorB.querySelector('#steering-label-b') as HTMLSpanElement
 
-  // Remove track map and session overlays from B — same track/session as A
+  // Remove track map from B — same track for both sides
   anchorB.querySelector('#hud-trackMap-b')?.remove()
-  anchorB.querySelector('#hud-session-b')?.remove()
 
   // Remove edit-mode artifacts (cloned from A if edit mode was active)
   anchorB.classList.remove('edit-guides')
@@ -240,6 +239,23 @@ export function smoothAndDrawB(
   if (rpmCanvasB) drawRpmGauge(displayedRpmB, rpmCanvasB)
   if (steeringSvgB && steeringLabelB) drawSteering(displayedSteeringB, steeringSvgB, steeringLabelB)
   if (gforceCanvasB) drawGForce(displayedGLatB, displayedGLonB, gforceCanvasB)
+}
+
+/**
+ * Copy inline position styles from A-side overlay elements to their B-side clones.
+ * Call after edit-mode drag/resize to keep both sides in sync.
+ */
+export function syncPositionsToB(overlayAnchorA: HTMLDivElement): void {
+  if (!anchorB) return
+  for (const elA of overlayAnchorA.querySelectorAll<HTMLElement>('.hud-element[data-overlay]')) {
+    const key = elA.dataset.overlay
+    if (!key) continue
+    const elB = anchorB.querySelector<HTMLElement>(`.hud-element[data-overlay="${key}"]`)
+    if (!elB) continue
+    elB.style.left = elA.style.left
+    elB.style.top = elA.style.top
+    elB.style.transform = elA.style.transform
+  }
 }
 
 /** Returns the B overlay anchor element (for positioning and visibility). */
