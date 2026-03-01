@@ -14,7 +14,7 @@
 
 import type { TelemetryRow } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
-import { telemetryStore, duration, video, onRowUpdate, onFrameTick, onTelemetryLoad, currentRow, setCurrentRow, findRowAtTime, lapData } from './state'
+import { telemetryStore, duration, video, onRowUpdate, onFrameTick, onTelemetryLoad, currentRow, setCurrentRow, findRowAtTime, lapData, seekToTelemetryTime, getSyncedTime } from './state'
 
 // ── Channel configuration ──
 
@@ -138,8 +138,8 @@ export function initChartPanel(): void {
   function seekToPointer(e: PointerEvent): void {
     const rect = canvas.getBoundingClientRect()
     const xPct = (e.clientX - rect.left - LABEL_WIDTH) / (rect.width - LABEL_WIDTH)
-    if (xPct >= 0 && xPct <= 1 && video.duration && isFinite(video.duration)) {
-      video.currentTime = xPct * video.duration
+    if (xPct >= 0 && xPct <= 1 && duration > 0) {
+      seekToTelemetryTime(xPct * duration)
       setCurrentRow(findRowAtTime(video.currentTime))
     }
   }
@@ -458,9 +458,9 @@ function drawPlayhead(): void {
 
   // Compute playhead position
   let x = -1
-  if (channelData.length > 0 && video.duration > 0 && isFinite(video.duration)) {
+  if (channelData.length > 0 && duration > 0) {
     const labelW = LABEL_WIDTH * dpr
-    const xPct = video.currentTime / video.duration
+    const xPct = getSyncedTime() / duration
     x = Math.round(labelW + xPct * (w - labelW))
   }
 

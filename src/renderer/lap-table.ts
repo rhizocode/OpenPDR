@@ -6,7 +6,7 @@
  * Click a lap to seek the video to its start.
  */
 
-import { lapData, currentRow, video } from './state'
+import { lapData, currentRow, video, seekToTelemetryTime, getSyncedTime } from './state'
 import { onTelemetryLoad, onFrameTick } from './state'
 import type { LapInfo } from './types'
 
@@ -78,7 +78,7 @@ function buildTable(): void {
     row.appendChild(rightEl)
 
     row.addEventListener('click', () => {
-      video.currentTime = lap.startTime
+      seekToTelemetryTime(lap.startTime)
     })
 
     container.appendChild(row)
@@ -89,10 +89,12 @@ function buildTable(): void {
 function updateHighlight(): void {
   if (laps.length === 0 || !currentRow) return
 
-  const t = currentRow.time
+  // Use the actual synced telemetry time (not the snapped row time) so that
+  // video frame-snap rounding doesn't push us across a lap boundary.
+  const t = getSyncedTime()
   let idx = -1
   for (let i = 0; i < laps.length; i++) {
-    if (t >= laps[i].startTime && t < laps[i].endTime) {
+    if (t >= laps[i].startTime - 0.05 && t < laps[i].endTime) {
       idx = i
       break
     }

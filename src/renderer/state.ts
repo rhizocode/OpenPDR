@@ -126,11 +126,38 @@ export function setTelemetry(store: TelemetryStore, dur: number): void {
   for (const fn of telemetryLoadListeners) fn()
 }
 
-// ── Binary search: find the telemetry row closest to a given time ──
+// ── Seeking: convert telemetry time ↔ video time ──
+
+/**
+ * Seek the video to show a specific telemetry time.
+ * Applies A/V sync offset so the HUD lands on the requested telemetry position.
+ */
+export function seekToTelemetryTime(telTime: number): void {
+  video.currentTime = telTime - avSyncOffset
+}
+
+/**
+ * Get the current telemetry-side time (video time + A/V sync offset).
+ * Use this instead of reading video.currentTime when you need the telemetry position.
+ */
+export function getSyncedTime(): number {
+  return video.currentTime + avSyncOffset
+}
+
+// ── Binary search: find the telemetry row closest to the current synced time ──
 // Pre-allocated scratch row — reused every frame, never hold a reference across frames.
 const _findRow = createEmptyRow()
 
-export function findRowAtTime(t: number): TelemetryRow | null {
+/**
+ * Find the telemetry row closest to a video time.
+ * Automatically applies A/V sync offset so callers never need to handle it.
+ */
+export function findRowAtTime(videoTime: number): TelemetryRow | null {
+  return findRowAtRawTime(videoTime + avSyncOffset)
+}
+
+/** Find the telemetry row closest to an exact telemetry timestamp (no offset applied). */
+function findRowAtRawTime(t: number): TelemetryRow | null {
   const store = telemetryStore
   if (!store || store.length === 0) return null
 
@@ -159,15 +186,17 @@ export function findRowAtTime(t: number): TelemetryRow | null {
 }
 
 /**
- * Update interpolation state for a given time.
+ * Update interpolation state for a given video time.
  * Finds the two bracketing telemetry rows and computes a 0..1 alpha between them.
+ * Automatically applies A/V sync offset.
  * Called every animation frame from main.ts.
  */
 // Pre-allocated interp scratch rows — reused every frame.
 const _interpPrevRow = createEmptyRow()
 const _interpNextRow = createEmptyRow()
 
-export function updateInterpolation(t: number): void {
+export function updateInterpolation(videoTime: number): void {
+  const t = videoTime + avSyncOffset
   const store = telemetryStore
   if (!store || store.length === 0) {
     interpPrev = interpNext = null
