@@ -260,7 +260,8 @@ html, body {
 }
 
 /* Speed */
-#hud-speed {
+#hud-speed,
+#hud-speed-b {
   align-items: baseline;
   gap: 4px;
 }
@@ -269,7 +270,8 @@ html, body {
   display: flex;
 }
 
-#hud-speed-value {
+#hud-speed-value,
+#hud-speed-value-b {
   font-size: 56px;
   font-weight: 700;
   color: #fff;
@@ -277,7 +279,8 @@ html, body {
   line-height: 1;
 }
 
-#hud-speed-unit {
+#hud-speed-unit,
+#hud-speed-unit-b {
   font-size: 18px;
   color: #ccc;
   text-shadow: 0 0 8px rgba(0,0,0,0.8);
@@ -289,13 +292,15 @@ html, body {
   display: block;
 }
 
-#rpm-gauge-canvas {
+#rpm-gauge-canvas,
+#rpm-gauge-canvas-b {
   display: block;
   background: transparent;
 }
 
 /* Gear */
-#hud-gear {
+#hud-gear,
+#hud-gear-b {
   align-items: center;
   justify-content: center;
   width: 48px;
@@ -309,7 +314,8 @@ html, body {
   display: flex;
 }
 
-#hud-gear-value {
+#hud-gear-value,
+#hud-gear-value-b {
   font-size: 28px;
   font-weight: 700;
   color: #fff;
@@ -378,14 +384,16 @@ html, body {
   display: block;
 }
 
-#gforce-canvas {
+#gforce-canvas,
+#gforce-canvas-b {
   display: block;
   background: rgba(0,0,0,0.5);
   border-radius: 50%;
 }
 
 /* Pedal bars */
-#hud-pedals {
+#hud-pedals,
+#hud-pedals-b {
   flex-direction: column;
   gap: 3px;
   width: 100px;
@@ -431,7 +439,8 @@ html, body {
 }
 
 /* ── GPS display ── */
-#hud-gps {
+#hud-gps,
+#hud-gps-b {
   flex-direction: column;
   gap: 2px;
   font-size: 11px;
@@ -447,7 +456,8 @@ html, body {
 }
 
 /* ── Session info display ── */
-#hud-session {
+#hud-session,
+#hud-session-b {
   flex-direction: column;
   gap: 2px;
   font-size: 11px;
@@ -463,7 +473,8 @@ html, body {
   display: flex;
 }
 
-#hud-session .session-label {
+#hud-session .session-label,
+#hud-session-b .session-label {
   color: #fff;
   font-weight: bold;
   font-size: 9px;
@@ -471,7 +482,8 @@ html, body {
   letter-spacing: 0.5px;
 }
 
-#hud-session .session-value {
+#hud-session .session-value,
+#hud-session-b .session-value {
   color: #ccc;
 }
 

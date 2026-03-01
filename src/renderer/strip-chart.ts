@@ -65,6 +65,8 @@ const CHANNELS: ChartChannel[] = [
 ]
 
 const CHANNELS_STORAGE_KEY = 'pdr-chart-channels'
+const DELTA_KEY = 'delta'           // toggle key for delta-time chart (compare mode only)
+const DELTA_COLOR = '#ffaa00'       // toolbar button color
 const LABEL_WIDTH = 80  // px reserved for axis labels on left
 
 const COLOR_A = '#00e5ff'   // cyan
@@ -185,6 +187,7 @@ export function initChartPanel(): void {
 
   // Compare mode lifecycle
   onCompareEnter(() => {
+    buildToolbar()  // show delta toggle button
     buildScaledCacheCompare()
     rebuildCompareChannelData()
     resizeAndRender()
@@ -195,6 +198,7 @@ export function initChartPanel(): void {
     deltaChannelData = null
     scaledCacheA.clear()
     scaledCacheB.clear()
+    buildToolbar()  // remove delta toggle button
     // Restore single-file mode
     buildScaledCache()
     rebuildChannelData()
@@ -252,7 +256,9 @@ export function initChartPanel(): void {
 // ── Internal ──
 
 function defaultEnabledKeys(): Set<string> {
-  return new Set(CHANNELS.filter(c => c.defaultEnabled).map(c => c.key))
+  const keys = new Set(CHANNELS.filter(c => c.defaultEnabled).map(c => c.key))
+  keys.add(DELTA_KEY)
+  return keys
 }
 
 function saveEnabledKeys(): void {
@@ -288,6 +294,35 @@ function buildToolbar(): void {
       } else {
         rebuildChannelData()
       }
+      resizeAndRender()
+    })
+    toolbar.appendChild(btn)
+  }
+
+  // In compare mode, add a delta-time toggle button
+  if (isCompareMode()) {
+    const btn = document.createElement('button')
+    btn.className = 'chart-channel-btn'
+    btn.textContent = '\u0394 Time'
+    if (enabledKeys.has(DELTA_KEY)) {
+      btn.classList.add('active')
+      btn.style.color = DELTA_COLOR
+      btn.style.borderColor = DELTA_COLOR
+    }
+    btn.addEventListener('click', () => {
+      if (enabledKeys.has(DELTA_KEY)) {
+        enabledKeys.delete(DELTA_KEY)
+        btn.classList.remove('active')
+        btn.style.color = ''
+        btn.style.borderColor = ''
+      } else {
+        enabledKeys.add(DELTA_KEY)
+        btn.classList.add('active')
+        btn.style.color = DELTA_COLOR
+        btn.style.borderColor = DELTA_COLOR
+      }
+      saveEnabledKeys()
+      rebuildCompareChannelData()
       resizeAndRender()
     })
     toolbar.appendChild(btn)
@@ -377,11 +412,15 @@ function rebuildCompareChannelData(): void {
     }
   })
 
-  // Build delta-time channel
-  const delta = buildDeltaTime(sda, sdb, DELTA_SAMPLES)
-  const offscreen = document.createElement('canvas')
-  const offCtx = offscreen.getContext('2d')!
-  deltaChannelData = { delta, offscreen, ctx: offCtx }
+  // Build delta-time channel (only if toggled on)
+  if (enabledKeys.has(DELTA_KEY)) {
+    const delta = buildDeltaTime(sda, sdb, DELTA_SAMPLES)
+    const offscreen = document.createElement('canvas')
+    const offCtx = offscreen.getContext('2d')!
+    deltaChannelData = { delta, offscreen, ctx: offCtx }
+  } else {
+    deltaChannelData = null
+  }
 }
 
 function resizeAndRender(): void {
