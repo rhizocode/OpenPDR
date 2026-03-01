@@ -11,10 +11,10 @@ import {
   STEERING_SCALE, RAD_TO_DEG, WHEEL_SPEED_SCALE, TIRE_RADIUS_M, MPS_TO_KPH,
   GYRO_YAW_SCALE, DEG_SCALE, ALT_SCALE, HEADING_DEG_SCALE, SPEED_SCALE,
   MPS_TO_MPH, BOOST_PRESSURE_SCALE, POWER_SCALE, OIL_PRESSURE_SCALE,
-  FUEL_LEVEL_SCALE, ODOMETER_SCALE, TIRE_PRESSURE_SCALE,
+  FUEL_LEVEL_SCALE, ODOMETER_SCALE, TIRE_PRESSURE_SCALE, BRAKE_PEDAL_MAX,
   enumLabel,
 } from './constants'
-import { findGpsInPacket, findFloatBlocks, verifyGpsOffsets, verifyFloatOffsets } from './gps-discovery'
+import { findGpsInPacket, verifyGpsOffsets } from './gps-discovery'
 
 /** Cached offsets from a previous successful decode, reusable across packets of the same MMP version. */
 export interface CachedOffsets {
@@ -130,6 +130,7 @@ function decode100HzFrame(packet: Uint8Array, offset: number, hz100Size: number,
 
   if (hz100Size === 25) {
     // MMP v4: float32 wheel speeds in m/s
+    // NaN/Infinity are sentinel values meaning "not available"
     const wsFlMps = readFloatBE(packet, offset + 7, dv)
     const wsFrMps = readFloatBE(packet, offset + 11, dv)
     const wsRlMps = readFloatBE(packet, offset + 15, dv)
@@ -141,14 +142,15 @@ function decode100HzFrame(packet: Uint8Array, offset: number, hz100Size: number,
       engine_rpm: readUint16BE(packet, offset + 1, dv) * ENGINE_SPEED_SCALE * RAD_TO_RPM,
       engine_torque_nm: torqueRaw * TORQUE_SCALE + TORQUE_OFFSET,
       steering_angle_deg: readInt16BE(packet, offset + 5, dv) * STEERING_SCALE * RAD_TO_DEG,
-      wheel_speed_fl_kph: wsFlMps * MPS_TO_KPH,
-      wheel_speed_fr_kph: wsFrMps * MPS_TO_KPH,
-      wheel_speed_rl_kph: wsRlMps * MPS_TO_KPH,
-      wheel_speed_rr_kph: wsRrMps * MPS_TO_KPH,
+      wheel_speed_fl_kph: Number.isFinite(wsFlMps) ? wsFlMps * MPS_TO_KPH : 0,
+      wheel_speed_fr_kph: Number.isFinite(wsFrMps) ? wsFrMps * MPS_TO_KPH : 0,
+      wheel_speed_rl_kph: Number.isFinite(wsRlMps) ? wsRlMps * MPS_TO_KPH : 0,
+      wheel_speed_rr_kph: Number.isFinite(wsRrMps) ? wsRrMps * MPS_TO_KPH : 0,
       gyro_yaw_deg_s: gyroRaw * GYRO_YAW_SCALE * RAD_TO_DEG,
     }
   } else {
     // MMP v3: u16 angular velocity wheel speeds
+    // GM CAN bus reports 0xFF00-0xFFFF as "not available" sentinels when stationary
     const wsFl = readUint16BE(packet, offset + 7, dv)
     const wsFr = readUint16BE(packet, offset + 9, dv)
     const wsRl = readUint16BE(packet, offset + 11, dv)
@@ -160,10 +162,10 @@ function decode100HzFrame(packet: Uint8Array, offset: number, hz100Size: number,
       engine_rpm: readUint16BE(packet, offset + 1, dv) * ENGINE_SPEED_SCALE * RAD_TO_RPM,
       engine_torque_nm: torqueRaw * TORQUE_SCALE + TORQUE_OFFSET,
       steering_angle_deg: readInt16BE(packet, offset + 5, dv) * STEERING_SCALE * RAD_TO_DEG,
-      wheel_speed_fl_kph: wsFl * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
-      wheel_speed_fr_kph: wsFr * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
-      wheel_speed_rl_kph: wsRl * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
-      wheel_speed_rr_kph: wsRr * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+      wheel_speed_fl_kph: wsFl >= 0xFF00 ? 0 : wsFl * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+      wheel_speed_fr_kph: wsFr >= 0xFF00 ? 0 : wsFr * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+      wheel_speed_rl_kph: wsRl >= 0xFF00 ? 0 : wsRl * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
+      wheel_speed_rr_kph: wsRr >= 0xFF00 ? 0 : wsRr * WHEEL_SPEED_SCALE * TIRE_RADIUS_M * MPS_TO_KPH,
       gyro_yaw_deg_s: gyroRaw * GYRO_YAW_SCALE * RAD_TO_DEG,
     }
   }
@@ -339,8 +341,13 @@ function validate100Hz(f: Hz100Frame): boolean {
 
 // ── Helper: average an array of sub-frames ──
 
+/** Remap raw brake pedal position for display: 0–BRAKE_PEDAL_MAX → 0–1. */
+function remapBrake(raw: number): number {
+  return Math.min(raw / BRAKE_PEDAL_MAX, 1)
+}
+
 function avg100Hz(frames: Hz100Frame[]): {
-  brake: number; rpm: number; torque: number; steering: number
+  brake: number; brakeRaw: number; rpm: number; torque: number; steering: number
   wsFl: number; wsFr: number; wsRl: number; wsRr: number; gyro: number
 } {
   const n = frames.length
@@ -357,8 +364,9 @@ function avg100Hz(frames: Hz100Frame[]): {
     wsRr += f.wheel_speed_rr_kph
     gyro += f.gyro_yaw_deg_s
   }
+  const brakeRaw = brake / n
   return {
-    brake: brake / n, rpm: rpm / n, torque: torque / n, steering: steering / n,
+    brake: remapBrake(brakeRaw), brakeRaw, rpm: rpm / n, torque: torque / n, steering: steering / n,
     wsFl: wsFl / n, wsFr: wsFr / n, wsRl: wsRl / n, wsRr: wsRr / n, gyro: gyro / n,
   }
 }
@@ -402,11 +410,11 @@ export function decodePacket(
     ?? findGpsInPacket(packet, refLatRange)
   if (gpsOffsets.length < 5) return { rows: [], offsets: cachedOffsets }
 
-  const floatOffsets = (cachedOffsets && verifyFloatOffsets(packet, cachedOffsets.floats))
-    ?? findFloatBlocks(packet, packet.length)
+  // Cache GPS offsets for subsequent packets
+  const newOffsets: CachedOffsets = { gps: gpsOffsets, floats: [] }
 
-  // Cache these offsets for subsequent packets
-  const newOffsets: CachedOffsets = { gps: gpsOffsets, floats: floatOffsets }
+  // Sub-frame group size: [100Hz][100Hz][50Hz]
+  const groupSize = 2 * hz100Size + 24
 
   const records: TelemetryRow[] = []
   const baseTime = packetIdx // seconds
@@ -426,31 +434,25 @@ export function decodePacket(
     const g2 = decode10HzFrame(packet, latOff, dv)
     if (!g2) continue
 
-    // Find the float blocks and 100Hz frames for this 10Hz period
-    const nextLat = frameIdx < gpsOffsets.length - 1
-      ? gpsOffsets[frameIdx + 1]
-      : packet.length
+    // Compute sub-frame start using the known interleaving pattern:
+    // GPS(26) + [5Hz(4) if even] + [2Hz(1) if frame 0|5] + [1Hz if frame 0]
+    // then 5 groups of [100Hz, 100Hz, 50Hz]
+    let subFrameStart = latOff + 26
+    if (frameIdx % 2 === 0) subFrameStart += 4  // 5Hz block
+    if (frameIdx === 0 || frameIdx === 5) subFrameStart += 1  // 2Hz block
+    if (frameIdx === 0) subFrameStart += hz1Size  // 1Hz block
 
-    const frameFloats = floatOffsets.filter(f => f > latOff && f < nextLat)
-
-    // Decode 100Hz sub-frames (two frames before each float block)
+    // Decode 100Hz and 50Hz sub-frames at computed positions
     const hz100Frames: Hz100Frame[] = []
-    for (const foff of frameFloats) {
-      const f1Off = foff - 2 * hz100Size
-      const f2Off = foff - hz100Size
-      if (f1Off >= latOff) {
-        const f1 = decode100HzFrame(packet, f1Off, hz100Size, dv)
-        if (f1 && validate100Hz(f1)) hz100Frames.push(f1)
-      }
-      const f2 = decode100HzFrame(packet, f2Off, hz100Size, dv)
-      if (f2 && validate100Hz(f2)) hz100Frames.push(f2)
-    }
-
-    // Decode 50Hz sub-frames
     const hz50Frames: Hz50Frame[] = []
-    for (const foff of frameFloats) {
-      const f = decode50HzFrame(packet, foff, dv)
-      if (f) hz50Frames.push(f)
+    for (let g = 0; g < 5; g++) {
+      const gOff = subFrameStart + g * groupSize
+      const f1 = decode100HzFrame(packet, gOff, hz100Size, dv)
+      if (f1 && validate100Hz(f1)) hz100Frames.push(f1)
+      const f2 = decode100HzFrame(packet, gOff + hz100Size, hz100Size, dv)
+      if (f2 && validate100Hz(f2)) hz100Frames.push(f2)
+      const f50 = decode50HzFrame(packet, gOff + 2 * hz100Size, dv)
+      if (f50) hz50Frames.push(f50)
     }
 
     // 5Hz data (even frames: 0, 2, 4, 6, 8)
@@ -473,7 +475,7 @@ export function decodePacket(
     // Build the row
     const avg100 = hz100Frames.length > 0
       ? avg100Hz(hz100Frames)
-      : { brake: 0, rpm: 0, torque: 0, steering: 0, wsFl: 0, wsFr: 0, wsRl: 0, wsRr: 0, gyro: 0 }
+      : { brake: 0, brakeRaw: 0, rpm: 0, torque: 0, steering: 0, wsFl: 0, wsFr: 0, wsRl: 0, wsRr: 0, gyro: 0 }
 
     const avg50 = hz50Frames.length > 0
       ? avg50Hz(hz50Frames)
@@ -505,6 +507,7 @@ export function decodePacket(
 
       // 100 Hz averaged
       brake: avg100.brake,
+      brake_raw: avg100.brakeRaw,
       rpm: avg100.rpm,
       engine_torque_nm: avg100.torque,
       steering_deg: avg100.steering,

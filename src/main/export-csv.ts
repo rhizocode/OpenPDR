@@ -56,6 +56,7 @@ const COLUMNS: Column[] = [
 
   // 100 Hz averaged
   { name: 'brake',              get: num('brake') },
+  { name: 'brake_raw',          get: num('brake_raw') },
   { name: 'rpm',                get: num('rpm') },
   { name: 'engine_torque_nm',   get: num('engine_torque_nm') },
   { name: 'steering_deg',       get: num('steering_deg') },

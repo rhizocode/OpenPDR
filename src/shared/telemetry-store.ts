@@ -39,7 +39,8 @@ export interface TelemetryStore {
   engine_power_kw: Float32Array
 
   // ── 100 Hz averaged ──
-  brake: Float32Array
+  brake: Float32Array      // remapped pedal position (0–1, scaled for display)
+  brake_raw: Float32Array  // raw pedal position (0–1, true CAN bus value)
   rpm: Float32Array
   engine_torque_nm: Float32Array
   steering_deg: Float32Array
@@ -119,6 +120,7 @@ export function createTelemetryStore(capacity: number): TelemetryStore {
     engine_power_kw: new Float32Array(capacity),
 
     brake: new Float32Array(capacity),
+    brake_raw: new Float32Array(capacity),
     rpm: new Float32Array(capacity),
     engine_torque_nm: new Float32Array(capacity),
     steering_deg: new Float32Array(capacity),
@@ -193,6 +195,7 @@ export function writeRow(store: TelemetryStore, index: number, row: TelemetryRow
   store.engine_power_kw[index] = row.engine_power_kw
 
   store.brake[index] = row.brake
+  store.brake_raw[index] = row.brake_raw
   store.rpm[index] = row.rpm
   store.engine_torque_nm[index] = row.engine_torque_nm
   store.steering_deg[index] = row.steering_deg
@@ -252,7 +255,7 @@ export function createEmptyRow(): TelemetryRow {
     gps_fix_quality: 0, gps_satellites: 0,
     throttle: 0, abs_status: 0, abs_status_label: '',
     boost_pressure_kpa: 0, emotor_power_kw: 0, engine_power_kw: 0,
-    brake: 0, rpm: 0, engine_torque_nm: 0, steering_deg: 0,
+    brake: 0, brake_raw: 0, rpm: 0, engine_torque_nm: 0, steering_deg: 0,
     gyro_yaw_deg_s: 0,
     wheel_speed_fl_kph: 0, wheel_speed_fr_kph: 0,
     wheel_speed_rl_kph: 0, wheel_speed_rr_kph: 0,
@@ -288,6 +291,7 @@ export function getRowInto(store: TelemetryStore, index: number, out: TelemetryR
   out.engine_power_kw = store.engine_power_kw[index]
 
   out.brake = store.brake[index]
+  out.brake_raw = store.brake_raw[index]
   out.rpm = store.rpm[index]
   out.engine_torque_nm = store.engine_torque_nm[index]
   out.steering_deg = store.steering_deg[index]
@@ -377,6 +381,7 @@ export function trimStore(store: TelemetryStore): TelemetryStore {
     engine_power_kw: store.engine_power_kw.slice(0, n),
 
     brake: store.brake.slice(0, n),
+    brake_raw: store.brake_raw.slice(0, n),
     rpm: store.rpm.slice(0, n),
     engine_torque_nm: store.engine_torque_nm.slice(0, n),
     steering_deg: store.steering_deg.slice(0, n),
