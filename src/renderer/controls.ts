@@ -6,6 +6,8 @@
  */
 
 import { video, formatTime, toggleDebugPanel, viewRange, getViewDuration, viewFractionToTime, getSyncedTime, seekToTelemetryTime, avSyncOffset, onViewRangeChange } from './state'
+import { isCompareMode, videoA as cmpVideoA, syncDataA, syncDataB, lapA, lapB, trackPosition } from './compare-state'
+import { trackPositionToTime, timeToTrackPosition } from './compare-sync'
 
 let isScrubbing = false
 
@@ -16,6 +18,8 @@ export function getIsScrubbing(): boolean {
 export interface Controls {
   updateScrubBar: (t: number) => void
   updateTimeDisplay: (t: number) => void
+  updateCompareScrubBar: (trackPos: number) => void
+  updateCompareTimeDisplay: (telTimeA: number, telTimeB: number) => void
 }
 
 export function initControls(): Controls {
@@ -45,11 +49,38 @@ export function initControls(): Controls {
   }
 
 
+  // ── Compare mode: scrub bar + time display ──
+  function updateCompareScrubBar(trackPos: number): void {
+    const pct = Math.max(0, Math.min(100, trackPos * 100))
+    scrubProgress.style.width = `${pct}%`
+    scrubThumb.style.left = `${pct}%`
+  }
+
+  function updateCompareTimeDisplay(telTimeA: number, telTimeB: number): void {
+    const lapRelA = lapA ? Math.max(0, telTimeA - lapA.startTime) : 0
+    const lapRelB = lapB ? Math.max(0, telTimeB - lapB.startTime) : 0
+    timeCurrent.innerHTML =
+      `<span class="compare-time compare-time-a">A ${formatTime(lapRelA)}</span>` +
+      ` <span class="compare-time compare-time-b">B ${formatTime(lapRelB)}</span>`
+  }
+
+  // ── Compare mode: seek by track position ──
+  function compareSeekToTrackPos(pos: number): void {
+    pos = Math.max(0, Math.min(1, pos))
+    if (!syncDataA) return
+    const telTime = trackPositionToTime(syncDataA, pos)
+    seekToTelemetryTime(telTime)
+  }
+
   // ── Scrub bar interaction ──
   function scrubToPosition(e: PointerEvent): void {
     const rect = scrubContainer.getBoundingClientRect()
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    seekToTelemetryTime(viewFractionToTime(pct))
+    if (isCompareMode()) {
+      compareSeekToTrackPos(pct)
+    } else {
+      seekToTelemetryTime(viewFractionToTime(pct))
+    }
   }
 
   scrubContainer.addEventListener('pointerdown', (e) => {
@@ -69,15 +100,22 @@ export function initControls(): Controls {
 
   // ── Play/pause ──
   btnPlay.addEventListener('click', () => {
-    if (video.paused) {
-      // If at or past end of view range, wrap to start
-      if (getSyncedTime() >= viewRange.endTime - 0.05) {
-        seekToTelemetryTime(viewRange.startTime)
+    const v = isCompareMode() ? (cmpVideoA ?? video) : video
+    if (v.paused) {
+      if (isCompareMode()) {
+        // Wrap to start of lap if at end
+        if (trackPosition >= 0.999) {
+          compareSeekToTrackPos(0)
+        }
+      } else {
+        if (getSyncedTime() >= viewRange.endTime - 0.05) {
+          seekToTelemetryTime(viewRange.startTime)
+        }
       }
-      video.play()
+      v.play()
       btnPlay.innerHTML = '&#9646;&#9646;'
     } else {
-      video.pause()
+      v.pause()
       btnPlay.innerHTML = '&#9654;'
     }
   })
@@ -91,13 +129,29 @@ export function initControls(): Controls {
       e.preventDefault()
       btnPlay.click()
     } else if (e.code === 'ArrowRight') {
-      seekToTelemetryTime(Math.min(viewRange.endTime, getSyncedTime() + 5))
+      if (isCompareMode()) {
+        compareSeekToTrackPos(trackPosition + 0.05)
+      } else {
+        seekToTelemetryTime(Math.min(viewRange.endTime, getSyncedTime() + 5))
+      }
     } else if (e.code === 'ArrowLeft') {
-      seekToTelemetryTime(Math.max(viewRange.startTime, getSyncedTime() - 5))
-    } else if (e.code === 'Period' && video.paused) {
-      seekToTelemetryTime(Math.min(viewRange.endTime, getSyncedTime() + 1 / 30))
-    } else if (e.code === 'Comma' && video.paused) {
-      seekToTelemetryTime(Math.max(viewRange.startTime, getSyncedTime() - 1 / 30))
+      if (isCompareMode()) {
+        compareSeekToTrackPos(trackPosition - 0.05)
+      } else {
+        seekToTelemetryTime(Math.max(viewRange.startTime, getSyncedTime() - 5))
+      }
+    } else if (e.code === 'Period' && (isCompareMode() ? (cmpVideoA ?? video).paused : video.paused)) {
+      if (isCompareMode()) {
+        compareSeekToTrackPos(trackPosition + 0.001)
+      } else {
+        seekToTelemetryTime(Math.min(viewRange.endTime, getSyncedTime() + 1 / 30))
+      }
+    } else if (e.code === 'Comma' && (isCompareMode() ? (cmpVideoA ?? video).paused : video.paused)) {
+      if (isCompareMode()) {
+        compareSeekToTrackPos(trackPosition - 0.001)
+      } else {
+        seekToTelemetryTime(Math.max(viewRange.startTime, getSyncedTime() - 1 / 30))
+      }
     } else if (e.code === 'F2') {
       e.preventDefault()
       toggleDebugPanel()
@@ -123,8 +177,10 @@ export function initControls(): Controls {
 
   // ── View range changes ──
   onViewRangeChange(() => {
-    timeTotal.textContent = formatTime(getViewDuration())
+    if (!isCompareMode()) {
+      timeTotal.textContent = formatTime(getViewDuration())
+    }
   })
 
-  return { updateScrubBar, updateTimeDisplay }
+  return { updateScrubBar, updateTimeDisplay, updateCompareScrubBar, updateCompareTimeDisplay }
 }

@@ -6,7 +6,7 @@
  */
 
 import './types' // side-effect: augments Window with pdr
-import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg, lapData, duration, viewRange, setViewRange, selectedLapIdx, getSyncedTime, seekToTelemetryTime, onTelemetryLoad, onViewRangeChange } from './state'
+import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg, lapData, duration, viewRange, setViewRange, selectedLapIdx, getSyncedTime, seekToTelemetryTime, onTelemetryLoad, onViewRangeChange, avSyncOffset } from './state'
 import { initHud } from './hud'
 import { initControls, getIsScrubbing } from './controls'
 import { initFileOpen } from './file-open'
@@ -18,6 +18,21 @@ import { initTrackMap } from './track-map'
 import { initLapTable } from './lap-table'
 import { initExportMenu } from './export-menu'
 import { initOverlayRenderer } from './overlay-renderer'
+import { initCompareUI } from './compare-ui'
+import {
+  isCompareMode,
+  videoA as getVideoA,
+  videoB as getVideoB,
+  storeA, storeB,
+  syncDataA, syncDataB,
+  setTrackPosition,
+  setCurrentRowA, setCurrentRowB,
+  updateInterpolationA, updateInterpolationB,
+  findRowInStore,
+  onCompareEnter, onCompareExit,
+} from './compare-state'
+import { timeToTrackPosition, trackPositionToTime } from './compare-sync'
+import { createEmptyRow } from '../shared/telemetry-store'
 
 const BUILD_ID = 'phase4-v1'
 const btnPlay = document.getElementById('btn-play') as HTMLButtonElement
@@ -35,6 +50,7 @@ initTrackMap(document.getElementById('track-canvas') as HTMLCanvasElement)
 initLapTable(document.getElementById('lap-table-container') as HTMLDivElement)
 initExportMenu()
 initOverlayRenderer()
+initCompareUI()
 initLapSelector()
 
 // ── Video overlay anchor sizing ──
@@ -221,12 +237,66 @@ function updateFpsCounter(): void {
   }
 }
 
+// ── Compare mode scratch rows (pre-allocated, reused every frame) ──
+const _scratchRowA = createEmptyRow()
+const _scratchRowB = createEmptyRow()
+
 // ── Animation loop (demand-driven) ──
 // Only schedules frames when the video is playing, scrubbing, or a seek occurred.
 let lastVideoTime = -1
 let animationRunning = false
 
+function onCompareAnimationFrame(): void {
+  const vA = getVideoA
+  const vB = getVideoB
+  if (!vA || !vB || !syncDataA || !syncDataB || !storeA || !storeB) return
+
+  const tA = vA.currentTime
+  const telTimeA = tA + avSyncOffset
+
+  // Master track position from video A
+  const pos = timeToTrackPosition(syncDataA, telTimeA)
+  setTrackPosition(pos)
+
+  // Sync video B to match track position
+  const telTimeB = trackPositionToTime(syncDataB, pos)
+  const videoTimeB = telTimeB - avSyncOffset
+  if (Math.abs(vB.currentTime - videoTimeB) > 0.02) {
+    vB.currentTime = videoTimeB
+  }
+
+  // Update rows + interpolation for both sides
+  setCurrentRowA(findRowInStore(storeA, telTimeA, _scratchRowA))
+  setCurrentRowB(findRowInStore(storeB, telTimeB, _scratchRowB))
+  updateInterpolationA(telTimeA)
+  updateInterpolationB(telTimeB)
+
+  // Update controls
+  controls.updateCompareScrubBar(pos)
+  controls.updateCompareTimeDisplay(telTimeA, telTimeB)
+  fireFrameTick()
+  updateFpsCounter()
+
+  // Clamp: pause when reaching end of lap A
+  if (!vA.paused && pos >= 0.999) {
+    vA.pause()
+    btnPlay.innerHTML = '&#9654;'
+  }
+
+  // Keep looping while playing or scrubbing
+  if (!vA.paused || getIsScrubbing() || getIsChartScrubbing()) {
+    requestAnimationFrame(onAnimationFrame)
+  } else {
+    animationRunning = false
+  }
+}
+
 function onAnimationFrame(): void {
+  if (isCompareMode()) {
+    onCompareAnimationFrame()
+    return
+  }
+
   const t = video.currentTime
   lastVideoTime = t
   setCurrentRow(findRowAtTime(t))    // A/V sync offset applied internally
@@ -266,6 +336,22 @@ video.addEventListener('seeked', startAnimationLoop)
 
 // Also restart on timeupdate as a safety net
 video.addEventListener('timeupdate', startAnimationLoop)
+
+// When entering compare mode, wire video A events to restart the animation loop
+onCompareEnter(() => {
+  const vA = getVideoA
+  if (vA && vA !== video) {
+    vA.addEventListener('play', startAnimationLoop)
+    vA.addEventListener('seeked', startAnimationLoop)
+  }
+  // The existing video (which is videoA in compare mode) already has listeners
+  startAnimationLoop()
+})
+
+onCompareExit(() => {
+  // Animation loop already falls through to normal mode when isCompareMode() is false
+  startAnimationLoop()
+})
 
 // Initial kick — render the first frame if anything is loaded
 startAnimationLoop()
