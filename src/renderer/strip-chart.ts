@@ -59,10 +59,25 @@ const CHANNELS: ChartChannel[] = [
   { key: 'rpm', label: 'RPM', color: '#ff6b00', storeAccessor: s => s.rpm, scale: 1, rowAccessor: r => r.rpm, unit: 'rpm', min: 0, max: 7000, precision: 0, defaultEnabled: true },
   { key: 'throttle', label: 'Throttle', color: '#00cc66', storeAccessor: s => s.throttle, scale: 100, rowAccessor: r => r.throttle * 100, unit: '%', min: 0, max: 100, precision: 0, defaultEnabled: true },
   { key: 'brake', label: 'Brake', color: '#ff3333', storeAccessor: s => s.brake, scale: 100, rowAccessor: r => r.brake * 100, unit: '%', min: 0, max: 100, precision: 0, defaultEnabled: true },
+  { key: 'gear', label: 'Gear', color: '#88cc00', storeAccessor: () => new Float32Array(0), scale: 1, rowAccessor: r => { const g = r.gear_raw; return (g !== undefined && g >= 1 && g <= 10) ? g : 0 }, unit: '', min: 0, max: 10, precision: 0, defaultEnabled: false },
   { key: 'gforce_lat', label: 'G Lat', color: '#66ccff', storeAccessor: s => s.gforce_lat, scale: 1, rowAccessor: r => r.gforce_lat, unit: 'g', min: -1.5, max: 1.5, precision: 2, defaultEnabled: false },
   { key: 'gforce_lon', label: 'G Lon', color: '#cc66ff', storeAccessor: s => s.gforce_lon, scale: 1, rowAccessor: r => r.gforce_lon, unit: 'g', min: -1.5, max: 1.5, precision: 2, defaultEnabled: false },
   { key: 'steering', label: 'Steering', color: '#ffcc00', storeAccessor: s => s.steering_deg, scale: 1, rowAccessor: r => r.steering_deg, unit: '\u00B0', min: -400, max: 400, precision: 0, defaultEnabled: false },
 ]
+
+/** Convert sparse gear_raw to a dense numeric array with forward-fill. */
+function buildDenseGear(sparseGear: (number | undefined)[], length: number): Float32Array {
+  const dense = new Float32Array(length)
+  let last = 0
+  for (let i = 0; i < length; i++) {
+    const raw = sparseGear[i]
+    if (raw !== undefined) {
+      last = (raw >= 1 && raw <= 10) ? raw : 0
+    }
+    dense[i] = last
+  }
+  return dense
+}
 
 const CHANNELS_STORAGE_KEY = 'pdr-chart-channels'
 const DELTA_KEY = 'delta'           // toggle key for delta-time chart (compare mode only)
@@ -329,7 +344,7 @@ function buildToolbar(): void {
   }
 }
 
-/** Pre-compute scaled arrays for channels with scale !== 1. Called once on telemetry load. */
+/** Pre-compute scaled arrays for channels with scale !== 1, plus dense gear. Called once on telemetry load. */
 function buildScaledCache(): void {
   scaledCache.clear()
   const store = telemetryStore
@@ -342,6 +357,8 @@ function buildScaledCache(): void {
       scaledCache.set(config.key, scaled)
     }
   }
+  // Gear: build dense array from sparse gear_raw with forward-fill
+  scaledCache.set('gear', buildDenseGear(store.gear_raw, store.length))
 }
 
 function buildScaledCacheCompare(): void {
@@ -363,6 +380,9 @@ function buildScaledCacheCompare(): void {
       scaledCacheB.set(config.key, scaledB)
     }
   }
+  // Gear: build dense arrays for A and B
+  scaledCacheA.set('gear', buildDenseGear(sa.gear_raw, sa.length))
+  scaledCacheB.set('gear', buildDenseGear(sb.gear_raw, sb.length))
 }
 
 function rebuildChannelData(): void {
