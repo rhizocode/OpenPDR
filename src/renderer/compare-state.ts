@@ -5,7 +5,7 @@
  * Modules check isCompareMode() to decide which state to read.
  */
 
-import type { TelemetryRow, LapInfo, LapData } from './types'
+import type { TelemetryRow, LapInfo, LapData, SessionInfo } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
 import { createEmptyRow, getRowInto } from '../shared/telemetry-store'
 import { avSyncOffset } from './state'
@@ -37,6 +37,10 @@ export let filePathA = ''
 export let filePathB = ''
 export let fileNameA = ''
 export let fileNameB = ''
+
+// ── Session info ──
+export let sessionInfoA: SessionInfo | null = null
+export let sessionInfoB: SessionInfo | null = null
 
 // ── Master track position (0..1) ──
 export let trackPosition = 0
@@ -203,6 +207,8 @@ export interface CompareConfig {
   filePathB: string
   fileNameA: string
   fileNameB: string
+  sessionInfoA: SessionInfo | null
+  sessionInfoB: SessionInfo | null
 }
 
 export function enterCompareMode(config: CompareConfig): void {
@@ -219,6 +225,8 @@ export function enterCompareMode(config: CompareConfig): void {
   filePathB = config.filePathB
   fileNameA = config.fileNameA
   fileNameB = config.fileNameB
+  sessionInfoA = config.sessionInfoA
+  sessionInfoB = config.sessionInfoB
   trackPosition = 0
 
   rebuildSync()
@@ -232,6 +240,7 @@ export function exitCompareMode(): void {
   lapA = lapB = null
   lapDataA = lapDataB = null
   videoA = videoB = null
+  sessionInfoA = sessionInfoB = null
   syncDataA = syncDataB = null
   currentRowA = currentRowB = null
   interpPrevA = interpNextA = null
