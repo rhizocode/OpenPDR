@@ -9,7 +9,8 @@ import type { TelemetryRow, LapInfo, LapData } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
 import { createEmptyRow, getRowInto } from '../shared/telemetry-store'
 import { avSyncOffset } from './state'
-import { buildDistanceArray, type SyncData } from './compare-sync'
+import { buildDistanceArray, benchmarkSync, type SyncData } from './compare-sync'
+import { dbg } from './state'
 
 // ── Compare mode flag ──
 let compareMode = false
@@ -177,6 +178,9 @@ function rebuildSync(): void {
     syncDataB = buildDistanceArray(storeB, lapB)
   } else {
     syncDataB = null
+  }
+  if (syncDataA && syncDataB && storeA && storeB) {
+    benchmarkSync(syncDataA, syncDataB, storeA, storeB, dbg)
   }
 }
 
