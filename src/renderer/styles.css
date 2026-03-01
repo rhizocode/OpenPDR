@@ -755,6 +755,89 @@ html, body {
   color: #4caf50;
 }
 
+/* ── Compare mode lap table ── */
+
+.lap-heading-a {
+  color: #00e5ff;
+  border-bottom-color: rgba(0, 229, 255, 0.3);
+}
+
+.lap-heading-b {
+  color: #ff40ff;
+  border-bottom-color: rgba(255, 64, 255, 0.3);
+  margin-top: 10px;
+}
+
+/* Small colored dot indicating which side (A/B) the lap belongs to */
+.lap-side-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 5px;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.lap-side-dot-a {
+  background: #00e5ff;
+}
+
+.lap-side-dot-b {
+  background: #ff40ff;
+}
+
+/* Selected lap in compare section A: cyan accent */
+.lap-row.compare-selected-a {
+  background: rgba(0, 229, 255, 0.12);
+  border-left: 3px solid #00e5ff;
+  color: #00e5ff;
+}
+
+/* Selected lap in compare section B: magenta accent */
+.lap-row.compare-selected-b {
+  background: rgba(255, 64, 255, 0.12);
+  border-left: 3px solid #ff40ff;
+  color: #ff40ff;
+}
+
+/* Summary block at the bottom of the compare lap panel */
+.lap-compare-summary {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #333;
+}
+
+.lap-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  font-size: 11px;
+  font-family: 'Consolas', monospace;
+}
+
+.lap-summary-label {
+  font-weight: bold;
+  min-width: 16px;
+}
+
+.summary-label-a {
+  color: #00e5ff;
+}
+
+.summary-label-b {
+  color: #ff40ff;
+}
+
+.lap-summary-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.lap-summary-delta {
+  margin-top: 2px;
+}
+
 .lap-empty {
   font-size: 12px;
   font-family: 'Consolas', monospace;
