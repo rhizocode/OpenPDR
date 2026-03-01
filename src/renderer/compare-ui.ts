@@ -32,6 +32,8 @@ import {
 } from './state'
 import type { LapInfo, LapData } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
+import { createOverlayB, destroyOverlayB, applyOverlayConfigB, updateAnchorBBounds } from './compare-overlay-b'
+import { getOverlayConfig } from './hud'
 
 const pdr = window.pdr
 
@@ -41,9 +43,6 @@ const lapSelector = document.getElementById('lap-selector') as HTMLSelectElement
 const compareLapA = document.getElementById('compare-lap-a') as HTMLSelectElement
 const compareLapB = document.getElementById('compare-lap-b') as HTMLSelectElement
 const videoContainer = document.getElementById('video-container') as HTMLDivElement
-const btnEdit = document.getElementById('btn-edit') as HTMLButtonElement
-const btnSettings = document.getElementById('btn-settings') as HTMLButtonElement
-const btnExport = document.getElementById('btn-export') as HTMLButtonElement
 
 // Track file paths for display
 let currentFilePath = ''
@@ -270,10 +269,23 @@ function applyCompareLayout(config: CompareConfig, idxA: number, idxB: number): 
   populateCompareSelect(compareLapA, config.lapDataA, idxA)
   populateCompareSelect(compareLapB, config.lapDataB, idxB)
 
-  // Hide irrelevant buttons
-  btnEdit.style.display = 'none'
-  btnSettings.style.display = 'none'
-  btnExport.style.display = 'none'
+  // Create B-side overlay anchor (mirrors A overlays over video B)
+  const overlayAnchorA = document.getElementById('video-overlay-anchor') as HTMLDivElement
+  createOverlayB(videoContainer, overlayAnchorA)
+  applyOverlayConfigB(getOverlayConfig())
+  // Position anchor B immediately — rAF in main.ts may fire before anchorB exists
+  requestAnimationFrame(() => {
+    const vB = config.videoB
+    if (vB.videoWidth) {
+      // Video dimensions already known (e.g. same file, cloned src)
+      updateAnchorBBounds(vB)
+    } else {
+      // Dimensions not yet known; wait for loadedmetadata
+      vB.addEventListener('loadedmetadata', () => updateAnchorBBounds(vB), { once: true })
+      // Still position over the correct column (no video dimensions yet)
+      updateAnchorBBounds(vB)
+    }
+  })
 
   // Toggle compare button to "active" state (click to exit)
   btnCompare.classList.add('active')
@@ -287,9 +299,10 @@ function applyCompareLayout(config: CompareConfig, idxA: number, idxB: number): 
 
 // ── Exit compare mode layout ──
 function removeCompareLayout(): void {
-  // Remove video B and labels
+  // Remove video B, overlay B, and labels
   const videoB = document.getElementById('video-b')
   if (videoB) videoB.remove()
+  destroyOverlayB()
 
   videoContainer.querySelectorAll('.compare-video-label').forEach(el => el.remove())
   videoContainer.classList.remove('compare-mode')
@@ -300,10 +313,6 @@ function removeCompareLayout(): void {
   }
   compareLapA.style.display = 'none'
   compareLapB.style.display = 'none'
-
-  btnEdit.style.display = ''
-  btnSettings.style.display = ''
-  btnExport.style.display = ''
 
   btnCompare.classList.remove('active')
   btnCompare.textContent = 'Compare'

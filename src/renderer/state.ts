@@ -49,6 +49,12 @@ export let interpPrev: TelemetryRow | null = null
 export let interpNext: TelemetryRow | null = null
 export let interpAlpha = 0  // 0..1 fraction between prev and next
 
+export function setInterpState(prev: TelemetryRow | null, next: TelemetryRow | null, alpha: number): void {
+  interpPrev = prev
+  interpNext = next
+  interpAlpha = alpha
+}
+
 export function setLapData(data: LapData | null): void {
   lapData = data
 }
