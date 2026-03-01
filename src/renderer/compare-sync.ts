@@ -18,6 +18,8 @@ export interface SyncData {
   startIdx: number
   /** Last row index (exclusive) */
   endIdx: number
+  /** Total un-normalized distance in meters */
+  totalDist: number
 }
 
 /** Haversine distance in meters between two lat/lon points. */
@@ -86,7 +88,7 @@ export function buildDistanceArray(store: TelemetryStore, lap: LapInfo): SyncDat
 
   const n = endIdx - startIdx
   if (n <= 0) {
-    return { dist: new Float64Array(0), times: new Float64Array(0), startIdx, endIdx }
+    return { dist: new Float64Array(0), times: new Float64Array(0), startIdx, endIdx, totalDist: 0 }
   }
 
   const dist = new Float64Array(n)
@@ -110,7 +112,7 @@ export function buildDistanceArray(store: TelemetryStore, lap: LapInfo): SyncDat
     }
   }
 
-  return { dist, times: tArr, startIdx, endIdx }
+  return { dist, times: tArr, startIdx, endIdx, totalDist }
 }
 
 /**
@@ -175,4 +177,180 @@ export function buildDeltaTime(
     delta[i] = elapsedA - elapsedB
   }
   return delta
+}
+
+/**
+ * Sample heading_deg from a store at evenly-spaced track positions.
+ * Returns array of [heading[], lat[], lon[]] each of length N.
+ */
+function sampleChannels(
+  sync: SyncData,
+  store: TelemetryStore,
+  N: number,
+): { headings: Float64Array; lats: Float64Array; lons: Float64Array } {
+  const headings = new Float64Array(N)
+  const lats = new Float64Array(N)
+  const lons = new Float64Array(N)
+  const times = store.time
+
+  for (let i = 0; i < N; i++) {
+    const pos = i / (N - 1)
+    const t = trackPositionToTime(sync, pos)
+
+    // Binary search for closest row
+    let lo = sync.startIdx, hi = sync.endIdx - 1
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (times[mid] < t) lo = mid + 1
+      else hi = mid
+    }
+    headings[i] = store.heading_deg[lo]
+    lats[i] = store.lat[lo]
+    lons[i] = store.lon[lo]
+  }
+  return { headings, lats, lons }
+}
+
+/** Unwrap heading to remove 359°→1° discontinuities. Mutates in place. */
+function unwrapHeading(h: Float64Array): void {
+  for (let i = 1; i < h.length; i++) {
+    let delta = h[i] - h[i - 1]
+    if (delta > 180) delta -= 360
+    else if (delta < -180) delta += 360
+    h[i] = h[i - 1] + delta
+  }
+}
+
+/** Compute finite-difference derivative. Returns array of length N-1. */
+function derivative(h: Float64Array): Float64Array {
+  const d = new Float64Array(h.length - 1)
+  for (let i = 0; i < d.length; i++) {
+    d[i] = h[i + 1] - h[i]
+  }
+  return d
+}
+
+/**
+ * Cross-correlate two signals over a lag range [-maxLag, +maxLag].
+ * Returns the lag (fractional, via parabolic interpolation) with maximum correlation.
+ */
+function crossCorrelate(a: Float64Array, b: Float64Array, maxLag: number): number {
+  const n = Math.min(a.length, b.length)
+  let bestLag = 0
+  let bestVal = -Infinity
+
+  for (let lag = -maxLag; lag <= maxLag; lag++) {
+    let sum = 0
+    let count = 0
+    for (let i = 0; i < n; i++) {
+      const j = i + lag
+      if (j >= 0 && j < n) {
+        sum += a[i] * b[j]
+        count++
+      }
+    }
+    if (count > 0) sum /= count
+    if (sum > bestVal) {
+      bestVal = sum
+      bestLag = lag
+    }
+  }
+
+  // Parabolic interpolation for sub-sample accuracy
+  if (bestLag > -maxLag && bestLag < maxLag) {
+    const computeCorr = (lag: number): number => {
+      let sum = 0, count = 0
+      for (let i = 0; i < n; i++) {
+        const j = i + lag
+        if (j >= 0 && j < n) { sum += a[i] * b[j]; count++ }
+      }
+      return count > 0 ? sum / count : 0
+    }
+    const yL = computeCorr(bestLag - 1)
+    const yC = bestVal
+    const yR = computeCorr(bestLag + 1)
+    const denom = yL - 2 * yC + yR
+    if (denom !== 0) {
+      bestLag += (yL - yR) / (2 * denom)
+    }
+  }
+
+  return bestLag
+}
+
+/**
+ * Benchmark sync quality between two laps. Logs results via the provided
+ * debug function. Call after buildDistanceArray() for both laps.
+ */
+export function benchmarkSync(
+  syncA: SyncData,
+  syncB: SyncData,
+  storeA: TelemetryStore,
+  storeB: TelemetryStore,
+  log: (msg: string) => void,
+): void {
+  if (syncA.dist.length === 0 || syncB.dist.length === 0) return
+
+  const N = 500
+  const maxLag = 10 // ±2% of lap
+
+  // Sample heading and GPS at evenly-spaced track positions
+  const chA = sampleChannels(syncA, storeA, N)
+  const chB = sampleChannels(syncB, storeB, N)
+
+  // Unwrap and differentiate heading
+  unwrapHeading(chA.headings)
+  unwrapHeading(chB.headings)
+  const dhA = derivative(chA.headings)
+  const dhB = derivative(chB.headings)
+
+  // Cross-correlate heading derivatives
+  const lagSamples = crossCorrelate(dhA, dhB, maxLag)
+  const offsetNorm = lagSamples / N
+  const avgTotalDist = (syncA.totalDist + syncB.totalDist) / 2
+  const offsetM = offsetNorm * avgTotalDist
+  const offsetFt = offsetM * 3.281
+
+  // GPS separation at each position
+  const gpsDist = new Float64Array(N)
+  for (let i = 0; i < N; i++) {
+    gpsDist[i] = haversineM(chA.lats[i], chA.lons[i], chB.lats[i], chB.lons[i])
+  }
+
+  // Statistics
+  let sum = 0, max = 0
+  for (let i = 0; i < N; i++) {
+    sum += gpsDist[i]
+    if (gpsDist[i] > max) max = gpsDist[i]
+  }
+  const mean = sum / N
+
+  const sorted = Array.from(gpsDist).sort((a, b) => a - b)
+  const median = N % 2 === 0
+    ? (sorted[N / 2 - 1] + sorted[N / 2]) / 2
+    : sorted[Math.floor(N / 2)]
+
+  let variance = 0
+  for (let i = 0; i < N; i++) {
+    variance += (gpsDist[i] - mean) ** 2
+  }
+  const std = Math.sqrt(variance / N)
+
+  // Linear regression for distance trend (slope over lap)
+  const xMean = (N - 1) / 2
+  let num = 0, den = 0
+  for (let i = 0; i < N; i++) {
+    const dx = i - xMean
+    num += dx * gpsDist[i]
+    den += dx * dx
+  }
+  const slope = den > 0 ? num / den : 0
+  const trendTotal = slope * (N - 1) // total change over the lap
+  const trendLabel = Math.abs(trendTotal) < 0.5 ? 'flat' : trendTotal > 0 ? 'growing' : 'shrinking'
+
+  const sign = offsetM >= 0 ? '+' : ''
+  log(`[Sync Benchmark]`)
+  log(`  Heading xcorr offset: ${sign}${offsetNorm.toFixed(4)} (~${Math.abs(offsetM).toFixed(1)}m / ${Math.abs(offsetFt).toFixed(1)}ft)`)
+  log(`  GPS separation — mean: ${mean.toFixed(1)}m  median: ${median.toFixed(1)}m  max: ${max.toFixed(1)}m  std: ${std.toFixed(1)}m`)
+  log(`  Distance trend: ${trendTotal >= 0 ? '+' : ''}${trendTotal.toFixed(1)}m over lap (${trendLabel})`)
 }
