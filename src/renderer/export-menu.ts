@@ -16,6 +16,7 @@ const RPM_CONFIG_KEY = 'pdr-rpm-config'
 const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
   speed: true, rpmGauge: true, gear: true, gforce: true,
   pedals: true, steering: true, gps: true, trackMap: true,
+  session: true,
 }
 
 const DEFAULT_OVERLAY_LAYOUT: OverlayLayout = {
@@ -27,6 +28,7 @@ const DEFAULT_OVERLAY_LAYOUT: OverlayLayout = {
   pedals:   { left: 68,  top: 84, scale: 1 },
   gps:      { left: 85,  top: 2,  scale: 1 },
   trackMap: { left: 1.5, top: 2,  scale: 1 },
+  session:  { left: 50,  top: 2,  scale: 1 },
 }
 
 const DEFAULT_RPM_CONFIG: RpmConfig = {

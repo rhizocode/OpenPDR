@@ -15,7 +15,7 @@ const BUILD_ID = 'phase4-v1'
 console.log(`[OpenPDR main] build=${BUILD_ID}`)
 
 let mainWindow: BrowserWindow | null = null
-let allowedVideoPath: string | null = null
+let allowedVideoPaths = new Set<string>()
 let lastParseResult: ParseResult | null = null
 let lastFilePath: string | null = null
 
@@ -60,7 +60,7 @@ app.whenReady().then(() => {
       const url = new URL(request.url)
       const filePath = decodeURIComponent(url.pathname).replace(/^\//, '')
 
-      if (filePath !== allowedVideoPath) {
+      if (!allowedVideoPaths.has(filePath)) {
         return new Response('Forbidden', { status: 403 })
       }
 
@@ -153,13 +153,13 @@ ipcMain.handle('open-file-dialog' satisfies Channel, async () => {
   })
 
   if (result.canceled || result.filePaths.length === 0) return null
-  allowedVideoPath = result.filePaths[0].replace(/\\/g, '/')
+  allowedVideoPaths.add(result.filePaths[0].replace(/\\/g, '/'))
   return result.filePaths[0]
 })
 
 // IPC: Set allowed video path (used by drag-and-drop — dialog handler sets it automatically)
 ipcMain.handle('set-allowed-video-path' satisfies Channel, (_event, filePath: string) => {
-  allowedVideoPath = filePath.replace(/\\/g, '/')
+  allowedVideoPaths.add(filePath.replace(/\\/g, '/'))
 })
 
 // IPC: Parse PDR file — extracts telemetry directly from MP4
