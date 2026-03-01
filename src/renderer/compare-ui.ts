@@ -28,11 +28,12 @@ import {
   onTelemetryLoad,
   avSyncOffset,
   seekToTelemetryTime,
+  sessionInfo,
   dbg,
 } from './state'
 import type { LapInfo, LapData } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
-import { createOverlayB, destroyOverlayB, applyOverlayConfigB, updateAnchorBBounds } from './compare-overlay-b'
+import { createOverlayB, destroyOverlayB, applyOverlayConfigB, updateAnchorBBounds, populateSessionB } from './compare-overlay-b'
 import { getOverlayConfig } from './hud'
 
 const pdr = window.pdr
@@ -177,6 +178,8 @@ function enterSameFile(): void {
     filePathB: currentFilePath,
     fileNameA: currentFileName,
     fileNameB: currentFileName,
+    sessionInfoA: sessionInfo,
+    sessionInfoB: sessionInfo,
   }
 
   enterCompareMode(config)
@@ -238,6 +241,8 @@ async function enterDifferentFile(): Promise<void> {
     filePathB: filePathB,
     fileNameA: currentFileName,
     fileNameB: fileNameB,
+    sessionInfoA: sessionInfo,
+    sessionInfoB: resultB.metadata.sessionInfo ?? null,
   }
 
   enterCompareMode(config)
@@ -272,6 +277,7 @@ function applyCompareLayout(config: CompareConfig, idxA: number, idxB: number): 
   // Create B-side overlay anchor (mirrors A overlays over video B)
   const overlayAnchorA = document.getElementById('video-overlay-anchor') as HTMLDivElement
   createOverlayB(videoContainer, overlayAnchorA)
+  populateSessionB(config.sessionInfoB)
   applyOverlayConfigB(getOverlayConfig())
   // Position anchor B immediately — rAF in main.ts may fire before anchorB exists
   requestAnimationFrame(() => {

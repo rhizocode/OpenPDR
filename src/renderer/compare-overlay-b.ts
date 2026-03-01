@@ -9,7 +9,7 @@
  * into separate DOM elements.
  */
 
-import type { TelemetryRow, OverlayConfig, OverlayKey } from './types'
+import type { TelemetryRow, OverlayConfig, OverlayKey, SessionInfo } from './types'
 import { drawRpmGauge } from './rpm-gauge'
 import { drawGForce } from './gforce-ball'
 import { drawSteering } from './steering'
@@ -86,6 +86,59 @@ export function createOverlayB(videoContainer: HTMLDivElement, overlayAnchorA: H
   hudBActive = false
   lastKnownGearB = '-'
   lastFrameTimeB = 0
+}
+
+/** Populate the B-side session overlay with file B's metadata. */
+export function populateSessionB(info: SessionInfo | null): void {
+  if (!anchorB) return
+  const contentB = anchorB.querySelector('#hud-session-content-b') as HTMLDivElement | null
+  if (!contentB) return
+  contentB.innerHTML = ''
+  if (!info) return
+
+  // Format timestamp — same logic as hud.ts populateSessionOverlay
+  let dateStr: string | undefined
+  if (info.timestamp) {
+    const m = info.timestamp.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})([+-]\d{2}:\d{2})$/)
+    if (m) {
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+      const month = months[parseInt(m[2], 10) - 1]
+      const day = parseInt(m[3], 10)
+      const year = m[1]
+      const hour24 = parseInt(m[4], 10)
+      const minute = m[5]
+      const ampm = hour24 >= 12 ? 'PM' : 'AM'
+      const hour12 = hour24 % 12 || 12
+      dateStr = `${month} ${day}, ${year} ${hour12}:${minute} ${ampm}`
+    } else {
+      dateStr = info.timestamp
+    }
+  }
+
+  const vehicleParts = [info.year, info.vehicle]
+    .filter(Boolean)
+    .map(s => s!.replace(/[()]/g, ''))
+  const vehicleStr = vehicleParts.length ? vehicleParts.join(' ') : undefined
+
+  const fields: Array<[string, string | undefined]> = [
+    ['Vehicle', vehicleStr],
+    ['Engine', info.engine],
+    ['Date', dateStr],
+  ]
+
+  for (const [label, value] of fields) {
+    if (!value) continue
+    const row = document.createElement('div')
+    const lbl = document.createElement('span')
+    lbl.className = 'session-label'
+    lbl.textContent = label + ' '
+    const val = document.createElement('span')
+    val.className = 'session-value'
+    val.textContent = value
+    row.appendChild(lbl)
+    row.appendChild(val)
+    contentB.appendChild(row)
+  }
 }
 
 /** Remove the B-side overlay anchor from the DOM. */
