@@ -14,6 +14,9 @@ let bgCacheCtx: CanvasRenderingContext2D | null = null
 let bgCacheW = 0
 let bgCacheH = 0
 
+// Per-canvas offscreen cache for secondary canvases
+const bgCacheMap = new WeakMap<HTMLCanvasElement, { bg: HTMLCanvasElement, w: number, h: number }>()
+
 const MAX_G = 1.5
 
 export function initGForceBall(): void {
@@ -23,18 +26,8 @@ export function initGForceBall(): void {
   ctx = c
 }
 
-/** Render static elements (background circle, grid circles, crosshairs) to offscreen cache. */
-function renderBgCache(w: number, h: number): void {
-  if (!bgCache) {
-    bgCache = document.createElement('canvas')
-    bgCacheCtx = bgCache.getContext('2d')!
-  }
-  bgCache.width = w
-  bgCache.height = h
-  bgCacheW = w
-  bgCacheH = h
-  const c = bgCacheCtx!
-
+/** Render static elements into a given context. */
+function renderBgCacheToCtx(c: CanvasRenderingContext2D, w: number, h: number): void {
   const cx = w / 2
   const cy = h / 2
   const radius = (w / 2) - 8
@@ -64,31 +57,78 @@ function renderBgCache(w: number, h: number): void {
   c.stroke()
 }
 
-export function drawGForce(lat: number, lon: number): void {
-  if (!ctx) return
-  const w = canvas.width
-  const h = canvas.height
+/** Rebuild the singleton offscreen cache for the primary canvas. */
+function renderBgCache(w: number, h: number): void {
+  if (!bgCache) {
+    bgCache = document.createElement('canvas')
+    bgCacheCtx = bgCache.getContext('2d')!
+  }
+  bgCache.width = w
+  bgCache.height = h
+  bgCacheW = w
+  bgCacheH = h
+  renderBgCacheToCtx(bgCacheCtx!, w, h)
+}
+
+export function drawGForce(lat: number, lon: number, targetCanvas?: HTMLCanvasElement): void {
+  const c = targetCanvas ?? canvas
+  let drawCtx: CanvasRenderingContext2D
+  let bg: HTMLCanvasElement | null
+  let bgW: number, bgH: number
+
+  if (!targetCanvas) {
+    if (!ctx) return
+    drawCtx = ctx
+    bg = bgCache; bgW = bgCacheW; bgH = bgCacheH
+  } else {
+    let entry = bgCacheMap.get(targetCanvas)
+    if (!entry) {
+      const tc = targetCanvas.getContext('2d')
+      if (!tc) return
+      // drawCtx will be retrieved from 2d context of targetCanvas each time
+      entry = { bg: document.createElement('canvas'), w: 0, h: 0 }
+      bgCacheMap.set(targetCanvas, entry)
+    }
+    const tc = targetCanvas.getContext('2d')
+    if (!tc) return
+    drawCtx = tc
+    bg = entry.bg; bgW = entry.w; bgH = entry.h
+  }
+
+  const w = c.width
+  const h = c.height
   const cx = w / 2
   const cy = h / 2
   const radius = (w / 2) - 8
 
-  // Rebuild background cache if needed (canvas resize)
-  if (!bgCache || bgCacheW !== w || bgCacheH !== h) {
-    renderBgCache(w, h)
+  // Rebuild background cache if needed
+  if (!targetCanvas) {
+    if (!bgCache || bgCacheW !== w || bgCacheH !== h) {
+      renderBgCache(w, h)
+      bg = bgCache
+    }
+  } else {
+    const entry = bgCacheMap.get(targetCanvas)!
+    if (bgW !== w || bgH !== h) {
+      entry.bg.width = w; entry.bg.height = h
+      entry.w = w; entry.h = h
+      renderBgCacheToCtx(entry.bg.getContext('2d')!, w, h)
+    }
+    bg = entry.bg
   }
 
-  ctx.clearRect(0, 0, w, h)
-  ctx.drawImage(bgCache!, 0, 0)
+  drawCtx.clearRect(0, 0, w, h)
+  drawCtx.drawImage(bg!, 0, 0)
 
   // G-force dot
   const clamp = (v: number) => Math.max(-MAX_G, Math.min(MAX_G, v))
   const dotX = cx + (clamp(lat) / MAX_G) * radius
   const dotY = cy - (clamp(lon) / MAX_G) * radius
-  ctx.beginPath()
-  ctx.arc(dotX, dotY, 5, 0, Math.PI * 2)
-  ctx.fillStyle = '#ff6b00'
-  ctx.fill()
-  ctx.strokeStyle = '#fff'
-  ctx.lineWidth = 1.5
-  ctx.stroke()
+  drawCtx.beginPath()
+  drawCtx.arc(dotX, dotY, 5, 0, Math.PI * 2)
+  drawCtx.fillStyle = '#ff6b00'
+  drawCtx.fill()
+  drawCtx.strokeStyle = '#fff'
+  drawCtx.lineWidth = 1.5
+  drawCtx.stroke()
 }

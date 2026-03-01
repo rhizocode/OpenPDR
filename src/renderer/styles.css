@@ -169,11 +169,13 @@ html, body {
   display: block;
 }
 
-#video-overlay-anchor {
+#video-overlay-anchor,
+#video-overlay-anchor-b {
   position: absolute;
   pointer-events: none;
   overflow: visible;
   transform-origin: 0 0;
+  z-index: 1;
 }
 
 /* Centre guide lines shown in edit mode */
@@ -1404,11 +1406,6 @@ html, body {
   object-fit: contain;
   border-left: 2px solid #444;
   display: block;
-}
-
-/* Hide HUD overlays in compare mode */
-#video-container.compare-mode #video-overlay-anchor {
-  display: none;
 }
 
 /* Compare mode video labels */

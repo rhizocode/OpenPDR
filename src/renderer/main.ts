@@ -6,7 +6,7 @@
  */
 
 import './types' // side-effect: augments Window with pdr
-import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg, lapData, duration, viewRange, setViewRange, selectedLapIdx, getSyncedTime, seekToTelemetryTime, onTelemetryLoad, onViewRangeChange, avSyncOffset } from './state'
+import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg, lapData, duration, viewRange, setViewRange, selectedLapIdx, getSyncedTime, seekToTelemetryTime, onTelemetryLoad, onViewRangeChange, avSyncOffset, setInterpState } from './state'
 import { initHud } from './hud'
 import { initControls, getIsScrubbing } from './controls'
 import { initFileOpen } from './file-open'
@@ -30,7 +30,11 @@ import {
   updateInterpolationA, updateInterpolationB,
   findRowInStore,
   onCompareEnter, onCompareExit,
+  interpPrevA, interpNextA, interpAlphaA,
+  interpPrevB, interpNextB, interpAlphaB,
+  currentRowB,
 } from './compare-state'
+import { updateOverlayBRow, smoothAndDrawB, updateAnchorBBounds } from './compare-overlay-b'
 import { timeToTrackPosition, trackPositionToTime } from './compare-sync'
 import { createEmptyRow } from '../shared/telemetry-store'
 
@@ -62,12 +66,14 @@ const overlayAnchor = document.getElementById('video-overlay-anchor') as HTMLDiv
 function updateAnchorBounds(): void {
   const vw = video.videoWidth
   const vh = video.videoHeight
-  const cw = videoContainer.clientWidth
-  const ch = videoContainer.clientHeight
+  // In compare mode #video is 50% wide; use its clientWidth/Height as the slot
+  // so the anchor covers only video A's rendered area, not the full container.
+  const cw = video.clientWidth || videoContainer.clientWidth
+  const ch = video.clientHeight || videoContainer.clientHeight
   if (!cw || !ch) return
 
   if (!vw || !vh) {
-    // No video loaded — anchor fills container at natural size
+    // No video loaded — anchor fills the video's slot
     overlayAnchor.style.left = '0px'
     overlayAnchor.style.top = '0px'
     overlayAnchor.style.width = `${cw}px`
@@ -76,7 +82,7 @@ function updateAnchorBounds(): void {
     return
   }
 
-  // Compute rendered video rectangle (object-fit: contain)
+  // Compute rendered video rectangle (object-fit: contain) within the slot
   const videoAR = vw / vh
   const containerAR = cw / ch
   let rw: number, rh: number
@@ -101,6 +107,10 @@ function updateAnchorBounds(): void {
 
 new ResizeObserver(() => {
   updateAnchorBounds()
+  if (isCompareMode()) {
+    const vB = getVideoB
+    if (vB) updateAnchorBBounds(vB)
+  }
   updateChartPanelCollapse()
 }).observe(videoContainer)
 
@@ -271,6 +281,15 @@ function onCompareAnimationFrame(): void {
   updateInterpolationA(telTimeA)
   updateInterpolationB(telTimeB)
 
+  // Feed side A into the single-video HUD path so overlays render side A telemetry.
+  // hud.ts subscribes to onRowUpdate (state.ts) and reads state.interpPrev/Next/Alpha.
+  setInterpState(interpPrevA, interpNextA, interpAlphaA)
+  setCurrentRow(_scratchRowA)
+
+  // Update side B overlay anchor
+  updateOverlayBRow(currentRowB)
+  smoothAndDrawB(interpPrevB, interpNextB, interpAlphaB)
+
   // Update controls
   controls.updateCompareScrubBar(pos)
   controls.updateCompareTimeDisplay(telTimeA, telTimeB)
@@ -344,12 +363,24 @@ onCompareEnter(() => {
     vA.addEventListener('play', startAnimationLoop)
     vA.addEventListener('seeked', startAnimationLoop)
   }
-  // The existing video (which is videoA in compare mode) already has listeners
+  // Re-measure anchor bounds: #video is now 50% wide; position B anchor too.
+  // Use two rAF passes: first lets the flex layout settle, second measures.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    updateAnchorBounds()
+    const vB = getVideoB
+    if (vB) {
+      updateAnchorBBounds(vB)
+      // Also re-measure once video B has its native dimensions
+      vB.addEventListener('loadedmetadata', () => updateAnchorBBounds(vB), { once: true })
+    }
+  }))
   startAnimationLoop()
 })
 
 onCompareExit(() => {
   // Animation loop already falls through to normal mode when isCompareMode() is false
+  // Re-measure anchor bounds: #video returns to full width
+  requestAnimationFrame(updateAnchorBounds)
   startAnimationLoop()
 })
 

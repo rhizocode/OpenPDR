@@ -21,7 +21,13 @@ let config: RpmConfig = DEFAULT_CONFIG
 let canvas: HTMLCanvasElement
 let ctx: CanvasRenderingContext2D
 
+// Per-canvas offscreen cache (keyed by canvas element)
+const bgCacheMap = new WeakMap<HTMLCanvasElement, { canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, w: number, h: number }>()
+// Track secondary canvases for cache invalidation on config change
+const secondaryCanvases: HTMLCanvasElement[] = []
+
 // Offscreen cache for static elements (background arc, zone arcs, tick marks)
+// Kept as the primary cache for the singleton canvas; secondary canvases use bgCacheMap.
 let bgCache: HTMLCanvasElement | null = null
 let bgCacheCtx: CanvasRenderingContext2D | null = null
 let bgCacheW = 0
@@ -48,7 +54,12 @@ export function loadRpmConfig(): RpmConfig {
 export function saveRpmConfig(newConfig: RpmConfig): void {
   config = { ...newConfig }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
-  bgCache = null // invalidate so next draw rebuilds
+  bgCache = null // invalidate singleton cache so next draw rebuilds
+  // Invalidate all secondary canvas caches (force rebuild on next draw)
+  for (const c of secondaryCanvases) {
+    const entry = bgCacheMap.get(c)
+    if (entry) entry.w = 0
+  }
 }
 
 export function getRpmConfig(): RpmConfig {
@@ -63,18 +74,8 @@ export function initRpmGauge(): void {
   loadRpmConfig()
 }
 
-/** Render static elements (background arc, zone arcs, tick marks) to offscreen cache. */
-function renderBgCache(w: number, h: number): void {
-  if (!bgCache) {
-    bgCache = document.createElement('canvas')
-    bgCacheCtx = bgCache.getContext('2d')!
-  }
-  bgCache.width = w
-  bgCache.height = h
-  bgCacheW = w
-  bgCacheH = h
-  const c = bgCacheCtx!
-
+/** Render static elements (background arc, zone arcs, tick marks) into a given context. */
+function renderBgCacheToCtx(c: CanvasRenderingContext2D, w: number, h: number): void {
   const cx = w / 2
   const cy = h - 4
   const radius = h - 16
@@ -108,21 +109,73 @@ function renderBgCache(w: number, h: number): void {
   }
 }
 
-export function drawRpmGauge(rpm: number): void {
-  if (!ctx) return
-  const w = canvas.width
-  const h = canvas.height
+/** Rebuild the singleton offscreen cache for the primary canvas. */
+function renderBgCache(w: number, h: number): void {
+  if (!bgCache) {
+    bgCache = document.createElement('canvas')
+    bgCacheCtx = bgCache.getContext('2d')!
+  }
+  bgCache.width = w
+  bgCache.height = h
+  bgCacheW = w
+  bgCacheH = h
+  renderBgCacheToCtx(bgCacheCtx!, w, h)
+}
+
+export function drawRpmGauge(rpm: number, targetCanvas?: HTMLCanvasElement): void {
+  const c = targetCanvas ?? canvas
+  let drawCtx: CanvasRenderingContext2D
+  let cache: HTMLCanvasElement | null
+  let cacheW: number
+  let cacheH: number
+
+  if (!targetCanvas) {
+    if (!ctx) return
+    drawCtx = ctx
+    cache = bgCache
+    cacheW = bgCacheW
+    cacheH = bgCacheH
+  } else {
+    let entry = bgCacheMap.get(targetCanvas)
+    if (!entry) {
+      const tc = targetCanvas.getContext('2d')
+      if (!tc) return
+      entry = { canvas: document.createElement('canvas'), ctx: tc, w: 0, h: 0 }
+      bgCacheMap.set(targetCanvas, entry)
+      secondaryCanvases.push(targetCanvas)
+    }
+    drawCtx = entry.ctx
+    cache = entry.canvas
+    cacheW = entry.w
+    cacheH = entry.h
+  }
+
+  const w = c.width
+  const h = c.height
   const cx = w / 2
   const cy = h - 4
   const radius = h - 16
 
   // Rebuild background cache if needed (config change or canvas resize)
-  if (!bgCache || bgCacheW !== w || bgCacheH !== h) {
-    renderBgCache(w, h)
+  if (!targetCanvas) {
+    if (!bgCache || bgCacheW !== w || bgCacheH !== h) {
+      renderBgCache(w, h)
+      cache = bgCache; cacheW = bgCacheW; cacheH = bgCacheH
+    }
+  } else {
+    const entry = bgCacheMap.get(targetCanvas)!
+    if (cacheW !== w || cacheH !== h) {
+      entry.canvas.width = w; entry.canvas.height = h
+      entry.w = w; entry.h = h
+      // Render bg into entry.canvas
+      const bc = entry.canvas.getContext('2d')!
+      renderBgCacheToCtx(bc, w, h)
+    }
+    cache = entry.canvas
   }
 
-  ctx.clearRect(0, 0, w, h)
-  ctx.drawImage(bgCache!, 0, 0)
+  drawCtx.clearRect(0, 0, w, h)
+  drawCtx.drawImage(cache!, 0, 0)
 
   const { yellowStart, redline, maxRpm } = config
 
@@ -135,24 +188,24 @@ export function drawRpmGauge(rpm: number): void {
     else if (rpm >= yellowStart) fillColor = '#ffaa00'
     else fillColor = '#00cc66'
 
-    ctx.beginPath()
-    ctx.arc(cx, cy, radius, START_ANGLE, endAngle)
-    ctx.strokeStyle = fillColor
-    ctx.lineWidth = 10
-    ctx.lineCap = 'butt'
-    ctx.stroke()
+    drawCtx.beginPath()
+    drawCtx.arc(cx, cy, radius, START_ANGLE, endAngle)
+    drawCtx.strokeStyle = fillColor
+    drawCtx.lineWidth = 10
+    drawCtx.lineCap = 'butt'
+    drawCtx.stroke()
   }
 
   // Numeric readout centered in arc
-  ctx.fillStyle = '#fff'
-  ctx.font = 'bold 18px Consolas, monospace'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText(Math.round(rpm).toString(), cx, cy - 12)
+  drawCtx.fillStyle = '#fff'
+  drawCtx.font = 'bold 18px Consolas, monospace'
+  drawCtx.textAlign = 'center'
+  drawCtx.textBaseline = 'middle'
+  drawCtx.fillText(Math.round(rpm).toString(), cx, cy - 12)
 
-  ctx.fillStyle = '#aaa'
-  ctx.font = '10px Consolas, monospace'
-  ctx.fillText('RPM', cx, cy + 2)
+  drawCtx.fillStyle = '#aaa'
+  drawCtx.font = '10px Consolas, monospace'
+  drawCtx.fillText('RPM', cx, cy + 2)
 }
 
 function drawZoneArc(
