@@ -271,8 +271,32 @@ function onCompareAnimationFrame(): void {
   // Sync video B to match track position
   const telTimeB = trackPositionToTime(syncDataB, pos)
   const videoTimeB = telTimeB - avSyncOffset
-  if (Math.abs(vB.currentTime - videoTimeB) > 0.02) {
-    vB.currentTime = videoTimeB
+  const errorB = videoTimeB - vB.currentTime
+
+  if (vA.paused) {
+    // When paused, hard-seek for precise frame positioning
+    if (Math.abs(errorB) > 0.02) {
+      vB.currentTime = videoTimeB
+    }
+  } else {
+    // While playing, use playbackRate adjustment for smooth sync.
+    // Compute ideal rate: how fast should B advance per unit of A time
+    // at this track position (local slope of B-time vs A-time).
+    const dp = 0.005
+    const posNext = Math.min(1, pos + dp)
+    const dtA = trackPositionToTime(syncDataA, posNext) - trackPositionToTime(syncDataA, pos)
+    const dtB = trackPositionToTime(syncDataB, posNext) - trackPositionToTime(syncDataB, pos)
+    const idealRate = dtA > 0.0001 ? (dtB / dtA) : 1.0
+
+    if (Math.abs(errorB) > 0.5) {
+      // Large desync — hard-seek to recover
+      vB.currentTime = videoTimeB
+      vB.playbackRate = Math.max(0.1, Math.min(4.0, idealRate * vA.playbackRate))
+    } else {
+      // Proportional correction: nudge rate to close the gap
+      const correctedRate = idealRate + errorB * 3.0
+      vB.playbackRate = Math.max(0.1, Math.min(4.0, correctedRate * vA.playbackRate))
+    }
   }
 
   // Update rows + interpolation for both sides
@@ -299,6 +323,7 @@ function onCompareAnimationFrame(): void {
   // Clamp: pause when reaching end of lap A
   if (!vA.paused && pos >= 0.999) {
     vA.pause()
+    vB.pause()
     btnPlay.innerHTML = '&#9654;'
   }
 
@@ -378,6 +403,12 @@ onCompareEnter(() => {
 })
 
 onCompareExit(() => {
+  // Stop video B and reset its playback rate
+  const vB = getVideoB
+  if (vB) {
+    vB.pause()
+    vB.playbackRate = 1.0
+  }
   // Animation loop already falls through to normal mode when isCompareMode() is false
   // Re-measure anchor bounds: #video returns to full width
   requestAnimationFrame(updateAnchorBounds)

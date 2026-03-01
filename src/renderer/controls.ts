@@ -6,7 +6,7 @@
  */
 
 import { video, formatTime, toggleDebugPanel, viewRange, getViewDuration, viewFractionToTime, getSyncedTime, seekToTelemetryTime, avSyncOffset, onViewRangeChange } from './state'
-import { isCompareMode, videoA as cmpVideoA, syncDataA, syncDataB, lapA, lapB, trackPosition } from './compare-state'
+import { isCompareMode, videoA as cmpVideoA, videoB as cmpVideoB, syncDataA, syncDataB, lapA, lapB, trackPosition } from './compare-state'
 import { trackPositionToTime, timeToTrackPosition } from './compare-sync'
 
 let isScrubbing = false
@@ -113,9 +113,16 @@ export function initControls(): Controls {
         }
       }
       v.play()
+      if (isCompareMode() && cmpVideoB) {
+        cmpVideoB.muted = true
+        cmpVideoB.play()
+      }
       btnPlay.innerHTML = '&#9646;&#9646;'
     } else {
       v.pause()
+      if (isCompareMode() && cmpVideoB) {
+        cmpVideoB.pause()
+      }
       btnPlay.innerHTML = '&#9654;'
     }
   })
