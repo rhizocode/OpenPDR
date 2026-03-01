@@ -9,7 +9,7 @@ import type { TelemetryRow, LapInfo, LapData } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
 import { createEmptyRow, getRowInto } from '../shared/telemetry-store'
 import { avSyncOffset } from './state'
-import { buildDistanceArray, benchmarkSync, type SyncData } from './compare-sync'
+import { buildDistanceArray, computeHeadingOffset, applyOffset, benchmarkSync, type SyncData } from './compare-sync'
 import { dbg } from './state'
 
 // ── Compare mode flag ──
@@ -180,6 +180,11 @@ function rebuildSync(): void {
     syncDataB = null
   }
   if (syncDataA && syncDataB && storeA && storeB) {
+    const offset = computeHeadingOffset(syncDataA, syncDataB, storeA, storeB)
+    if (offset !== 0) {
+      applyOffset(syncDataB, offset)
+      dbg(`[Sync] Applied heading offset: ${offset.toFixed(4)} to B`)
+    }
     benchmarkSync(syncDataA, syncDataB, storeA, storeB, dbg)
   }
 }
