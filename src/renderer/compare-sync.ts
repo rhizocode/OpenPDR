@@ -97,10 +97,19 @@ export function buildDistanceArray(store: TelemetryStore, lap: LapInfo): SyncDat
   dist[0] = 0
   tArr[0] = times[startIdx]
 
+  // Use speed integration (GPS Doppler-derived) instead of haversine chaining.
+  // Speed is much cleaner than position — avoids cumulative noise inflation.
+  // Fall back to haversine only if speed data is missing.
+  const useSpeed = store.speed_mps[startIdx + Math.floor(n / 2)] !== 0
+
   for (let i = 1; i < n; i++) {
     const gi = startIdx + i
-    const d = haversineM(lats[gi - 1], lons[gi - 1], lats[gi], lons[gi])
-    dist[i] = dist[i - 1] + d
+    if (useSpeed) {
+      const dt = times[gi] - times[gi - 1]
+      dist[i] = dist[i - 1] + store.speed_mps[gi] * dt
+    } else {
+      dist[i] = dist[i - 1] + haversineM(lats[gi - 1], lons[gi - 1], lats[gi], lons[gi])
+    }
     tArr[i] = times[gi]
   }
 
@@ -276,6 +285,49 @@ function crossCorrelate(a: Float64Array, b: Float64Array, maxLag: number): numbe
   }
 
   return bestLag
+}
+
+/**
+ * Compute the heading cross-correlation offset between two laps.
+ * Returns the offset in normalized (0..1) track-position units.
+ * Positive means B is ahead of A; negative means B is behind.
+ * Capped at ±2% of lap distance.
+ */
+export function computeHeadingOffset(
+  syncA: SyncData,
+  syncB: SyncData,
+  storeA: TelemetryStore,
+  storeB: TelemetryStore,
+): number {
+  if (syncA.dist.length === 0 || syncB.dist.length === 0) return 0
+
+  const N = 500
+  const maxLag = 10 // ±2% of lap
+
+  const chA = sampleChannels(syncA, storeA, N)
+  const chB = sampleChannels(syncB, storeB, N)
+  unwrapHeading(chA.headings)
+  unwrapHeading(chB.headings)
+  const dhA = derivative(chA.headings)
+  const dhB = derivative(chB.headings)
+
+  const lagSamples = crossCorrelate(dhA, dhB, maxLag)
+  const offsetNorm = lagSamples / N
+
+  // Cap at ±2% (0.02 normalized)
+  return Math.max(-0.02, Math.min(0.02, offsetNorm))
+}
+
+/**
+ * Shift a sync data's normalized distance array by a constant offset.
+ * Clamps values to [0, 1].
+ */
+export function applyOffset(sync: SyncData, offset: number): void {
+  const n = sync.dist.length
+  if (n === 0 || offset === 0) return
+  for (let i = 0; i < n; i++) {
+    sync.dist[i] = Math.max(0, Math.min(1, sync.dist[i] + offset))
+  }
 }
 
 /**
