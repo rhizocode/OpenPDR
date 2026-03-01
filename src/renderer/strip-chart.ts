@@ -54,6 +54,13 @@ interface ChartChannel {
   defaultEnabled: boolean
 }
 
+// Unit conversion constants
+const NM_TO_LBFT = 0.7376
+const KW_TO_HP = 1.341
+const KPA_TO_PSI = 0.145038
+const C_TO_F_SCALE = 1.8
+const C_TO_F_OFFSET = 32
+
 const CHANNELS: ChartChannel[] = [
   { key: 'speed', label: 'Speed', color: '#3399ff', storeAccessor: s => s.speed_mph, scale: 1, rowAccessor: r => r.speed_mph, unit: 'mph', min: 0, max: 200, precision: 0, defaultEnabled: true },
   { key: 'rpm', label: 'RPM', color: '#ff6b00', storeAccessor: s => s.rpm, scale: 1, rowAccessor: r => r.rpm, unit: 'rpm', min: 0, max: 7000, precision: 0, defaultEnabled: true },
@@ -63,6 +70,17 @@ const CHANNELS: ChartChannel[] = [
   { key: 'gforce_lat', label: 'G Lat', color: '#66ccff', storeAccessor: s => s.gforce_lat, scale: 1, rowAccessor: r => r.gforce_lat, unit: 'g', min: -1.5, max: 1.5, precision: 2, defaultEnabled: false },
   { key: 'gforce_lon', label: 'G Lon', color: '#cc66ff', storeAccessor: s => s.gforce_lon, scale: 1, rowAccessor: r => r.gforce_lon, unit: 'g', min: -1.5, max: 1.5, precision: 2, defaultEnabled: false },
   { key: 'steering', label: 'Steering', color: '#ffcc00', storeAccessor: s => s.steering_deg, scale: 1, rowAccessor: r => r.steering_deg, unit: '\u00B0', min: -400, max: 400, precision: 0, defaultEnabled: false },
+  // ── Engine / drivetrain (dense) ──
+  { key: 'torque', label: 'Torque', color: '#e06030', storeAccessor: s => s.engine_torque_nm, scale: NM_TO_LBFT, rowAccessor: r => r.engine_torque_nm * NM_TO_LBFT, unit: 'lb-ft', min: -200, max: 800, precision: 0, defaultEnabled: false },
+  { key: 'power', label: 'Power', color: '#d040d0', storeAccessor: s => s.engine_power_kw, scale: KW_TO_HP, rowAccessor: r => r.engine_power_kw * KW_TO_HP, unit: 'hp', min: 0, max: 700, precision: 0, defaultEnabled: false },
+  { key: 'boost', label: 'Boost', color: '#40b0e0', storeAccessor: s => s.boost_pressure_kpa, scale: KPA_TO_PSI, rowAccessor: r => r.boost_pressure_kpa * KPA_TO_PSI, unit: 'psi', min: 0, max: 30, precision: 1, defaultEnabled: false },
+  // ── Temperatures & pressures (sparse — forward-filled via scaledCache) ──
+  { key: 'coolant_temp', label: 'Coolant', color: '#ff5050', storeAccessor: () => new Float32Array(0), scale: 1, rowAccessor: sparseRowAccessor(r => r.engine_temp_coolant_c, C_TO_F_SCALE, C_TO_F_OFFSET), unit: '\u00B0F', min: 100, max: 280, precision: 0, defaultEnabled: false },
+  { key: 'oil_temp', label: 'Oil Temp', color: '#e0a030', storeAccessor: () => new Float32Array(0), scale: 1, rowAccessor: sparseRowAccessor(r => r.engine_temp_oil_c, C_TO_F_SCALE, C_TO_F_OFFSET), unit: '\u00B0F', min: 100, max: 320, precision: 0, defaultEnabled: false },
+  { key: 'oil_press', label: 'Oil Press', color: '#c08040', storeAccessor: () => new Float32Array(0), scale: 1, rowAccessor: sparseRowAccessor(r => r.oil_pressure_kpa, KPA_TO_PSI), unit: 'psi', min: 0, max: 120, precision: 0, defaultEnabled: false },
+  { key: 'intake_temp', label: 'Intake', color: '#50c0c0', storeAccessor: () => new Float32Array(0), scale: 1, rowAccessor: sparseRowAccessor(r => r.engine_temp_airintake_c, C_TO_F_SCALE, C_TO_F_OFFSET), unit: '\u00B0F', min: 30, max: 200, precision: 0, defaultEnabled: false },
+  { key: 'trans_temp', label: 'Trans', color: '#a060c0', storeAccessor: () => new Float32Array(0), scale: 1, rowAccessor: sparseRowAccessor(r => r.trans_oil_temp_c, C_TO_F_SCALE, C_TO_F_OFFSET), unit: '\u00B0F', min: 100, max: 320, precision: 0, defaultEnabled: false },
+  { key: 'tire_temp_avg', label: 'Tire Avg', color: '#80d040', storeAccessor: () => new Float32Array(0), scale: 1, rowAccessor: (() => { let lastFL = 0, lastFR = 0, lastRL = 0, lastRR = 0; return (r: TelemetryRow) => { if (r.tire_temp_fl_c != null) lastFL = r.tire_temp_fl_c; if (r.tire_temp_fr_c != null) lastFR = r.tire_temp_fr_c; if (r.tire_temp_rl_c != null) lastRL = r.tire_temp_rl_c; if (r.tire_temp_rr_c != null) lastRR = r.tire_temp_rr_c; return ((lastFL + lastFR + lastRL + lastRR) / 4) * C_TO_F_SCALE + C_TO_F_OFFSET } })(), unit: '\u00B0F', min: 50, max: 250, precision: 0, defaultEnabled: false },
 ]
 
 /** Convert sparse gear_raw to a dense numeric array with forward-fill. */
@@ -77,6 +95,53 @@ function buildDenseGear(sparseGear: (number | undefined)[], length: number): Flo
     dense[i] = last
   }
   return dense
+}
+
+/** Forward-fill a sparse (number | undefined | null)[] channel into a dense Float32Array with affine transform. */
+function buildDenseSparse(
+  sparse: (number | undefined | null)[], length: number,
+  scale = 1, offset = 0,
+): Float32Array {
+  const dense = new Float32Array(length)
+  let last = offset
+  for (let i = 0; i < length; i++) {
+    const v = sparse[i]
+    if (v != null) last = v * scale + offset
+    dense[i] = last
+  }
+  return dense
+}
+
+/** Build dense average tire temp from 4 sparse corner channels, output in °F. */
+function buildDenseAvgTireTemp(
+  fl: (number | undefined)[], fr: (number | undefined)[],
+  rl: (number | undefined)[], rr: (number | undefined)[],
+  length: number,
+): Float32Array {
+  const dense = new Float32Array(length)
+  let lastFL = 0, lastFR = 0, lastRL = 0, lastRR = 0
+  for (let i = 0; i < length; i++) {
+    if (fl[i] !== undefined) lastFL = fl[i]!
+    if (fr[i] !== undefined) lastFR = fr[i]!
+    if (rl[i] !== undefined) lastRL = rl[i]!
+    if (rr[i] !== undefined) lastRR = rr[i]!
+    const avgC = (lastFL + lastFR + lastRL + lastRR) / 4
+    dense[i] = avgC * 1.8 + 32
+  }
+  return dense
+}
+
+/** Create a stateful rowAccessor for sparse channels — remembers last defined value to prevent HUD flicker. */
+function sparseRowAccessor(
+  getter: (r: TelemetryRow) => number | undefined | null,
+  scale = 1, offset = 0,
+): (r: TelemetryRow) => number {
+  let last = 0
+  return (r) => {
+    const v = getter(r)
+    if (v != null) last = v * scale + offset
+    return last
+  }
 }
 
 const CHANNELS_STORAGE_KEY = 'pdr-chart-channels'
@@ -359,6 +424,13 @@ function buildScaledCache(): void {
   }
   // Gear: build dense array from sparse gear_raw with forward-fill
   scaledCache.set('gear', buildDenseGear(store.gear_raw, store.length))
+  // Sparse numeric channels: forward-fill + unit conversion
+  scaledCache.set('coolant_temp', buildDenseSparse(store.engine_temp_coolant_c, store.length, C_TO_F_SCALE, C_TO_F_OFFSET))
+  scaledCache.set('oil_temp', buildDenseSparse(store.engine_temp_oil_c, store.length, C_TO_F_SCALE, C_TO_F_OFFSET))
+  scaledCache.set('oil_press', buildDenseSparse(store.oil_pressure_kpa, store.length, KPA_TO_PSI))
+  scaledCache.set('intake_temp', buildDenseSparse(store.engine_temp_airintake_c, store.length, C_TO_F_SCALE, C_TO_F_OFFSET))
+  scaledCache.set('trans_temp', buildDenseSparse(store.trans_oil_temp_c, store.length, C_TO_F_SCALE, C_TO_F_OFFSET))
+  scaledCache.set('tire_temp_avg', buildDenseAvgTireTemp(store.tire_temp_fl_c, store.tire_temp_fr_c, store.tire_temp_rl_c, store.tire_temp_rr_c, store.length))
 }
 
 function buildScaledCacheCompare(): void {
@@ -383,6 +455,20 @@ function buildScaledCacheCompare(): void {
   // Gear: build dense arrays for A and B
   scaledCacheA.set('gear', buildDenseGear(sa.gear_raw, sa.length))
   scaledCacheB.set('gear', buildDenseGear(sb.gear_raw, sb.length))
+  // Sparse numeric channels for A
+  scaledCacheA.set('coolant_temp', buildDenseSparse(sa.engine_temp_coolant_c, sa.length, C_TO_F_SCALE, C_TO_F_OFFSET))
+  scaledCacheA.set('oil_temp', buildDenseSparse(sa.engine_temp_oil_c, sa.length, C_TO_F_SCALE, C_TO_F_OFFSET))
+  scaledCacheA.set('oil_press', buildDenseSparse(sa.oil_pressure_kpa, sa.length, KPA_TO_PSI))
+  scaledCacheA.set('intake_temp', buildDenseSparse(sa.engine_temp_airintake_c, sa.length, C_TO_F_SCALE, C_TO_F_OFFSET))
+  scaledCacheA.set('trans_temp', buildDenseSparse(sa.trans_oil_temp_c, sa.length, C_TO_F_SCALE, C_TO_F_OFFSET))
+  scaledCacheA.set('tire_temp_avg', buildDenseAvgTireTemp(sa.tire_temp_fl_c, sa.tire_temp_fr_c, sa.tire_temp_rl_c, sa.tire_temp_rr_c, sa.length))
+  // Sparse numeric channels for B
+  scaledCacheB.set('coolant_temp', buildDenseSparse(sb.engine_temp_coolant_c, sb.length, C_TO_F_SCALE, C_TO_F_OFFSET))
+  scaledCacheB.set('oil_temp', buildDenseSparse(sb.engine_temp_oil_c, sb.length, C_TO_F_SCALE, C_TO_F_OFFSET))
+  scaledCacheB.set('oil_press', buildDenseSparse(sb.oil_pressure_kpa, sb.length, KPA_TO_PSI))
+  scaledCacheB.set('intake_temp', buildDenseSparse(sb.engine_temp_airintake_c, sb.length, C_TO_F_SCALE, C_TO_F_OFFSET))
+  scaledCacheB.set('trans_temp', buildDenseSparse(sb.trans_oil_temp_c, sb.length, C_TO_F_SCALE, C_TO_F_OFFSET))
+  scaledCacheB.set('tire_temp_avg', buildDenseAvgTireTemp(sb.tire_temp_fl_c, sb.tire_temp_fr_c, sb.tire_temp_rl_c, sb.tire_temp_rr_c, sb.length))
 }
 
 function rebuildChannelData(): void {
