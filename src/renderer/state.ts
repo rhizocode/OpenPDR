@@ -17,6 +17,31 @@ export let duration = 0
 export let lapData: LapData | null = null
 export let sessionInfo: SessionInfo | null = null
 
+// ── View range (lap view mode) ──
+export interface ViewRange {
+  startTime: number
+  endTime: number
+}
+
+export let viewRange: ViewRange = { startTime: 0, endTime: 0 }
+export let selectedLapIdx: number | null = null  // null = full recording
+
+export function getViewDuration(): number {
+  return viewRange.endTime - viewRange.startTime
+}
+
+/** Map absolute telemetry time to 0..1 fraction within the current view range */
+export function viewFraction(telTime: number): number {
+  const d = getViewDuration()
+  if (d <= 0) return 0
+  return (telTime - viewRange.startTime) / d
+}
+
+/** Map a 0..1 fraction within the current view range to absolute telemetry time */
+export function viewFractionToTime(frac: number): number {
+  return viewRange.startTime + frac * getViewDuration()
+}
+
 // ── Interpolation state ──
 // Exposed so modules (track-map, hud) can interpolate between bracketing rows.
 // Updated every animation frame by the animation loop in main.ts.
@@ -66,6 +91,7 @@ const rowListeners: Callback[] = []
 const telemetryLoadListeners: Callback[] = []
 const frameTickListeners: Callback[] = []
 const editModeListeners: Callback[] = []
+const viewRangeListeners: Callback[] = []
 
 function subscribe(list: Callback[], fn: Callback): Unsubscribe {
   list.push(fn)
@@ -88,6 +114,10 @@ export function setEditMode(on: boolean): void {
 
 export function onEditModeChange(fn: Callback): Unsubscribe {
   return subscribe(editModeListeners, fn)
+}
+
+export function onViewRangeChange(fn: Callback): Unsubscribe {
+  return subscribe(viewRangeListeners, fn)
 }
 
 export function onRowUpdate(fn: Callback): Unsubscribe {
@@ -123,7 +153,15 @@ export function setCurrentRow(row: TelemetryRow | null): void {
 export function setTelemetry(store: TelemetryStore, dur: number): void {
   telemetryStore = store
   duration = dur
+  viewRange = { startTime: 0, endTime: dur }
+  selectedLapIdx = null
   for (const fn of telemetryLoadListeners) fn()
+}
+
+export function setViewRange(range: ViewRange, lapIdx: number | null): void {
+  viewRange = range
+  selectedLapIdx = lapIdx
+  for (const fn of viewRangeListeners) fn()
 }
 
 // ── Seeking: convert telemetry time ↔ video time ──

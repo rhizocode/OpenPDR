@@ -14,7 +14,7 @@
 
 import type { TelemetryRow } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
-import { telemetryStore, duration, video, onRowUpdate, onFrameTick, onTelemetryLoad, currentRow, setCurrentRow, findRowAtTime, lapData, seekToTelemetryTime, getSyncedTime } from './state'
+import { telemetryStore, video, onRowUpdate, onFrameTick, onTelemetryLoad, currentRow, setCurrentRow, findRowAtTime, lapData, seekToTelemetryTime, getSyncedTime, viewRange, getViewDuration, viewFraction, viewFractionToTime, selectedLapIdx, onViewRangeChange } from './state'
 
 // ── Channel configuration ──
 
@@ -128,6 +128,9 @@ export function initChartPanel(): void {
   // On every animation frame: just blit cache + draw playhead (very cheap)
   onFrameTick(() => drawPlayhead())
 
+  // On view range change: re-render charts with new time range
+  onViewRangeChange(() => resizeAndRender())
+
   // Resize observer
   const ro = new ResizeObserver(() => {
     resizeAndRender()
@@ -138,8 +141,8 @@ export function initChartPanel(): void {
   function seekToPointer(e: PointerEvent): void {
     const rect = canvas.getBoundingClientRect()
     const xPct = (e.clientX - rect.left - LABEL_WIDTH) / (rect.width - LABEL_WIDTH)
-    if (xPct >= 0 && xPct <= 1 && duration > 0) {
-      seekToTelemetryTime(xPct * duration)
+    if (xPct >= 0 && xPct <= 1 && getViewDuration() > 0) {
+      seekToTelemetryTime(viewFractionToTime(xPct))
       setCurrentRow(findRowAtTime(video.currentTime))
     }
   }
@@ -266,11 +269,41 @@ function resizeAndRender(): void {
   drawPlayhead()
 }
 
+/** Binary search: find first index where times[i] >= target */
+function lowerBound(times: Float64Array, len: number, target: number): number {
+  let lo = 0, hi = len
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (times[mid] < target) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+/** Binary search: find last index where times[i] <= target */
+function upperBound(times: Float64Array, len: number, target: number): number {
+  let lo = 0, hi = len - 1
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >>> 1
+    if (times[mid] > target) hi = mid - 1
+    else lo = mid
+  }
+  return lo
+}
+
 function renderChannelOffscreen(cd: ChannelData, w: number, h: number): void {
   const { ctx: offCtx, values, times, config } = cd
   offCtx.clearRect(0, 0, w, h)
 
-  if (values.length < 2 || duration <= 0) return
+  const vd = getViewDuration()
+  if (values.length < 2 || vd <= 0) return
+
+  const vStart = viewRange.startTime
+  const vEnd = viewRange.endTime
+
+  // Find sample index range within the view window
+  const iStart = Math.max(0, lowerBound(times, values.length, vStart) - 1)
+  const iEnd = Math.min(values.length - 1, upperBound(times, values.length, vEnd) + 1)
 
   const range = config.max - config.min || 1
   const margin = 4 * dpr
@@ -280,26 +313,28 @@ function renderChannelOffscreen(cd: ChannelData, w: number, h: number): void {
   offCtx.lineWidth = 1.5 * dpr
   offCtx.beginPath()
 
-  const pxPerSample = w / values.length
+  const visibleCount = iEnd - iStart + 1
+  const pxPerSample = w / visibleCount
   if (pxPerSample >= 1) {
-    // Enough room: draw every point
-    for (let i = 0; i < values.length; i++) {
-      const x = (times[i] / duration) * w
+    // Enough room: draw every visible point
+    let first = true
+    for (let i = iStart; i <= iEnd; i++) {
+      const x = viewFraction(times[i]) * w
       const y = h - margin - ((values[i] - config.min) / range) * drawH
-      if (i === 0) offCtx.moveTo(x, y)
+      if (first) { offCtx.moveTo(x, y); first = false }
       else offCtx.lineTo(x, y)
     }
   } else {
     // More samples than pixels: use min/max bucketing per pixel column
-    let sampleIdx = 0
+    let sampleIdx = iStart
     for (let px = 0; px < w; px++) {
-      const tStart = (px / w) * duration
-      const tEnd = ((px + 1) / w) * duration
+      const tStart = viewFractionToTime(px / w)
+      const tEnd = viewFractionToTime((px + 1) / w)
       let bucketMin = Infinity
       let bucketMax = -Infinity
       let count = 0
 
-      while (sampleIdx < values.length && times[sampleIdx] < tEnd) {
+      while (sampleIdx <= iEnd && times[sampleIdx] < tEnd) {
         if (times[sampleIdx] >= tStart) {
           const v = values[sampleIdx]
           if (v < bucketMin) bucketMin = v
@@ -386,14 +421,16 @@ function renderStaticCache(): void {
     }
   }
 
-  // Lap markers — vertical dotted lines spanning all charts
-  if (lapData?.hasLapData && duration > 0) {
+  // Lap markers — skip when viewing a single lap (entire view IS one lap)
+  if (lapData?.hasLapData && getViewDuration() > 0 && selectedLapIdx === null) {
     staticCacheCtx.strokeStyle = 'rgba(255,255,255,0.25)'
     staticCacheCtx.lineWidth = 1 * dpr
     staticCacheCtx.setLineDash([3 * dpr, 4 * dpr])
     const dataW = w - labelW
     for (const lap of lapData.laps) {
-      const x = labelW + (lap.startTime / duration) * dataW
+      const frac = viewFraction(lap.startTime)
+      if (frac < 0 || frac > 1) continue
+      const x = labelW + frac * dataW
       staticCacheCtx.beginPath()
       staticCacheCtx.moveTo(x, 0)
       staticCacheCtx.lineTo(x, h)
@@ -402,11 +439,14 @@ function renderStaticCache(): void {
     // End of last lap
     const lastLap = lapData.laps[lapData.laps.length - 1]
     if (lastLap) {
-      const x = labelW + (lastLap.endTime / duration) * dataW
-      staticCacheCtx.beginPath()
-      staticCacheCtx.moveTo(x, 0)
-      staticCacheCtx.lineTo(x, h)
-      staticCacheCtx.stroke()
+      const frac = viewFraction(lastLap.endTime)
+      if (frac >= 0 && frac <= 1) {
+        const x = labelW + frac * dataW
+        staticCacheCtx.beginPath()
+        staticCacheCtx.moveTo(x, 0)
+        staticCacheCtx.lineTo(x, h)
+        staticCacheCtx.stroke()
+      }
     }
     staticCacheCtx.setLineDash([])
   }
@@ -458,9 +498,9 @@ function drawPlayhead(): void {
 
   // Compute playhead position
   let x = -1
-  if (channelData.length > 0 && duration > 0) {
+  if (channelData.length > 0 && getViewDuration() > 0) {
     const labelW = LABEL_WIDTH * dpr
-    const xPct = getSyncedTime() / duration
+    const xPct = viewFraction(getSyncedTime())
     x = Math.round(labelW + xPct * (w - labelW))
   }
 

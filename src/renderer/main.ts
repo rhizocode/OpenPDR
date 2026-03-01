@@ -6,7 +6,7 @@
  */
 
 import './types' // side-effect: augments Window with pdr
-import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg } from './state'
+import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg, lapData, duration, viewRange, setViewRange, selectedLapIdx, getSyncedTime, seekToTelemetryTime, onTelemetryLoad, onViewRangeChange } from './state'
 import { initHud } from './hud'
 import { initControls, getIsScrubbing } from './controls'
 import { initFileOpen } from './file-open'
@@ -20,6 +20,7 @@ import { initExportMenu } from './export-menu'
 import { initOverlayRenderer } from './overlay-renderer'
 
 const BUILD_ID = 'phase4-v1'
+const btnPlay = document.getElementById('btn-play') as HTMLButtonElement
 dbg(`Renderer loaded [${BUILD_ID}], pdr API: ${window.pdr ? 'OK' : 'MISSING'}`)
 
 // ── Initialize modules ──
@@ -34,6 +35,7 @@ initTrackMap(document.getElementById('track-canvas') as HTMLCanvasElement)
 initLapTable(document.getElementById('lap-table-container') as HTMLDivElement)
 initExportMenu()
 initOverlayRenderer()
+initLapSelector()
 
 // ── Video overlay anchor sizing ──
 // The anchor div matches the video's rendered bounds inside the container,
@@ -234,6 +236,13 @@ function onAnimationFrame(): void {
   fireFrameTick()
   updateFpsCounter()
 
+  // Playback clamping: pause when reaching end of view range
+  if (!video.paused && getSyncedTime() >= viewRange.endTime) {
+    video.pause()
+    btnPlay.innerHTML = '&#9654;'
+    seekToTelemetryTime(viewRange.endTime - 0.001)
+  }
+
   // Keep looping while playing or scrubbing; stop when idle
   if (!video.paused || getIsScrubbing() || getIsChartScrubbing()) {
     requestAnimationFrame(onAnimationFrame)
@@ -260,3 +269,71 @@ video.addEventListener('timeupdate', startAnimationLoop)
 
 // Initial kick — render the first frame if anything is loaded
 startAnimationLoop()
+
+// ── Lap selector dropdown ──
+function initLapSelector(): void {
+  const selector = document.getElementById('lap-selector') as HTMLSelectElement
+
+  function formatLapTime(seconds: number): string {
+    const m = Math.floor(seconds / 60)
+    const s = seconds - m * 60
+    const sFmt = s < 10 ? '0' + s.toFixed(3) : s.toFixed(3)
+    return `${m}:${sFmt}`
+  }
+
+  onTelemetryLoad(() => {
+    selector.innerHTML = ''
+
+    const fullOpt = document.createElement('option')
+    fullOpt.value = 'full'
+    fullOpt.textContent = 'Full Recording'
+    selector.appendChild(fullOpt)
+
+    const ld = lapData
+    if (ld?.hasLapData && ld.laps.length > 0) {
+      const bestTime = Math.min(...ld.laps.map(l => l.lapTime))
+
+      for (const lap of ld.laps) {
+        const opt = document.createElement('option')
+        opt.value = String(lap.lapNumber - 1)
+        let label = `Lap ${lap.lapNumber}  ${formatLapTime(lap.lapTime)}`
+        if (lap.lapTime === bestTime) {
+          label += '  best'
+        } else {
+          label += `  +${(lap.lapTime - bestTime).toFixed(3)}`
+        }
+        opt.textContent = label
+        selector.appendChild(opt)
+      }
+
+      selector.style.display = ''
+    } else {
+      selector.style.display = 'none'
+    }
+
+    selector.value = 'full'
+  })
+
+  selector.addEventListener('change', () => {
+    const val = selector.value
+    if (val === 'full') {
+      setViewRange({ startTime: 0, endTime: duration }, null)
+    } else {
+      const idx = parseInt(val, 10)
+      const ld = lapData
+      if (ld?.hasLapData && ld.laps[idx]) {
+        const lap = ld.laps[idx]
+        setViewRange({ startTime: lap.startTime, endTime: lap.endTime }, idx)
+        seekToTelemetryTime(lap.startTime)
+      }
+    }
+  })
+
+  onViewRangeChange(() => {
+    if (selectedLapIdx === null) {
+      selector.value = 'full'
+    } else {
+      selector.value = String(selectedLapIdx)
+    }
+  })
+}
