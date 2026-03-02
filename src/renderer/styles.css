@@ -42,6 +42,7 @@ html, body {
   background: var(--bg-secondary);
   border-bottom: 1px solid #333;
   flex-shrink: 0;
+  position: relative;
 }
 
 #toolbar button {
@@ -59,9 +60,17 @@ html, body {
   background: var(--accent-dim);
 }
 
-#btn-settings,
+#toolbar-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 #btn-edit,
-#btn-export {
+#btn-gear {
   background: var(--bg-tertiary) !important;
   color: var(--text-primary) !important;
   border: 1px solid #444 !important;
@@ -75,31 +84,24 @@ html, body {
   justify-content: center;
 }
 
-#btn-settings svg,
-#btn-edit svg {
+#btn-edit svg,
+#btn-gear svg {
   display: block;
 }
 
-
-
-#btn-settings:hover,
 #btn-edit:hover,
-#btn-export:hover:not(:disabled) {
+#btn-gear:hover {
   background: #3a3a3a !important;
 }
 
-#btn-export:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-#btn-edit.active {
+#btn-edit.active,
+#btn-gear.active {
   background: var(--accent) !important;
   color: #fff !important;
   border-color: var(--accent) !important;
 }
 
-#toolbar-spacer {
+.toolbar-spacer {
   flex: 1;
 }
 
@@ -996,32 +998,68 @@ html, body {
   border-color: var(--accent);
 }
 
-/* ── Edit panel dropdown ── */
-#edit-panel {
+/* ── Unified gear panel dropdown ── */
+#gear-panel {
   display: none;
   position: absolute;
   top: 38px;
-  right: 48px;
+  left: 50%;
+  transform: translateX(-50%);
   background: var(--bg-secondary);
   border: 1px solid #444;
   border-radius: 6px;
-  padding: 10px 14px;
+  padding: 4px 0;
   z-index: 1000;
   font-size: 13px;
-  min-width: 200px;
+  min-width: 240px;
+  max-width: calc(100vw - 24px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
 
-#edit-panel.visible {
+#gear-panel.visible {
   display: block;
 }
 
-.edit-section-title {
-  font-size: 11px;
-  text-transform: uppercase;
+.gear-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.gear-section-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.gear-section-header.active {
+  color: var(--accent);
+}
+
+.gear-chevron {
+  font-size: 10px;
+  width: 12px;
+  text-align: center;
   color: var(--text-secondary);
-  margin-bottom: 6px;
-  letter-spacing: 0.5px;
+}
+
+.gear-section-content {
+  padding: 4px 14px 10px;
+  border-bottom: 1px solid #333;
+}
+
+.gear-section-content:last-child {
+  border-bottom: none;
+}
+
+.export-empty {
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 4px 0;
 }
 
 .edit-row {
@@ -1043,13 +1081,13 @@ html, body {
   accent-color: var(--accent);
 }
 
-#edit-panel .edit-actions {
+.edit-actions {
   margin-top: 10px;
   padding-top: 8px;
   border-top: 1px solid #444;
 }
 
-#edit-panel .edit-actions button {
+.edit-actions button {
   padding: 4px 12px;
   background: var(--bg-tertiary);
   color: var(--text-primary);
@@ -1060,48 +1098,8 @@ html, body {
   width: 100%;
 }
 
-#edit-panel .edit-actions button:hover {
+.edit-actions button:hover {
   background: #3a3a3a;
-}
-
-/* ── Overlay settings dropdown ── */
-#overlay-settings-panel {
-  display: none;
-  position: absolute;
-  top: 38px;
-  right: 12px;
-  background: var(--bg-secondary);
-  border: 1px solid #444;
-  border-radius: 6px;
-  padding: 10px 14px;
-  z-index: 1000;
-  font-size: 13px;
-  min-width: 200px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-}
-
-#overlay-settings-panel.visible {
-  display: block;
-}
-
-/* ── Export dropdown ── */
-#export-panel {
-  display: none;
-  position: absolute;
-  top: 38px;
-  right: 80px;
-  background: var(--bg-secondary);
-  border: 1px solid #444;
-  border-radius: 6px;
-  padding: 6px 0;
-  z-index: 1000;
-  font-size: 13px;
-  min-width: 180px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-}
-
-#export-panel.visible {
-  display: block;
 }
 
 .export-section-title {

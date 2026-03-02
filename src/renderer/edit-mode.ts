@@ -249,16 +249,10 @@ function exitEditMode(): void {
   saveLayout()
 }
 
-// ── Build panel UI ──
+// ── Build panel UI (called by gear-menu) ──
 
-function buildPanel(panel: HTMLDivElement): void {
+export function buildEditPanel(panel: HTMLDivElement): void {
   const config = getOverlayConfig()
-
-  // Section title
-  const title = document.createElement('div')
-  title.className = 'edit-section-title'
-  title.textContent = 'Overlays'
-  panel.appendChild(title)
 
   // Checkboxes for each overlay
   for (const [key, label] of Object.entries(OVERLAY_LABELS)) {
@@ -319,9 +313,6 @@ function buildPanel(panel: HTMLDivElement): void {
 // ── Initialize ──
 
 export function initEditMode(): void {
-  const btnEdit = document.getElementById('btn-edit') as HTMLButtonElement
-  const panel = document.getElementById('edit-panel') as HTMLDivElement
-
   // Gather all HUD elements
   for (const el of container.querySelectorAll<HTMLElement>('.hud-element')) {
     const key = el.dataset.overlay as OverlayKey
@@ -340,9 +331,6 @@ export function initEditMode(): void {
   layout = loadLayout()
   applyAllPositions()
 
-  // Build panel
-  buildPanel(panel)
-
   // Attach resize handle listeners via event delegation
   container.addEventListener('pointerdown', (e) => {
     if (!getEditMode()) return
@@ -354,37 +342,18 @@ export function initEditMode(): void {
     if (key) onResizePointerDown(key, e)
   })
 
-  // Toggle edit mode when button clicked
-  btnEdit.addEventListener('click', (e) => {
+  // Pencil button toggles edit mode
+  const editBtn = document.getElementById('btn-edit') as HTMLButtonElement
+  editBtn.addEventListener('click', (e) => {
     e.stopPropagation()
-    const entering = !getEditMode()
-    setEditMode(entering)
-    panel.classList.toggle('visible', entering)
-    btnEdit.classList.toggle('active', entering)
-
-    // Close settings panel when opening edit panel
-    if (entering) {
-      document.getElementById('overlay-settings-panel')?.classList.remove('visible')
-    }
-  })
-
-  // Close panel when clicking outside
-  document.addEventListener('pointerdown', (e) => {
-    if (!getEditMode()) return
-    const target = e.target as Node
-    if (panel.contains(target) || (target as HTMLElement) === btnEdit) return
-    // Don't close if interacting with a HUD element
-    for (const [, el] of hudElements) {
-      if (el.contains(target)) return
-    }
-    setEditMode(false)
-    panel.classList.remove('visible')
-    btnEdit.classList.remove('active')
+    setEditMode(!getEditMode())
   })
 
   // React to edit mode state changes
   onEditModeChange(() => {
-    if (getEditMode()) {
+    const active = getEditMode()
+    editBtn.classList.toggle('active', active)
+    if (active) {
       enterEditMode()
     } else {
       exitEditMode()
@@ -397,10 +366,7 @@ export function initEditMode(): void {
     if (tag === 'INPUT' || tag === 'SELECT') return
 
     if (e.code === 'KeyE') {
-      const entering = !getEditMode()
-      setEditMode(entering)
-      panel.classList.toggle('visible', entering)
-      btnEdit.classList.toggle('active', entering)
+      setEditMode(!getEditMode())
     }
   })
 }
