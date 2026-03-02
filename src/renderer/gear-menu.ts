@@ -7,7 +7,7 @@
 
 import { onTelemetryLoad } from './state'
 import { buildEditPanel } from './edit-mode'
-import { buildRpmPanel, buildAvSyncPanel } from './overlay-settings'
+import { buildRpmPanel, buildAvSyncPanel, buildFontSizePanel } from './overlay-settings'
 import { buildExportPanel } from './export-menu'
 
 interface Section {
@@ -25,6 +25,7 @@ export function initGearMenu(): void {
     { id: 'export',       label: 'Export',        build: buildExportPanel },
     { id: 'rpm-zones',    label: 'RPM Zones',     build: buildRpmPanel },
     { id: 'av-sync',      label: 'A/V Sync',      build: buildAvSyncPanel },
+    { id: 'font-size',    label: 'Font Size',      build: buildFontSizePanel },
   ]
 
   for (const sec of sections) {
