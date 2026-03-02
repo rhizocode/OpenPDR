@@ -1,8 +1,9 @@
 /**
- * OpenPDR Viewer — Overlay settings dropdown
+ * OpenPDR Viewer — Overlay settings
  *
- * Settings panel for configuring RPM gauge zones.
- * HUD overlay toggles have moved to the Edit panel (edit-mode.ts).
+ * RPM gauge zone configuration and A/V sync offset.
+ * Panel content is built by exported functions called from gear-menu.ts.
+ * HUD overlay toggles are in the Edit panel (edit-mode.ts).
  */
 
 import type { OverlayConfig, RpmConfig } from './types'
@@ -13,30 +14,7 @@ import { avSyncOffset, setAvSyncOffset } from './state'
 const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
 
 export function initOverlaySettings(): void {
-  const rpmConfig = loadRpmConfig()
-
-  const btnSettings = document.getElementById('btn-settings') as HTMLButtonElement
-  const panel = document.getElementById('overlay-settings-panel') as HTMLDivElement
-
-  // Build settings panel content (RPM zones only)
-  buildPanel(panel, rpmConfig)
-
-  // Don't apply overlay config here — showHud() applies it when a file loads
-
-  // Toggle panel visibility
-  btnSettings.addEventListener('click', (e) => {
-    e.stopPropagation()
-    panel.classList.toggle('visible')
-    // Close edit panel when opening settings
-    document.getElementById('edit-panel')?.classList.remove('visible')
-  })
-
-  // Close panel when clicking outside
-  document.addEventListener('pointerdown', (e) => {
-    if (!panel.contains(e.target as Node) && e.target !== btnSettings) {
-      panel.classList.remove('visible')
-    }
-  })
+  loadRpmConfig()
 
   // Keyboard shortcut: H to toggle all HUD
   document.addEventListener('keydown', (e) => {
@@ -60,34 +38,28 @@ export function initOverlaySettings(): void {
   })
 }
 
-function buildPanel(panel: HTMLDivElement, rpmConfig: RpmConfig): void {
-  // RPM zones section
-  const rpmSection = document.createElement('div')
-  rpmSection.className = 'settings-section'
-  rpmSection.innerHTML = '<div class="settings-section-title">RPM Zones</div>'
+/** Build RPM zones inputs into the provided container */
+export function buildRpmPanel(container: HTMLDivElement): void {
+  const rpmConfig = getRpmConfig()
 
-  rpmSection.appendChild(buildNumberRow('Yellow Zone', rpmConfig.yellowStart, (val) => {
+  container.appendChild(buildNumberRow('Yellow Zone', rpmConfig.yellowStart, (val) => {
     const c = getRpmConfig()
     saveRpmConfig({ ...c, yellowStart: val })
   }))
 
-  rpmSection.appendChild(buildNumberRow('Redline', rpmConfig.redline, (val) => {
+  container.appendChild(buildNumberRow('Redline', rpmConfig.redline, (val) => {
     const c = getRpmConfig()
     saveRpmConfig({ ...c, redline: val })
   }))
 
-  rpmSection.appendChild(buildNumberRow('Max RPM', rpmConfig.maxRpm, (val) => {
+  container.appendChild(buildNumberRow('Max RPM', rpmConfig.maxRpm, (val) => {
     const c = getRpmConfig()
     saveRpmConfig({ ...c, maxRpm: val })
   }))
+}
 
-  panel.appendChild(rpmSection)
-
-  // A/V sync section
-  const syncSection = document.createElement('div')
-  syncSection.className = 'settings-section'
-  syncSection.innerHTML = '<div class="settings-section-title">A/V Sync</div>'
-
+/** Build A/V sync offset input into the provided container */
+export function buildAvSyncPanel(container: HTMLDivElement): void {
   const syncRow = document.createElement('div')
   syncRow.className = 'settings-row'
 
@@ -110,8 +82,7 @@ function buildPanel(panel: HTMLDivElement, rpmConfig: RpmConfig): void {
 
   syncRow.appendChild(syncLabel)
   syncRow.appendChild(syncInput)
-  syncSection.appendChild(syncRow)
-  panel.appendChild(syncSection)
+  container.appendChild(syncRow)
 }
 
 function buildNumberRow(label: string, value: number, onChange: (val: number) => void): HTMLDivElement {

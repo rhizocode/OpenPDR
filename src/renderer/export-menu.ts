@@ -1,12 +1,13 @@
 /**
- * OpenPDR Viewer — Export dropdown menu
+ * OpenPDR Viewer — Export functionality
  *
- * Toolbar button + dropdown with CSV, GPX, and Video export options.
+ * CSV, GPX, and Video export options.
+ * Panel content is built by exported functions called from gear-menu.ts.
  * Supports full recording and per-lap export when laps are detected.
  */
 
 import type { ExportScope, VideoExportOptions, OverlayConfig, OverlayLayout, RpmConfig } from './types'
-import { telemetryStore, lapData, onTelemetryLoad } from './state'
+import { telemetryStore, lapData } from './state'
 
 // localStorage keys (match hud.ts, edit-mode.ts, rpm-gauge.ts)
 const OVERLAY_CONFIG_KEY = 'pdr-overlay-config'
@@ -155,65 +156,51 @@ function onExportProgress(phase: string, pct: number): void {
   updateExportSteps(phase, pct)
 }
 
+// ── Init (export progress listener only) ──
+
 export function initExportMenu(): void {
-  const btn = document.getElementById('btn-export') as HTMLButtonElement
-  const panel = document.getElementById('export-panel') as HTMLDivElement
-
-  // Enable button and rebuild dropdown when a file is loaded
-  onTelemetryLoad(() => {
-    btn.disabled = !telemetryStore
-    buildPanel(panel)
-  })
-
-  // Toggle dropdown
-  btn.addEventListener('click', (e) => {
-    if (btn.disabled) return
-    e.stopPropagation()
-    panel.classList.toggle('visible')
-    // Close other panels
-    document.getElementById('overlay-settings-panel')?.classList.remove('visible')
-    document.getElementById('edit-panel')?.classList.remove('visible')
-  })
-
-  // Close on outside click
-  document.addEventListener('pointerdown', (e) => {
-    if (!panel.contains(e.target as Node) && e.target !== btn) {
-      panel.classList.remove('visible')
-    }
-  })
-
-  // Listen for video export progress from main process
   window.pdr.onExportVideoProgress(onExportProgress)
 }
 
-function buildPanel(panel: HTMLDivElement): void {
-  panel.innerHTML = ''
+// ── Panel building (called by gear-menu) ──
+
+/** Build export panel content based on current telemetry/lap state */
+export function buildExportPanel(container: HTMLDivElement): void {
+  container.innerHTML = ''
+
+  if (!telemetryStore) {
+    const empty = document.createElement('div')
+    empty.className = 'export-empty'
+    empty.textContent = 'Load a file to export'
+    container.appendChild(empty)
+    return
+  }
 
   const laps = lapData?.hasLapData ? lapData.laps : []
 
   // CSV section
-  addSectionTitle(panel, 'CSV')
-  addItem(panel, 'Full Recording', () => doExport('csv', { type: 'full' }))
+  addSectionTitle(container, 'CSV')
+  addItem(container, 'Full Recording', () => doExport('csv', { type: 'full' }))
   for (const lap of laps) {
-    addItem(panel, `Lap ${lap.lapNumber}`, () =>
+    addItem(container, `Lap ${lap.lapNumber}`, () =>
       doExport('csv', { type: 'lap', lapNumber: lap.lapNumber })
     )
   }
 
   // GPX section
-  addSectionTitle(panel, 'GPX')
-  addItem(panel, 'Full Recording', () => doExport('gpx', { type: 'full' }))
+  addSectionTitle(container, 'GPX')
+  addItem(container, 'Full Recording', () => doExport('gpx', { type: 'full' }))
   for (const lap of laps) {
-    addItem(panel, `Lap ${lap.lapNumber}`, () =>
+    addItem(container, `Lap ${lap.lapNumber}`, () =>
       doExport('gpx', { type: 'lap', lapNumber: lap.lapNumber })
     )
   }
 
   // Video section
-  addSectionTitle(panel, 'Video (with overlays)')
-  addItem(panel, 'Full Recording', () => doExport('video', { type: 'full' }))
+  addSectionTitle(container, 'Video (with overlays)')
+  addItem(container, 'Full Recording', () => doExport('video', { type: 'full' }))
   for (const lap of laps) {
-    addItem(panel, `Lap ${lap.lapNumber}`, () =>
+    addItem(container, `Lap ${lap.lapNumber}`, () =>
       doExport('video', { type: 'lap', lapNumber: lap.lapNumber })
     )
   }
@@ -231,7 +218,9 @@ function addItem(parent: HTMLElement, label: string, onClick: () => void): void 
   el.className = 'export-item'
   el.textContent = label
   el.addEventListener('click', () => {
-    parent.classList.remove('visible')
+    // Close the gear panel
+    document.getElementById('gear-panel')?.classList.remove('visible')
+    document.getElementById('btn-gear')?.classList.remove('active')
     onClick()
   })
   parent.appendChild(el)

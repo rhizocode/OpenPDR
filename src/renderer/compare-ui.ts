@@ -82,9 +82,10 @@ function showDropdown(): void {
   })
   dropdown.appendChild(itemOther)
 
-  // Position relative to the compare button
+  // Position relative to the compare button (right-aligned so it stays on screen)
   const rect = btnCompare.getBoundingClientRect()
-  dropdown.style.left = `${rect.left}px`
+  dropdown.style.right = `${window.innerWidth - rect.right}px`
+  dropdown.style.left = 'auto'
   dropdown.style.top = `${rect.bottom + 4}px`
   document.body.appendChild(dropdown)
 

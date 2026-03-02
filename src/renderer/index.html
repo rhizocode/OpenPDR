@@ -15,25 +15,19 @@
       <select id="lap-selector" title="Select lap" style="display:none">
         <option value="full">Full Recording</option>
       </select>
-      <button id="btn-compare" title="Compare laps" style="display:none">Compare</button>
-      <!-- Compare mode: color-coded lap selectors (hidden by default) -->
       <select id="compare-lap-a" class="compare-select compare-a" title="Lap A" style="display:none"></select>
-      <select id="compare-lap-b" class="compare-select compare-b" title="Lap B" style="display:none"></select>
-      <div id="toolbar-spacer"></div>
-      <button id="btn-export" title="Export data" disabled>Export</button>
+      <div class="toolbar-spacer"></div>
+      <div id="toolbar-center">
+        <button id="btn-edit" title="Edit overlay layout (E)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>
+        <button id="btn-gear" title="Settings & tools"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      </div>
       <span id="fps-counter" title="Render FPS"></span>
-      <button id="btn-edit" title="Edit overlay layout"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
-      <button id="btn-settings" title="Overlay settings"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      <select id="compare-lap-b" class="compare-select compare-b" title="Lap B" style="display:none"></select>
+      <button id="btn-compare" title="Compare laps" style="display:none">Compare</button>
     </header>
 
-    <!-- Edit panel dropdown (hidden by default) -->
-    <div id="edit-panel"></div>
-
-    <!-- Settings dropdown (hidden by default) -->
-    <div id="overlay-settings-panel"></div>
-
-    <!-- Export dropdown (hidden by default) -->
-    <div id="export-panel"></div>
+    <!-- Unified gear panel dropdown (hidden by default) -->
+    <div id="gear-panel"></div>
 
     <!-- Main content: video + chart panel with resize handle -->
     <div id="main-content">

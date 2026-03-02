@@ -19,6 +19,7 @@ import { initLapTable } from './lap-table'
 import { initExportMenu } from './export-menu'
 import { initOverlayRenderer } from './overlay-renderer'
 import { initCompareUI } from './compare-ui'
+import { initGearMenu } from './gear-menu'
 import {
   isCompareMode,
   videoA as getVideoA,
@@ -55,6 +56,7 @@ initLapTable(document.getElementById('lap-table-container') as HTMLDivElement)
 initExportMenu()
 initOverlayRenderer()
 initCompareUI()
+initGearMenu()
 initLapSelector()
 
 // ── Video overlay anchor sizing ──
