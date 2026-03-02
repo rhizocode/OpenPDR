@@ -15,6 +15,7 @@ import { initGForceBall, drawGForce } from './gforce-ball'
 import { initRpmGauge, drawRpmGauge } from './rpm-gauge'
 import { initSteeringIndicator, drawSteering } from './steering'
 import { applyOverlayConfigB } from './compare-overlay-b'
+import { isCompareMode, rpmConfigA } from './compare-state'
 
 const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
 
@@ -203,7 +204,7 @@ function smoothAndDraw(): void {
   displayedGLat += (targetGLat - displayedGLat) * alpha
   displayedGLon += (targetGLon - displayedGLon) * alpha
 
-  if (overlayConfig.rpmGauge) drawRpmGauge(displayedRpm)
+  if (overlayConfig.rpmGauge) drawRpmGauge(displayedRpm, undefined, isCompareMode() ? rpmConfigA : undefined)
   if (overlayConfig.steering) drawSteering(displayedSteeringDeg)
   if (overlayConfig.gforce) drawGForce(displayedGLat, displayedGLon)
 }

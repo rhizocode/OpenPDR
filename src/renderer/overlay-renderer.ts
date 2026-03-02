@@ -26,8 +26,8 @@ const steeringPath2D = new Path2D(STEERING_PATH)
 // RPM gauge (from rpm-gauge.ts)
 const RPM_START_ANGLE = 0.75 * Math.PI  // 135 degrees
 const RPM_SWEEP = 1.5 * Math.PI         // 270 degrees
-const RPM_W = 160
-const RPM_H = 90
+const RPM_W = 180
+const RPM_H = 105
 
 // G-force (from gforce-ball.ts)
 const GFORCE_MAX_G = 1.5
@@ -180,9 +180,9 @@ function drawRpmGaugeOverlay(
 
   const w = RPM_W, h = RPM_H
   const cx = w / 2, cy = h - 4
-  const radius = h - 16
-  const lineWidth = 10
-  const { yellowStart, redline, maxRpm } = config
+  const radius = 78
+  const lineWidth = 14
+  const { redline, maxRpm } = config
 
   // Background arc (dim)
   ctx.beginPath()
@@ -192,50 +192,60 @@ function drawRpmGaugeOverlay(
   ctx.lineCap = 'butt'
   ctx.stroke()
 
-  // Zone arcs
-  drawZoneArc(ctx, cx, cy, radius, 0, yellowStart / maxRpm, '#00cc66', 0.2)
-  drawZoneArc(ctx, cx, cy, radius, yellowStart / maxRpm, redline / maxRpm, '#ffaa00', 0.25)
-  drawZoneArc(ctx, cx, cy, radius, redline / maxRpm, 1, '#ff3333', 0.3)
+  // Green background zone (first 90% of arc, faded)
+  drawZoneArc(ctx, cx, cy, radius, 0, 0.9, '#00cc66', 0.2, lineWidth)
+  // Red background zone (last 10% of arc, more prominent)
+  drawZoneArc(ctx, cx, cy, radius, 0.9, 1, '#ff3333', 0.45, lineWidth)
 
-  // Tick marks
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)'
-  ctx.lineWidth = 1.5
+  const redlinePct = redline / maxRpm
+  const redlineAngle = RPM_START_ANGLE + redlinePct * RPM_SWEEP
+
+  // Active fill: green arc from 0 up to min(rpm, redline)
+  const pct = Math.min(1, Math.max(0, rpm / maxRpm))
+  if (pct > 0) {
+    const greenEnd = Math.min(pct, redlinePct)
+    ctx.beginPath()
+    ctx.arc(cx, cy, radius, RPM_START_ANGLE, RPM_START_ANGLE + greenEnd * RPM_SWEEP)
+    ctx.strokeStyle = '#00cc66'
+    ctx.lineWidth = lineWidth
+    ctx.lineCap = 'butt'
+    ctx.stroke()
+  }
+
+  // Active fill: red arc from redline up to rpm (only when past redline)
+  if (rpm > redline) {
+    const redEnd = Math.min(pct, 1)
+    ctx.beginPath()
+    ctx.arc(cx, cy, radius, redlineAngle, RPM_START_ANGLE + redEnd * RPM_SWEEP)
+    ctx.strokeStyle = '#ff3333'
+    ctx.lineWidth = lineWidth
+    ctx.lineCap = 'butt'
+    ctx.stroke()
+  }
+
+  // Tick marks — drawn AFTER active arcs so they stay visible on highlighted area
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)'
+  ctx.lineWidth = 2
+  ctx.lineCap = 'round'
   for (let r = 0; r <= maxRpm; r += 1000) {
     const angle = RPM_START_ANGLE + (r / maxRpm) * RPM_SWEEP
-    const inner = radius - 14, outer = radius + 2
+    const inner = radius - 7, outer = radius + 7
     ctx.beginPath()
     ctx.moveTo(cx + inner * Math.cos(angle), cy + inner * Math.sin(angle))
     ctx.lineTo(cx + outer * Math.cos(angle), cy + outer * Math.sin(angle))
     ctx.stroke()
   }
 
-  // Active fill arc
-  const pct = Math.min(1, Math.max(0, rpm / maxRpm))
-  if (pct > 0) {
-    const endAngle = RPM_START_ANGLE + pct * RPM_SWEEP
-    let fillColor: string
-    if (rpm >= redline) fillColor = '#ff3333'
-    else if (rpm >= yellowStart) fillColor = '#ffaa00'
-    else fillColor = '#00cc66'
-
-    ctx.beginPath()
-    ctx.arc(cx, cy, radius, RPM_START_ANGLE, endAngle)
-    ctx.strokeStyle = fillColor
-    ctx.lineWidth = lineWidth
-    ctx.lineCap = 'butt'
-    ctx.stroke()
-  }
-
-  // Numeric readout
+  // Numeric readout — positioned near the bottom of the arc bowl
   ctx.fillStyle = '#fff'
-  ctx.font = 'bold 18px Consolas, monospace'
+  ctx.font = 'bold 42px Consolas, monospace'
   ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText(Math.round(rpm).toString(), cx, cy - 12)
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillText(Math.round(rpm).toString(), cx, cy - 16)
 
   ctx.fillStyle = '#aaa'
-  ctx.font = '10px Consolas, monospace'
-  ctx.fillText('RPM', cx, cy + 2)
+  ctx.font = '16px Consolas, monospace'
+  ctx.fillText('RPM', cx, cy - 2)
 
   ctx.restore()
 }
@@ -244,12 +254,13 @@ function drawZoneArc(
   c: CanvasRenderingContext2D,
   cx: number, cy: number, r: number,
   startPct: number, endPct: number, color: string, alpha: number,
+  lw = 14,
 ): void {
   c.beginPath()
   c.arc(cx, cy, r, RPM_START_ANGLE + startPct * RPM_SWEEP, RPM_START_ANGLE + endPct * RPM_SWEEP)
   c.strokeStyle = color
   c.globalAlpha = alpha
-  c.lineWidth = 10
+  c.lineWidth = lw
   c.lineCap = 'butt'
   c.stroke()
   c.globalAlpha = 1.0

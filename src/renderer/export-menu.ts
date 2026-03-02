@@ -33,9 +33,8 @@ const DEFAULT_OVERLAY_LAYOUT: OverlayLayout = {
 }
 
 const DEFAULT_RPM_CONFIG: RpmConfig = {
-  yellowStart: 5500,
   redline: 6500,
-  maxRpm: 7000,
+  maxRpm: 8500,
 }
 
 /** Read current overlay/layout/RPM config from localStorage */

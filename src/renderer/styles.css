@@ -294,10 +294,10 @@ html, body {
   display: block;
 }
 
-#rpm-gauge-canvas,
-#rpm-gauge-canvas-b {
+#hud-rpm-gauge svg {
   display: block;
-  background: transparent;
+  width: 180px;
+  height: 165px;
 }
 
 /* Gear */

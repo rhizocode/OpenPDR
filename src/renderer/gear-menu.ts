@@ -75,9 +75,11 @@ export function initGearMenu(): void {
     }
   })
 
-  // Rebuild export section when telemetry loads
+  // Rebuild export and RPM sections when telemetry loads
   onTelemetryLoad(() => {
     const exportContent = document.getElementById('gear-content-export') as HTMLDivElement
     buildExportPanel(exportContent)
+    const rpmContent = document.getElementById('gear-content-rpm-zones') as HTMLDivElement
+    buildRpmPanel(rpmContent)
   })
 }

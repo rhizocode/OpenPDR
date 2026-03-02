@@ -6,9 +6,9 @@
  * HUD overlay toggles are in the Edit panel (edit-mode.ts).
  */
 
-import type { OverlayConfig, RpmConfig } from './types'
+import type { OverlayConfig } from './types'
 import { applyOverlayConfig, getOverlayConfig, setOverlayConfig } from './hud'
-import { saveRpmConfig, getRpmConfig, loadRpmConfig } from './rpm-gauge'
+import { saveRpmConfig, getRpmConfig, loadRpmConfig, getDetectedEngine, isManualOverride, setManualOverride } from './rpm-gauge'
 import { avSyncOffset, setAvSyncOffset } from './state'
 
 const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
@@ -40,22 +40,52 @@ export function initOverlaySettings(): void {
 
 /** Build RPM zones inputs into the provided container */
 export function buildRpmPanel(container: HTMLDivElement): void {
+  container.innerHTML = ''
   const rpmConfig = getRpmConfig()
+  const detected = getDetectedEngine()
 
-  container.appendChild(buildNumberRow('Yellow Zone', rpmConfig.yellowStart, (val) => {
-    const c = getRpmConfig()
-    saveRpmConfig({ ...c, yellowStart: val })
-  }))
+  // Detection status row
+  const statusRow = document.createElement('div')
+  statusRow.className = 'settings-row'
+  const statusLabel = document.createElement('label')
+  statusLabel.textContent = 'Detected'
+  const statusValue = document.createElement('span')
+  statusValue.className = 'rpm-detected-engine'
+  statusValue.textContent = detected
+    ? `${detected.label} (${detected.redline} RPM)`
+    : 'Unknown engine'
+  statusRow.appendChild(statusLabel)
+  statusRow.appendChild(statusValue)
+  container.appendChild(statusRow)
+
+  // Manual override checkbox
+  const overrideRow = document.createElement('div')
+  overrideRow.className = 'settings-row'
+  const overrideLabel = document.createElement('label')
+  overrideLabel.textContent = 'Manual Override'
+  const overrideCb = document.createElement('input')
+  overrideCb.type = 'checkbox'
+  overrideCb.checked = isManualOverride()
+  overrideCb.addEventListener('change', () => {
+    setManualOverride(overrideCb.checked)
+    buildRpmPanel(container)
+  })
+  overrideRow.appendChild(overrideLabel)
+  overrideRow.appendChild(overrideCb)
+  container.appendChild(overrideRow)
+
+  // Redline and Max RPM inputs (disabled when auto-detected and not overridden)
+  const inputsDisabled = !!detected && !isManualOverride()
 
   container.appendChild(buildNumberRow('Redline', rpmConfig.redline, (val) => {
     const c = getRpmConfig()
     saveRpmConfig({ ...c, redline: val })
-  }))
+  }, inputsDisabled))
 
   container.appendChild(buildNumberRow('Max RPM', rpmConfig.maxRpm, (val) => {
     const c = getRpmConfig()
     saveRpmConfig({ ...c, maxRpm: val })
-  }))
+  }, inputsDisabled))
 }
 
 /** Build A/V sync offset input into the provided container */
@@ -172,7 +202,7 @@ export function buildFontSizePanel(container: HTMLDivElement): void {
   container.appendChild(row)
 }
 
-function buildNumberRow(label: string, value: number, onChange: (val: number) => void): HTMLDivElement {
+function buildNumberRow(label: string, value: number, onChange: (val: number) => void, disabled = false): HTMLDivElement {
   const row = document.createElement('div')
   row.className = 'settings-row'
 
@@ -185,6 +215,7 @@ function buildNumberRow(label: string, value: number, onChange: (val: number) =>
   input.step = '100'
   input.min = '0'
   input.max = '15000'
+  input.disabled = disabled
   input.addEventListener('change', () => {
     const val = parseInt(input.value, 10)
     if (!isNaN(val) && val > 0) {

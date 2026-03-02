@@ -5,12 +5,14 @@
  * Modules check isCompareMode() to decide which state to read.
  */
 
-import type { TelemetryRow, LapInfo, LapData, SessionInfo } from './types'
+import type { TelemetryRow, LapInfo, LapData, SessionInfo, RpmConfig } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
 import { createEmptyRow, getRowInto } from '../shared/telemetry-store'
 import { avSyncOffset } from './state'
 import { buildDistanceArray, computeHeadingOffset, applyOffset, benchmarkSync, type SyncData } from './compare-sync'
 import { dbg } from './state'
+import { detectEngine, engineToRpmConfig } from '../shared/engine-database'
+import { loadRpmConfig } from './rpm-gauge'
 
 // ── Compare mode flag ──
 let compareMode = false
@@ -41,6 +43,10 @@ export let fileNameB = ''
 // ── Session info ──
 export let sessionInfoA: SessionInfo | null = null
 export let sessionInfoB: SessionInfo | null = null
+
+// ── Per-side RPM configs (auto-detected from engine, fallback to manual) ──
+export let rpmConfigA: RpmConfig = loadRpmConfig()
+export let rpmConfigB: RpmConfig = loadRpmConfig()
 
 // ── Master track position (0..1) ──
 export let trackPosition = 0
@@ -229,6 +235,12 @@ export function enterCompareMode(config: CompareConfig): void {
   sessionInfoB = config.sessionInfoB
   trackPosition = 0
 
+  // Auto-detect redline per side from engine metadata
+  const specA = detectEngine(config.sessionInfoA?.engine)
+  rpmConfigA = specA ? engineToRpmConfig(specA) : loadRpmConfig()
+  const specB = detectEngine(config.sessionInfoB?.engine)
+  rpmConfigB = specB ? engineToRpmConfig(specB) : loadRpmConfig()
+
   rebuildSync()
 
   for (const fn of compareEnterListeners) fn()
@@ -241,6 +253,7 @@ export function exitCompareMode(): void {
   lapDataA = lapDataB = null
   videoA = videoB = null
   sessionInfoA = sessionInfoB = null
+  rpmConfigA = rpmConfigB = loadRpmConfig()
   syncDataA = syncDataB = null
   currentRowA = currentRowB = null
   interpPrevA = interpNextA = null

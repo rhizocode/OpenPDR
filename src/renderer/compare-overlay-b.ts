@@ -11,6 +11,7 @@
 
 import type { TelemetryRow, OverlayConfig, OverlayKey, SessionInfo } from './types'
 import { drawRpmGauge } from './rpm-gauge'
+import { rpmConfigB } from './compare-state'
 import { drawGForce } from './gforce-ball'
 import { drawSteering } from './steering'
 
@@ -23,7 +24,7 @@ let brakeFillB: HTMLDivElement | null = null
 let gpsLatB: HTMLSpanElement | null = null
 let gpsLonB: HTMLSpanElement | null = null
 let gpsAltB: HTMLSpanElement | null = null
-let rpmCanvasB: HTMLCanvasElement | null = null
+let rpmSvgB: SVGSVGElement | null = null
 let gforceCanvasB: HTMLCanvasElement | null = null
 let steeringSvgB: SVGSVGElement | null = null
 let steeringLabelB: HTMLSpanElement | null = null
@@ -67,7 +68,7 @@ export function createOverlayB(videoContainer: HTMLDivElement, overlayAnchorA: H
   gpsLatB = anchorB.querySelector('#hud-gps-lat-b') as HTMLSpanElement
   gpsLonB = anchorB.querySelector('#hud-gps-lon-b') as HTMLSpanElement
   gpsAltB = anchorB.querySelector('#hud-gps-alt-b') as HTMLSpanElement
-  rpmCanvasB = anchorB.querySelector('#rpm-gauge-canvas-b') as HTMLCanvasElement
+  rpmSvgB = anchorB.querySelector('#hud-rpm-gauge-b svg') as SVGSVGElement
   gforceCanvasB = anchorB.querySelector('#gforce-canvas-b') as HTMLCanvasElement
   steeringSvgB = anchorB.querySelector('#steering-svg-b') as unknown as SVGSVGElement
   steeringLabelB = anchorB.querySelector('#steering-label-b') as HTMLSpanElement
@@ -152,7 +153,7 @@ export function destroyOverlayB(): void {
   gpsLatB = null
   gpsLonB = null
   gpsAltB = null
-  rpmCanvasB = null
+  rpmSvgB = null
   gforceCanvasB = null
   steeringSvgB = null
   steeringLabelB = null
@@ -289,7 +290,7 @@ export function smoothAndDrawB(
   displayedGLatB += (targetGLatB - displayedGLatB) * alpha
   displayedGLonB += (targetGLonB - displayedGLonB) * alpha
 
-  if (rpmCanvasB) drawRpmGauge(displayedRpmB, rpmCanvasB)
+  if (rpmSvgB) drawRpmGauge(displayedRpmB, rpmSvgB, rpmConfigB)
   if (steeringSvgB && steeringLabelB) drawSteering(displayedSteeringB, steeringSvgB, steeringLabelB)
   if (gforceCanvasB) drawGForce(displayedGLatB, displayedGLonB, gforceCanvasB)
 }

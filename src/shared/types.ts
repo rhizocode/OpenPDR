@@ -187,7 +187,6 @@ export type OverlayLayout = Record<OverlayKey, OverlayPosition>
 
 /** RPM gauge zone configuration */
 export interface RpmConfig {
-  yellowStart: number
   redline: number
   maxRpm: number
 }

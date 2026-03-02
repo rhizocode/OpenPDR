@@ -1,41 +1,238 @@
 /**
- * OpenPDR Viewer — RPM arc gauge (canvas)
+ * OpenPDR Viewer — RPM arc gauge (SVG)
  *
- * 270-degree arc gauge with configurable color zones (green/yellow/red).
- * Zone thresholds are user-configurable via settings for different vehicles.
- * Default values are for the LT4 supercharged V8 (CT5-V Blackwing).
+ * 270-degree arc gauge with two color zones (green / red).
+ * Rendered as an inline SVG for crisp scaling at any resolution.
+ * Redline is auto-detected from the engine code in PDR session metadata
+ * via the engine database, with a manual override option.
+ *
+ * The video-export overlay renderer (overlay-renderer.ts) has its own
+ * canvas-based reimplementation for offscreen rendering — it does not
+ * use this module.
  */
 
 import type { RpmConfig } from './types'
+import { sessionInfo, onTelemetryLoad, dbg } from './state'
+import { detectEngine, engineToRpmConfig, type EngineSpec } from '../shared/engine-database'
 
 const STORAGE_KEY = 'pdr-rpm-config'
+const OVERRIDE_KEY = 'pdr-rpm-manual-override'
 
-// Default zone thresholds for LT4 V8
+// Default zone thresholds (fallback when engine not detected)
 const DEFAULT_CONFIG: RpmConfig = {
-  yellowStart: 5500,
   redline: 6500,
-  maxRpm: 7000,
+  maxRpm: 8500,
 }
 
 let config: RpmConfig = DEFAULT_CONFIG
-let canvas: HTMLCanvasElement
-let ctx: CanvasRenderingContext2D
 
-// Per-canvas offscreen cache (keyed by canvas element)
-const bgCacheMap = new WeakMap<HTMLCanvasElement, { canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, w: number, h: number }>()
-// Track secondary canvases for cache invalidation on config change
-const secondaryCanvases: HTMLCanvasElement[] = []
+// Auto-detection state
+let detectedEngine: EngineSpec | null = null
+let manualOverride = localStorage.getItem(OVERRIDE_KEY) === 'true'
 
-// Offscreen cache for static elements (background arc, zone arcs, tick marks)
-// Kept as the primary cache for the singleton canvas; secondary canvases use bgCacheMap.
-let bgCache: HTMLCanvasElement | null = null
-let bgCacheCtx: CanvasRenderingContext2D | null = null
-let bgCacheW = 0
-let bgCacheH = 0
+export function getDetectedEngine(): EngineSpec | null { return detectedEngine }
+export function isManualOverride(): boolean { return manualOverride }
+export function setManualOverride(on: boolean): void {
+  manualOverride = on
+  localStorage.setItem(OVERRIDE_KEY, on.toString())
+  if (!on && detectedEngine) {
+    saveRpmConfig(engineToRpmConfig(detectedEngine))
+  }
+}
 
-// Arc geometry: 270-degree sweep from 7 o'clock to 5 o'clock
-const START_ANGLE = 0.75 * Math.PI    // 135 degrees
-const SWEEP = 1.5 * Math.PI           // 270 degrees
+// ── SVG geometry ──
+// viewBox sized to fully contain the arc + tick marks + stroke width.
+// Arc endpoints (135°/45°) sit at CY + R·sin(45°) ≈ CY + 55; tick outers even lower.
+// H must accommodate those endpoints plus padding.
+const W = 180, H = 165
+const CX = W / 2        // 90
+const CY = H - 60       // 105
+const R = 78
+const ARC_WIDTH = 14
+const TICK_INNER = R - 7
+const TICK_OUTER = R + 7
+
+// Arc sweep: 270 degrees from 135deg (7 o'clock) to 45deg (5 o'clock)
+const START_DEG = 135
+const SWEEP_DEG = 270
+const NS = 'http://www.w3.org/2000/svg'
+
+// ── Primary SVG element + B-side tracking ──
+let primarySvg: SVGSVGElement | null = null
+// Track all managed SVG instances for config-change rebuilds
+const managedSvgs = new Set<SVGSVGElement>()
+
+// ── Helpers: polar → cartesian, SVG arc path ──
+
+function polarToXY(cx: number, cy: number, r: number, deg: number): [number, number] {
+  const rad = (deg * Math.PI) / 180
+  return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)]
+}
+
+/** Build an SVG arc path `d` attribute from startDeg to endDeg on circle (cx, cy, r). */
+function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number): string {
+  const [sx, sy] = polarToXY(cx, cy, r, startDeg)
+  const [ex, ey] = polarToXY(cx, cy, r, endDeg)
+  const sweep = endDeg - startDeg
+  const largeArc = sweep > 180 ? 1 : 0
+  return `M${sx},${sy} A${r},${r} 0 ${largeArc} 1 ${ex},${ey}`
+}
+
+function createSvgEl<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
+  return document.createElementNS(NS, tag) as SVGElementTagNameMap[K]
+}
+
+function setAttrs(el: SVGElement, attrs: Record<string, string | number>): void {
+  for (const [k, v] of Object.entries(attrs)) {
+    el.setAttribute(k, String(v))
+  }
+}
+
+// ── Build the static SVG structure ──
+
+interface GaugeElements {
+  svg: SVGSVGElement
+  bgArc: SVGPathElement
+  greenZone: SVGPathElement
+  redZone: SVGPathElement
+  tickGroup: SVGGElement
+  activeGreen: SVGPathElement
+  activeRed: SVGPathElement
+  rpmText: SVGTextElement
+  rpmLabel: SVGTextElement
+  cfgKey: string // for cache invalidation
+}
+
+const gaugeMap = new WeakMap<SVGSVGElement, GaugeElements>()
+
+function rpmToDeg(rpm: number, maxRpm: number): number {
+  return START_DEG + (rpm / maxRpm) * SWEEP_DEG
+}
+
+function buildGauge(svg: SVGSVGElement, cfg: RpmConfig): GaugeElements {
+  // Clear any existing content
+  svg.innerHTML = ''
+  setAttrs(svg, { viewBox: `0 0 ${W} ${H}`, width: W, height: H })
+  svg.style.overflow = 'visible'
+
+  const { maxRpm } = cfg
+
+  // Background arc (dim white)
+  const bgArc = createSvgEl('path')
+  setAttrs(bgArc, {
+    d: arcPath(CX, CY, R, START_DEG, START_DEG + SWEEP_DEG),
+    fill: 'none', stroke: 'rgba(255,255,255,0.08)',
+    'stroke-width': ARC_WIDTH, 'stroke-linecap': 'butt',
+  })
+  svg.appendChild(bgArc)
+
+  // Green background zone (first 90% of arc, faded)
+  const greenZone = createSvgEl('path')
+  const redZoneStart = 0.9 // last 10% of arc is red zone
+  const greenEndDeg = START_DEG + redZoneStart * SWEEP_DEG
+  setAttrs(greenZone, {
+    d: arcPath(CX, CY, R, START_DEG, greenEndDeg),
+    fill: 'none', stroke: '#00cc66', opacity: '0.2',
+    'stroke-width': ARC_WIDTH, 'stroke-linecap': 'butt',
+  })
+  svg.appendChild(greenZone)
+
+  // Red background zone (last 10% of arc, more prominent)
+  const redZone = createSvgEl('path')
+  setAttrs(redZone, {
+    d: arcPath(CX, CY, R, greenEndDeg, START_DEG + SWEEP_DEG),
+    fill: 'none', stroke: '#ff3333', opacity: '0.45',
+    'stroke-width': ARC_WIDTH, 'stroke-linecap': 'butt',
+  })
+  svg.appendChild(redZone)
+
+  // Active green arc (updated per frame)
+  const activeGreen = createSvgEl('path')
+  setAttrs(activeGreen, {
+    d: '', fill: 'none', stroke: '#00cc66',
+    'stroke-width': ARC_WIDTH, 'stroke-linecap': 'butt',
+  })
+  svg.appendChild(activeGreen)
+
+  // Active red arc (updated per frame, hidden when below redline)
+  const activeRed = createSvgEl('path')
+  setAttrs(activeRed, {
+    d: '', fill: 'none', stroke: '#ff3333',
+    'stroke-width': ARC_WIDTH, 'stroke-linecap': 'butt',
+  })
+  svg.appendChild(activeRed)
+
+  // Tick marks at 1000 RPM intervals — drawn AFTER active arcs so they stay visible
+  const tickGroup = createSvgEl('g')
+  setAttrs(tickGroup, { stroke: 'rgba(0,0,0,0.6)', 'stroke-width': '2', 'stroke-linecap': 'round' })
+  for (let r = 0; r <= maxRpm; r += 1000) {
+    const deg = rpmToDeg(r, maxRpm)
+    const [ix, iy] = polarToXY(CX, CY, TICK_INNER, deg)
+    const [ox, oy] = polarToXY(CX, CY, TICK_OUTER, deg)
+    const tick = createSvgEl('line')
+    setAttrs(tick, { x1: ix, y1: iy, x2: ox, y2: oy })
+    tickGroup.appendChild(tick)
+  }
+  svg.appendChild(tickGroup)
+
+  // Drop shadow filter for text
+  const defs = createSvgEl('defs')
+  const filter = createSvgEl('filter')
+  setAttrs(filter, { id: 'rpm-shadow', x: '-20%', y: '-20%', width: '140%', height: '140%' })
+  const feDropShadow = createSvgEl('feDropShadow')
+  setAttrs(feDropShadow, { dx: 0, dy: 1, stdDeviation: 2, 'flood-color': 'rgba(0,0,0,0.7)' })
+  filter.appendChild(feDropShadow)
+  defs.appendChild(filter)
+  svg.appendChild(defs)
+
+  // RPM numeric readout — centered in the arc interior
+  // Arc top ≈ CY-R = 27, arc endpoints ≈ CY + R·sin(45°) = 160
+  // Visual center of the interior ≈ midpoint = ~93
+  const rpmText = createSvgEl('text')
+  setAttrs(rpmText, {
+    x: CX, y: CY - 10,
+    'text-anchor': 'middle', 'dominant-baseline': 'central',
+    fill: '#fff', 'font-family': 'Consolas, monospace',
+    'font-size': '42', 'font-weight': 'bold',
+    filter: 'url(#rpm-shadow)',
+  })
+  rpmText.textContent = '0'
+  svg.appendChild(rpmText)
+
+  // "RPM" label
+  const rpmLabel = createSvgEl('text')
+  setAttrs(rpmLabel, {
+    x: CX, y: CY + 14,
+    'text-anchor': 'middle', 'dominant-baseline': 'central',
+    fill: '#aaa', 'font-family': 'Consolas, monospace',
+    'font-size': '16',
+    filter: 'url(#rpm-shadow)',
+  })
+  rpmLabel.textContent = 'RPM'
+  svg.appendChild(rpmLabel)
+
+  const entry: GaugeElements = {
+    svg, bgArc, greenZone, redZone, tickGroup,
+    activeGreen, activeRed, rpmText, rpmLabel,
+    cfgKey: cfgKeyStr(cfg),
+  }
+  gaugeMap.set(svg, entry)
+  return entry
+}
+
+function cfgKeyStr(cfg: RpmConfig): string {
+  return `${cfg.redline}:${cfg.maxRpm}`
+}
+
+/** Ensure the SVG has been built (or rebuilt if config changed). */
+function ensureGauge(svg: SVGSVGElement, cfg: RpmConfig): GaugeElements {
+  const existing = gaugeMap.get(svg)
+  const key = cfgKeyStr(cfg)
+  if (existing && existing.cfgKey === key) return existing
+  return buildGauge(svg, cfg)
+}
+
+// ── Config persistence ──
 
 export function loadRpmConfig(): RpmConfig {
   const saved = localStorage.getItem(STORAGE_KEY)
@@ -54,11 +251,10 @@ export function loadRpmConfig(): RpmConfig {
 export function saveRpmConfig(newConfig: RpmConfig): void {
   config = { ...newConfig }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
-  bgCache = null // invalidate singleton cache so next draw rebuilds
-  // Invalidate all secondary canvas caches (force rebuild on next draw)
-  for (const c of secondaryCanvases) {
-    const entry = bgCacheMap.get(c)
-    if (entry) entry.w = 0
+  // Invalidate all managed SVG gauges so they rebuild on next draw
+  for (const svg of managedSvgs) {
+    const entry = gaugeMap.get(svg)
+    if (entry) entry.cfgKey = ''
   }
 }
 
@@ -66,159 +262,73 @@ export function getRpmConfig(): RpmConfig {
   return config
 }
 
+function autoDetectRpm(): void {
+  detectedEngine = detectEngine(sessionInfo?.engine)
+  if (detectedEngine) {
+    if (!manualOverride) {
+      saveRpmConfig(engineToRpmConfig(detectedEngine))
+    } else {
+      dbg('Redline: manual override active, using saved config')
+    }
+  } else {
+    dbg(`Redline: unknown engine "${sessionInfo?.engine ?? ''}", using manual config`)
+  }
+  dbg(`Redline: ${detectedEngine?.label ?? 'manual'} — ${config.redline}/${config.maxRpm} RPM`)
+}
+
+// ── Init ──
+
 export function initRpmGauge(): void {
-  canvas = document.getElementById('rpm-gauge-canvas') as HTMLCanvasElement
-  const c = canvas.getContext('2d')
-  if (!c) return
-  ctx = c
+  const container = document.getElementById('hud-rpm-gauge')
+  if (!container) return
+
+  // Create the primary SVG element, replacing the old canvas
+  let svg = container.querySelector('svg') as SVGSVGElement | null
+  if (!svg) {
+    svg = createSvgEl('svg')
+    // Remove old canvas if present
+    const oldCanvas = container.querySelector('canvas')
+    if (oldCanvas) oldCanvas.remove()
+    container.appendChild(svg)
+  }
+  primarySvg = svg
+  managedSvgs.add(svg)
+
   loadRpmConfig()
+  buildGauge(svg, config)
+  onTelemetryLoad(() => autoDetectRpm())
 }
 
-/** Render static elements (background arc, zone arcs, tick marks) into a given context. */
-function renderBgCacheToCtx(c: CanvasRenderingContext2D, w: number, h: number): void {
-  const cx = w / 2
-  const cy = h - 4
-  const radius = h - 16
-  const { yellowStart, redline, maxRpm } = config
-  const lineWidth = 10
+// ── Draw (called every frame) ──
 
-  // Background arc (dim)
-  c.beginPath()
-  c.arc(cx, cy, radius, START_ANGLE, START_ANGLE + SWEEP)
-  c.strokeStyle = 'rgba(255,255,255,0.08)'
-  c.lineWidth = lineWidth
-  c.lineCap = 'butt'
-  c.stroke()
+export function drawRpmGauge(rpm: number, targetSvg?: SVGSVGElement, overrideConfig?: RpmConfig): void {
+  const svg = targetSvg ?? primarySvg
+  if (!svg) return
+  const cfg = overrideConfig ?? config
+  const g = ensureGauge(svg, cfg)
 
-  // Color zone arcs
-  drawZoneArc(c, cx, cy, radius, 0, yellowStart / maxRpm, '#00cc66', 0.2)
-  drawZoneArc(c, cx, cy, radius, yellowStart / maxRpm, redline / maxRpm, '#ffaa00', 0.25)
-  drawZoneArc(c, cx, cy, radius, redline / maxRpm, 1, '#ff3333', 0.3)
-
-  // Tick marks at 1000 RPM intervals
-  c.strokeStyle = 'rgba(255,255,255,0.4)'
-  c.lineWidth = 1.5
-  for (let r = 0; r <= maxRpm; r += 1000) {
-    const angle = START_ANGLE + (r / maxRpm) * SWEEP
-    const inner = radius - 14
-    const outer = radius + 2
-    c.beginPath()
-    c.moveTo(cx + inner * Math.cos(angle), cy + inner * Math.sin(angle))
-    c.lineTo(cx + outer * Math.cos(angle), cy + outer * Math.sin(angle))
-    c.stroke()
-  }
-}
-
-/** Rebuild the singleton offscreen cache for the primary canvas. */
-function renderBgCache(w: number, h: number): void {
-  if (!bgCache) {
-    bgCache = document.createElement('canvas')
-    bgCacheCtx = bgCache.getContext('2d')!
-  }
-  bgCache.width = w
-  bgCache.height = h
-  bgCacheW = w
-  bgCacheH = h
-  renderBgCacheToCtx(bgCacheCtx!, w, h)
-}
-
-export function drawRpmGauge(rpm: number, targetCanvas?: HTMLCanvasElement): void {
-  const c = targetCanvas ?? canvas
-  let drawCtx: CanvasRenderingContext2D
-  let cache: HTMLCanvasElement | null
-  let cacheW: number
-  let cacheH: number
-
-  if (!targetCanvas) {
-    if (!ctx) return
-    drawCtx = ctx
-    cache = bgCache
-    cacheW = bgCacheW
-    cacheH = bgCacheH
-  } else {
-    let entry = bgCacheMap.get(targetCanvas)
-    if (!entry) {
-      const tc = targetCanvas.getContext('2d')
-      if (!tc) return
-      entry = { canvas: document.createElement('canvas'), ctx: tc, w: 0, h: 0 }
-      bgCacheMap.set(targetCanvas, entry)
-      secondaryCanvases.push(targetCanvas)
-    }
-    drawCtx = entry.ctx
-    cache = entry.canvas
-    cacheW = entry.w
-    cacheH = entry.h
-  }
-
-  const w = c.width
-  const h = c.height
-  const cx = w / 2
-  const cy = h - 4
-  const radius = h - 16
-
-  // Rebuild background cache if needed (config change or canvas resize)
-  if (!targetCanvas) {
-    if (!bgCache || bgCacheW !== w || bgCacheH !== h) {
-      renderBgCache(w, h)
-      cache = bgCache; cacheW = bgCacheW; cacheH = bgCacheH
-    }
-  } else {
-    const entry = bgCacheMap.get(targetCanvas)!
-    if (cacheW !== w || cacheH !== h) {
-      entry.canvas.width = w; entry.canvas.height = h
-      entry.w = w; entry.h = h
-      // Render bg into entry.canvas
-      const bc = entry.canvas.getContext('2d')!
-      renderBgCacheToCtx(bc, w, h)
-    }
-    cache = entry.canvas
-  }
-
-  drawCtx.clearRect(0, 0, w, h)
-  drawCtx.drawImage(cache!, 0, 0)
-
-  const { yellowStart, redline, maxRpm } = config
-
-  // Active fill arc up to current RPM
+  const { redline, maxRpm } = cfg
   const pct = Math.min(1, Math.max(0, rpm / maxRpm))
-  if (pct > 0) {
-    const endAngle = START_ANGLE + pct * SWEEP
-    let fillColor: string
-    if (rpm >= redline) fillColor = '#ff3333'
-    else if (rpm >= yellowStart) fillColor = '#ffaa00'
-    else fillColor = '#00cc66'
+  const redlinePct = redline / maxRpm
 
-    drawCtx.beginPath()
-    drawCtx.arc(cx, cy, radius, START_ANGLE, endAngle)
-    drawCtx.strokeStyle = fillColor
-    drawCtx.lineWidth = 10
-    drawCtx.lineCap = 'butt'
-    drawCtx.stroke()
+  // Active green arc: 0 → min(rpm, redline)
+  if (pct > 0) {
+    const greenEnd = Math.min(pct, redlinePct)
+    const endDeg = START_DEG + greenEnd * SWEEP_DEG
+    g.activeGreen.setAttribute('d', arcPath(CX, CY, R, START_DEG, endDeg))
+  } else {
+    g.activeGreen.setAttribute('d', '')
   }
 
-  // Numeric readout centered in arc
-  drawCtx.fillStyle = '#fff'
-  drawCtx.font = 'bold 18px Consolas, monospace'
-  drawCtx.textAlign = 'center'
-  drawCtx.textBaseline = 'middle'
-  drawCtx.fillText(Math.round(rpm).toString(), cx, cy - 12)
+  // Active red arc: redline → rpm (only when past redline)
+  if (rpm > redline) {
+    const redStartDeg = START_DEG + redlinePct * SWEEP_DEG
+    const redEndDeg = START_DEG + pct * SWEEP_DEG
+    g.activeRed.setAttribute('d', arcPath(CX, CY, R, redStartDeg, redEndDeg))
+  } else {
+    g.activeRed.setAttribute('d', '')
+  }
 
-  drawCtx.fillStyle = '#aaa'
-  drawCtx.font = '10px Consolas, monospace'
-  drawCtx.fillText('RPM', cx, cy + 2)
-}
-
-function drawZoneArc(
-  c: CanvasRenderingContext2D,
-  cx: number, cy: number, r: number,
-  startPct: number, endPct: number, color: string, alpha: number
-): void {
-  c.beginPath()
-  c.arc(cx, cy, r, START_ANGLE + startPct * SWEEP, START_ANGLE + endPct * SWEEP)
-  c.strokeStyle = color
-  c.globalAlpha = alpha
-  c.lineWidth = 10
-  c.lineCap = 'butt'
-  c.stroke()
-  c.globalAlpha = 1.0
+  // Numeric readout
+  g.rpmText.textContent = Math.round(rpm).toString()
 }
