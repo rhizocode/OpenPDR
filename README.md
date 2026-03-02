@@ -1,6 +1,6 @@
 # OpenPDR
 
-OpenPDR is an open-source desktop viewer for **AliveDrive PDR 2.5** recordings — the Cosworth Performance Data Recorder found in 2025–2026 GM vehicles including the Cadillac CT5-V Blackwing, Corvette Z06, and Corvette Stingray.
+OpenPDR is an open-source viewer for **AliveDrive PDR 2.5** recordings — the Cosworth Performance Data Recorder found in 2025–2026 GM vehicles including the Cadillac CT5-V Blackwing, Corvette Z06, and Corvette Stingray.
 
 The PDR records high-rate vehicle telemetry (GPS, accelerometer, engine, steering, wheel speeds, and more) into an MP4 file alongside the video. OpenPDR parses the binary telemetry and plays it back as a synchronized HUD overlay over the original video, without requiring Cosworth Toolbox or the AliveDrive app.
 
@@ -10,24 +10,56 @@ The PDR records high-rate vehicle telemetry (GPS, accelerometer, engine, steerin
 
 ---
 
+## Releases
+
+Pre-built installers are available on the [Releases](https://github.com/rhizocode/OpenPDR/releases) page.
+
+---
+
 ## Viewer
 
-Built with **Electron + TypeScript + Vite**.
+OpenPDR runs as a **desktop app** (Electron) or directly in the **browser** (web version). Both share the same renderer, parser, and UI — only the file I/O layer differs.
 
-### Quick Start
+| | Desktop | Web |
+|---|---|---|
+| Install | Download from [Releases](https://github.com/rhizocode/OpenPDR/releases) | None — runs in browser |
+| File access | Native file dialogs | Browser file picker or drag-and-drop |
+| Video playback | Electron (Chromium) | Browser `<video>` element |
+| CSV/GPX export | Save dialog → file system | Browser download |
+| Video export (with overlays) | Yes (ffmpeg) | Not available |
+
+### Quick Start (Desktop)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Click **Open File** and select a `.mp4` PDR recording. The viewer parses the telemetry directly from the MP4 — no pre-processing or sidecar files required.
+### Quick Start (Web)
+
+```bash
+npm install
+npm run dev:web
+```
+
+Opens at `http://localhost:5173`. Click **Open File** or drag-and-drop a `.mp4` PDR recording.
 
 ### Build
 
 ```bash
-npm run build    # outputs to out/main, out/preload, out/renderer
-npm run start    # run the production build
+# Desktop (Electron)
+npm run build          # outputs to out/main, out/preload, out/renderer
+npm run start          # run the production build
+
+# Web
+npm run build:web      # outputs to dist-web/
+npm run preview:web    # serve the production build locally
+
+# Desktop installers
+npm run dist           # build + package for current platform
+npm run dist:win       # Windows .exe
+npm run dist:mac       # macOS .dmg
+npm run dist:linux     # Linux .AppImage
 ```
 
 ### Architecture
@@ -36,7 +68,9 @@ npm run start    # run the production build
 src/
   main/
     index.ts            Electron main process — window management, IPC, file dialogs
-    parser/             TypeScript MP4 parser (adco track → typed telemetry)
+    export-csv.ts       CSV export (Node.js streaming)
+    export-gpx.ts       GPX export (Node.js streaming)
+    export-video.ts     Video export with baked overlays (ffmpeg)
   preload/
     index.ts            Secure contextBridge — exposes window.pdr API
   renderer/
@@ -48,7 +82,19 @@ src/
     gforce-ball.ts      G-force visualisation
     strip-chart.ts      Telemetry strip charts
     controls.ts         Playback controls and scrub bar
+  parser/
+    index.ts            TypeScript MP4 parser (adco track → typed telemetry)
+  shared/
+    file-source.ts      Platform-agnostic file read interface
+    telemetry-store.ts  Columnar telemetry storage
+    types.ts            Shared type definitions
+  web/
+    pdr-web.ts          Browser PdrApi implementation (file picker, object URLs, blob exports)
+    index.ts            Web entry point — installs window.pdr, loads renderer
+    index.html          Web layout shell
 ```
+
+The renderer code calls `window.pdr.*` for all platform interactions (file dialogs, parsing, exports). In Electron, this is backed by IPC to the main process. In the web build, it's backed by browser APIs (File API, `URL.createObjectURL`, Blob downloads). Zero renderer files differ between builds.
 
 ### Controls
 
@@ -60,14 +106,17 @@ src/
 | `,` / `.` (paused) | Frame step backward / forward |
 | Scrub bar | Click or drag to seek |
 | Rate dropdown | Change playback speed |
+| E | Toggle overlay edit mode |
 
 ### Dependencies
 
 | Package | Role |
 |---------|------|
 | electron | Desktop shell + Chromium video playback |
-| electron-vite | Build tooling (Vite for main, preload, and renderer) |
+| electron-vite | Build tooling for Electron (main, preload, renderer) |
+| vite | Build tooling for web version |
 | typescript | Type-safe source |
+| ffmpeg-static | Video export with baked overlays (desktop only) |
 
 ---
 
@@ -122,7 +171,6 @@ Contributions welcome, especially:
 
 - Testing with other GM PDR 2.5 vehicles (hybrids, EVs, trucks) to validate e-motor and HV battery channels
 - Identifying the remaining numeric fields in the `advi` header (offsets 16–28)
-- Additional export formats (GPX, MoTeC i2, etc.)
 - HUD overlay improvements and new channel visualisations
 
 ---
