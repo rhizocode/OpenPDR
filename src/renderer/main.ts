@@ -11,7 +11,7 @@ import { initHud } from './hud'
 import { initControls, getIsScrubbing } from './controls'
 import { initFileOpen } from './file-open'
 import { initResizer } from './resizer'
-import { initOverlaySettings } from './overlay-settings'
+import { initOverlaySettings, initFontScale } from './overlay-settings'
 import { initEditMode } from './edit-mode'
 import { initChartPanel, getIsChartScrubbing } from './strip-chart'
 import { initTrackMap } from './track-map'
@@ -49,6 +49,7 @@ const controls = initControls()
 initFileOpen()
 initResizer()
 initOverlaySettings()
+initFontScale()
 initEditMode()
 initChartPanel()
 initTrackMap(document.getElementById('track-canvas') as HTMLCanvasElement)
