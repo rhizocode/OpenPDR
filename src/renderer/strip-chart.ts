@@ -631,7 +631,7 @@ function renderChannelOffscreen(cd: ChannelData, w: number, h: number): void {
     let first = true
     for (let i = iStart; i <= iEnd; i++) {
       const x = viewFraction(times[i]) * w
-      const y = h - margin - ((values[i] - config.min) / range) * drawH
+      const y = Math.max(0, Math.min(h, h - margin - ((values[i] - config.min) / range) * drawH))
       if (first) { offCtx.moveTo(x, y); first = false }
       else offCtx.lineTo(x, y)
     }
@@ -657,8 +657,8 @@ function renderChannelOffscreen(cd: ChannelData, w: number, h: number): void {
 
       if (count === 0) continue
 
-      const yMin = h - margin - ((bucketMax - config.min) / range) * drawH
-      const yMax = h - margin - ((bucketMin - config.min) / range) * drawH
+      const yMin = Math.max(0, Math.min(h, h - margin - ((bucketMax - config.min) / range) * drawH))
+      const yMax = Math.max(0, Math.min(h, h - margin - ((bucketMin - config.min) / range) * drawH))
       if (px === 0 && count > 0) {
         offCtx.moveTo(px, yMin)
       }
@@ -714,7 +714,7 @@ function renderCompareSingleTrace(
   for (let i = 0; i < n; i++) {
     const x = dist[i] * w
     const v = values[startIdx + i]
-    const y = h - margin - ((v - config.min) / range) * drawH
+    const y = Math.max(0, Math.min(h, h - margin - ((v - config.min) / range) * drawH))
     if (first) { offCtx.moveTo(x, y); first = false }
     else offCtx.lineTo(x, y)
   }

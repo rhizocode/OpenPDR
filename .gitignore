@@ -34,3 +34,4 @@ dev/
 node_modules/
 out/
 dist/
+dist-web/
