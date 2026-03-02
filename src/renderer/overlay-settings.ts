@@ -85,6 +85,93 @@ export function buildAvSyncPanel(container: HTMLDivElement): void {
   container.appendChild(syncRow)
 }
 
+/* ── Font size scaling ── */
+
+const FONT_SIZE_KEY = 'pdr-ui-font-size'
+const DEFAULT_SIZE = 100          // percent
+const MIN_SIZE = 50
+const MAX_SIZE = 300
+const STEP = 10
+
+/** CSS selectors for UI chrome — overlays are intentionally excluded */
+const UI_SELECTORS = [
+  '#toolbar', '#gear-panel', '#controls', '#chart-panel',
+  '#no-file-prompt', '#parse-progress', '#debug-panel',
+]
+
+let fontStyleEl: HTMLStyleElement | null = null
+
+function applyFontScale(pct: number): void {
+  if (!fontStyleEl) {
+    fontStyleEl = document.createElement('style')
+    fontStyleEl.id = 'ui-font-scale'
+    document.head.appendChild(fontStyleEl)
+  }
+  const z = pct / 100
+  fontStyleEl.textContent = UI_SELECTORS
+    .map(s => `${s} { zoom: ${z}; }`)
+    .join('\n')
+}
+
+export function initFontScale(): void {
+  const saved = localStorage.getItem(FONT_SIZE_KEY)
+  if (saved) {
+    const pct = parseInt(saved, 10)
+    if (!isNaN(pct) && pct >= MIN_SIZE && pct <= MAX_SIZE) {
+      applyFontScale(pct)
+    }
+  }
+}
+
+/** Build font-size +/- stepper into the provided container */
+export function buildFontSizePanel(container: HTMLDivElement): void {
+  const saved = localStorage.getItem(FONT_SIZE_KEY)
+  let current = saved ? parseInt(saved, 10) : DEFAULT_SIZE
+  if (isNaN(current) || current < MIN_SIZE || current > MAX_SIZE) current = DEFAULT_SIZE
+
+  const row = document.createElement('div')
+  row.className = 'settings-row font-size-row'
+
+  const label = document.createElement('label')
+  label.textContent = 'UI Scale'
+
+  const minus = document.createElement('button')
+  minus.className = 'font-size-btn'
+  minus.textContent = '\u2212'   // minus sign
+  minus.title = 'Decrease'
+
+  const display = document.createElement('span')
+  display.className = 'font-size-display'
+  display.textContent = `${current}%`
+
+  const plus = document.createElement('button')
+  plus.className = 'font-size-btn'
+  plus.textContent = '+'
+  plus.title = 'Increase'
+
+  function update(pct: number): void {
+    current = Math.max(MIN_SIZE, Math.min(MAX_SIZE, pct))
+    display.textContent = `${current}%`
+    minus.disabled = current <= MIN_SIZE
+    plus.disabled = current >= MAX_SIZE
+    applyFontScale(current)
+    localStorage.setItem(FONT_SIZE_KEY, current.toString())
+  }
+
+  minus.addEventListener('click', () => update(current - STEP))
+  plus.addEventListener('click', () => update(current + STEP))
+
+  // Set initial disabled state
+  minus.disabled = current <= MIN_SIZE
+  plus.disabled = current >= MAX_SIZE
+
+  row.appendChild(label)
+  row.appendChild(minus)
+  row.appendChild(display)
+  row.appendChild(plus)
+  container.appendChild(row)
+}
+
 function buildNumberRow(label: string, value: number, onChange: (val: number) => void): HTMLDivElement {
   const row = document.createElement('div')
   row.className = 'settings-row'
