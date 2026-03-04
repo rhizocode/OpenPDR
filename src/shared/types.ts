@@ -213,6 +213,23 @@ export interface RenderOverlayRequest {
   sessionInfo?: SessionInfo
 }
 
+// ── Auto-update types ────────────────────────────────────────────────────────
+
+/** A single release's changelog entry */
+export interface ReleaseNote {
+  version: string
+  note: string   // HTML content from GitHub Release body
+}
+
+/** Update status pushed from main to renderer */
+export interface UpdateStatus {
+  state: 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
+  version?: string
+  releaseNotes?: ReleaseNote[]
+  progress?: number
+  error?: string
+}
+
 // ── Typed IPC channel map (3.3) ──────────────────────────────────────────────
 
 /** Type-safe mapping of IPC channel names to their argument and return types. */
@@ -229,4 +246,10 @@ export interface IpcChannels {
   'overlay-frames-done': { args: []; return: void }
   'export-video-progress': { args: [string, number]; return: void }
   'export-video-cancel': { args: []; return: void }
+  // Auto-update
+  'check-for-updates': { args: []; return: void }
+  'download-update': { args: []; return: void }
+  'install-update': { args: []; return: void }
+  'update-status': { args: [UpdateStatus]; return: void }
+  'get-app-version': { args: []; return: string }
 }

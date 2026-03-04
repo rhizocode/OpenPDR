@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   ParseResult, IpcChannels, ExportScope, VideoExportOptions, RenderOverlayRequest,
+  UpdateStatus,
 } from '../shared/types'
 
 type Channel = keyof IpcChannels
@@ -61,4 +62,23 @@ contextBridge.exposeInMainWorld('pdr', {
     ipcRenderer.on('export-video-progress' satisfies Channel, handler)
     return () => ipcRenderer.removeListener('export-video-progress' satisfies Channel, handler)
   },
+
+  // Auto-update
+  checkForUpdates: (): Promise<void> =>
+    ipcRenderer.invoke('check-for-updates' satisfies Channel),
+
+  downloadUpdate: (): Promise<void> =>
+    ipcRenderer.invoke('download-update' satisfies Channel),
+
+  installUpdate: (): Promise<void> =>
+    ipcRenderer.invoke('install-update' satisfies Channel),
+
+  onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status)
+    ipcRenderer.on('update-status' satisfies Channel, handler)
+    return () => ipcRenderer.removeListener('update-status' satisfies Channel, handler)
+  },
+
+  getAppVersion: (): Promise<string> =>
+    ipcRenderer.invoke('get-app-version' satisfies Channel),
 })

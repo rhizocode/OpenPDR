@@ -8,6 +8,7 @@ import type { ParseResult, IpcChannels, ExportScope, VideoExportOptions } from '
 import { exportCsv } from './export-csv'
 import { exportGpx } from './export-gpx'
 import { exportVideo, cancelVideoExport } from './export-video'
+import { initAutoUpdater } from './auto-updater'
 
 type Channel = keyof IpcChannels
 
@@ -126,6 +127,11 @@ app.whenReady().then(() => {
   })
 
   createWindow()
+
+  // Initialize auto-updater (skips on macOS — unsigned builds)
+  if (mainWindow) {
+    initAutoUpdater(mainWindow)
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

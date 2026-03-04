@@ -22,6 +22,8 @@ export type {
   SessionInfo,
   VideoExportOptions,
   RenderOverlayRequest,
+  UpdateStatus,
+  ReleaseNote,
 } from '../shared/types'
 
 export interface PdrApi {
@@ -39,6 +41,12 @@ export interface PdrApi {
   onExportVideoProgress(callback: (phase: string, pct: number) => void): () => void
   sendOverlayFrameData(idx: number, buffer: Uint8Array): Promise<void>
   sendOverlayFramesDone(): void
+  // Auto-update
+  checkForUpdates(): Promise<void>
+  downloadUpdate(): Promise<void>
+  installUpdate(): Promise<void>
+  onUpdateStatus(callback: (status: import('../shared/types').UpdateStatus) => void): () => void
+  getAppVersion(): Promise<string>
 }
 
 declare global {

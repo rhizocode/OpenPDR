@@ -20,6 +20,7 @@ import { initExportMenu } from './export-menu'
 import { initOverlayRenderer } from './overlay-renderer'
 import { initCompareUI } from './compare-ui'
 import { initGearMenu } from './gear-menu'
+import { initUpdateUI } from './update-ui'
 import {
   isCompareMode,
   videoA as getVideoA,
@@ -58,6 +59,7 @@ initExportMenu()
 initOverlayRenderer()
 initCompareUI()
 initGearMenu()
+initUpdateUI()
 initLapSelector()
 
 // ── Video overlay anchor sizing ──

@@ -9,6 +9,7 @@ import { onTelemetryLoad } from './state'
 import { buildEditPanel } from './edit-mode'
 import { buildRpmPanel, buildAvSyncPanel, buildFontSizePanel } from './overlay-settings'
 import { buildExportPanel } from './export-menu'
+import { triggerUpdateCheck } from './update-ui'
 
 interface Section {
   id: string
@@ -26,6 +27,7 @@ export function initGearMenu(): void {
     { id: 'rpm-zones',    label: 'RPM Zones',     build: buildRpmPanel },
     { id: 'av-sync',      label: 'A/V Sync',      build: buildAvSyncPanel },
     { id: 'font-size',    label: 'Font Size',      build: buildFontSizePanel },
+    { id: 'about',        label: 'About',           build: buildAboutPanel },
   ]
 
   for (const sec of sections) {
@@ -82,4 +84,50 @@ export function initGearMenu(): void {
     const rpmContent = document.getElementById('gear-content-rpm-zones') as HTMLDivElement
     buildRpmPanel(rpmContent)
   })
+}
+
+function buildAboutPanel(container: HTMLDivElement): void {
+  container.innerHTML = ''
+
+  // Version row
+  const versionRow = document.createElement('div')
+  versionRow.className = 'settings-row'
+  const versionLabel = document.createElement('label')
+  versionLabel.textContent = 'Version'
+  const versionValue = document.createElement('span')
+  versionValue.style.fontFamily = 'Consolas, monospace'
+  versionValue.style.fontSize = '13px'
+
+  if (window.pdr?.getAppVersion) {
+    versionValue.textContent = '...'
+    window.pdr.getAppVersion().then((v) => {
+      versionValue.textContent = `v${v}`
+    }).catch(() => {
+      versionValue.textContent = 'unknown'
+    })
+  } else {
+    versionValue.textContent = 'web build'
+  }
+
+  versionRow.appendChild(versionLabel)
+  versionRow.appendChild(versionValue)
+  container.appendChild(versionRow)
+
+  // Check for updates button (Electron only)
+  if (window.pdr?.checkForUpdates) {
+    const checkRow = document.createElement('div')
+    checkRow.className = 'edit-actions'
+    const checkBtn = document.createElement('button')
+    checkBtn.textContent = 'Check for Updates'
+    checkBtn.addEventListener('click', () => {
+      // Close gear panel
+      const panel = document.getElementById('gear-panel')
+      const gearBtn = document.getElementById('btn-gear')
+      panel?.classList.remove('visible')
+      gearBtn?.classList.remove('active')
+      triggerUpdateCheck()
+    })
+    checkRow.appendChild(checkBtn)
+    container.appendChild(checkRow)
+  }
 }

@@ -1492,3 +1492,157 @@ html, body {
 .compare-time-b {
   color: #ff4081;
 }
+
+/* ── Update button (toolbar) ── */
+#btn-update {
+  background: var(--bg-tertiary) !important;
+  color: var(--green) !important;
+  border: 1px solid var(--green) !important;
+  font-size: 13px !important;
+  padding: 0 10px !important;
+  height: 26px;
+  line-height: 26px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: pointer;
+}
+
+#btn-update svg {
+  display: block;
+}
+
+#btn-update:hover {
+  background: #1a3a1a !important;
+}
+
+/* ── Update modal ── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: #222;
+  border: 1px solid #444;
+  border-radius: 8px;
+  width: 480px;
+  max-width: 90vw;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-content h3 {
+  margin: 0;
+  padding: 16px 20px 12px;
+  font-size: 16px;
+  color: var(--text-primary);
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+}
+
+#update-modal-changelog {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+#update-modal-changelog h4 {
+  margin: 16px 0 6px;
+  font-size: 14px;
+  color: var(--green);
+}
+
+#update-modal-changelog h4:first-child {
+  margin-top: 0;
+}
+
+#update-modal-changelog ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+#update-modal-changelog li {
+  margin: 2px 0;
+}
+
+#update-modal-changelog p {
+  margin: 4px 0;
+}
+
+#update-modal-changelog a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+#update-modal-actions {
+  padding: 12px 20px;
+  border-top: 1px solid #333;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+#update-modal-actions button {
+  padding: 6px 18px;
+  border-radius: 4px;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.update-btn-dismiss {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid #444 !important;
+}
+
+.update-btn-dismiss:hover {
+  color: var(--text-primary);
+  border-color: #666 !important;
+}
+
+.update-btn-action {
+  background: var(--green);
+  color: #000;
+  font-weight: 600;
+}
+
+.update-btn-action:hover {
+  filter: brightness(0.9);
+}
+
+.update-progress-bar {
+  width: 100%;
+  height: 4px;
+  background: #333;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: var(--green);
+  transition: width 0.3s ease;
+}
+
+.update-progress-text {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-top: 6px;
+}
