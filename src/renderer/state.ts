@@ -64,12 +64,10 @@ export function setSessionInfo(info: SessionInfo | null): void {
 }
 
 // ── Audio-to-video sync offset ──
-// HTML5 video decoders often buffer audio ahead of the decoded video frame.
-// video.currentTime reflects the video frame position, but the user hears audio
-// that corresponds to a slightly later point in time. This offset (in seconds)
-// is added to the telemetry lookup time so HUD indicators lead the video frame
-// to match the audio timing.  Positive = telemetry leads video (compensates for
-// audio being ahead).
+// Fine-tuning offset between telemetry and video playback (in seconds).
+// The parser now uses MP4 timing metadata (stts/elst) for proper sync,
+// so this offset is purely for user-adjustable fine-tuning.
+// Positive = telemetry leads video.
 const AV_SYNC_KEY = 'pdr-av-sync-offset'
 export let avSyncOffset = loadAvSyncOffset()
 
@@ -79,7 +77,7 @@ function loadAvSyncOffset(): number {
     const v = parseFloat(saved)
     if (!Number.isNaN(v)) return v
   }
-  return 0.15  // default 150ms — typical browser audio lead
+  return 0  // default 0 — parser handles sync via MP4 stts/elst timing
 }
 
 export function setAvSyncOffset(seconds: number): void {

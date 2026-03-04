@@ -679,6 +679,115 @@ def get_sample_offsets(sample_table):
 
 
 # =============================================================================
+# Track Timing (mdhd + stts + edts/elst) for video sync
+# =============================================================================
+
+def parse_track_timing(mp4_data, trak_data, trak_end, mvhd_timescale, sample_count):
+    """Parse mdhd timescale, stts sample durations, and edts/elst delay.
+
+    Returns a list of per-sample presentation times in seconds, or None
+    if the required boxes are not found.
+    """
+    # Find mdia box
+    mdia = find_box(mp4_data, 'mdia', trak_data, trak_end)
+    if not mdia:
+        return None
+    mdia_end = mdia[0] + mdia[1]
+
+    # -- mdhd (media header) --
+    mdhd = find_box(mp4_data, 'mdhd', mdia[2], mdia_end)
+    if not mdhd:
+        return None
+    d = mdhd[2]
+    version = mp4_data[d]
+    if version == 0:
+        timescale = struct.unpack('>I', mp4_data[d+12:d+16])[0]
+    else:
+        timescale = struct.unpack('>I', mp4_data[d+20:d+24])[0]
+    if timescale == 0:
+        return None
+
+    # -- stts (decoding time to sample) --
+    minf = find_box(mp4_data, 'minf', mdia[2], mdia_end)
+    if not minf:
+        return None
+    stbl = find_box(mp4_data, 'stbl', minf[2], minf[0] + minf[1])
+    if not stbl:
+        return None
+    stbl_end = stbl[0] + stbl[1]
+
+    stts = find_box(mp4_data, 'stts', stbl[2], stbl_end)
+    if not stts:
+        return None
+    stts_d = stts[2]
+    entry_count = struct.unpack('>I', mp4_data[stts_d+4:stts_d+8])[0]
+    stts_entries = []
+    pos = stts_d + 8
+    for _ in range(entry_count):
+        count = struct.unpack('>I', mp4_data[pos:pos+4])[0]
+        delta = struct.unpack('>I', mp4_data[pos+4:pos+8])[0]
+        stts_entries.append((count, delta))
+        pos += 8
+
+    # -- edts/elst (edit list) --
+    elst_delay = 0.0
+    edts = find_box(mp4_data, 'edts', trak_data, trak_end)
+    if edts:
+        edts_end = edts[0] + edts[1]
+        elst = find_box(mp4_data, 'elst', edts[2], edts_end)
+        if elst:
+            ed = elst[2]
+            e_version = mp4_data[ed]
+            e_count = struct.unpack('>I', mp4_data[ed+4:ed+8])[0]
+            epos = ed + 8
+            for _ in range(e_count):
+                if e_version == 0:
+                    seg_dur = struct.unpack('>I', mp4_data[epos:epos+4])[0]
+                    media_time = struct.unpack('>i', mp4_data[epos+4:epos+8])[0]
+                    epos += 12  # +4 for media_rate
+                else:
+                    seg_dur = struct.unpack('>Q', mp4_data[epos:epos+8])[0]
+                    media_time = struct.unpack('>q', mp4_data[epos+8:epos+16])[0]
+                    epos += 20
+                if media_time == -1 and mvhd_timescale > 0:
+                    elst_delay += seg_dur / mvhd_timescale
+
+    # -- Build per-sample presentation times --
+    sample_times = []
+    cumulative = elst_delay
+    sample_idx = 0
+    for count, delta in stts_entries:
+        delta_sec = delta / timescale
+        for _ in range(count):
+            if sample_idx >= sample_count:
+                break
+            sample_times.append(cumulative)
+            cumulative += delta_sec
+            sample_idx += 1
+    # Fill remaining (shouldn't happen)
+    while len(sample_times) < sample_count:
+        sample_times.append(cumulative)
+        cumulative += 1.0
+
+    return sample_times
+
+
+def parse_mvhd_timescale(mp4_data):
+    """Parse the mvhd box to get the global movie timescale."""
+    moov = find_box(mp4_data, 'moov')
+    if not moov:
+        return 1000
+    moov_end = moov[0] + moov[1]
+    mvhd = find_box(mp4_data, 'mvhd', moov[2], moov_end)
+    if not mvhd:
+        return 1000
+    d = mvhd[2]
+    version = mp4_data[d]
+    ts_offset = 12 if version == 0 else 20
+    return struct.unpack('>I', mp4_data[d+ts_offset:d+ts_offset+4])[0]
+
+
+# =============================================================================
 # Telemetry Decoder
 # =============================================================================
 
@@ -972,15 +1081,18 @@ def _validate_100hz(frame):
     return True
 
 
-def decode_packet(packet, packet_idx, reference_lat_range=None, hz100_size=17):
+def decode_packet(packet, packet_idx, reference_lat_range=None, hz100_size=17,
+                   base_time=None):
     """
     Decode a complete telemetry packet.
 
     Args:
         packet: Raw packet bytes
-        packet_idx: Packet index (used for timestamp calculation)
+        packet_idx: Packet index (used for timestamp calculation fallback)
         reference_lat_range: GPS bounding box for search narrowing
         hz100_size: 100Hz sub-frame size (17 for MMP ≤ 3, 25 for MMP ≥ 4)
+        base_time: Presentation time in seconds from MP4 stts/elst timing.
+                   Falls back to packet_idx if not provided.
 
     Returns a list of decoded records at various rates.
     """
@@ -1004,7 +1116,8 @@ def decode_packet(packet, packet_idx, reference_lat_range=None, hz100_size=17):
     float_offsets = find_float_blocks(packet, PACKET_SIZE)
 
     records = []
-    base_time = packet_idx  # seconds
+    if base_time is None:
+        base_time = packet_idx  # fallback: assume 1 second per packet
 
     for frame_idx, lat_off in enumerate(gps_offsets):
         frame_time = base_time + frame_idx * 0.1  # 10Hz = 100ms intervals
@@ -1370,6 +1483,18 @@ def extract_telemetry(mp4_path, csv_path=None, verbose=False):
                     print(f"Found GPS reference: {lat:.4f}°N, {lon:.4f}°W")
                     break
 
+    # Parse track timing (mdhd + stts + edts/elst) for proper video sync
+    mvhd_timescale = parse_mvhd_timescale(mp4_data)
+    sample_times = parse_track_timing(
+        mp4_data, trak_data, trak_end, mvhd_timescale,
+        sample_table['sample_count'])
+    if sample_times:
+        elst_delay = sample_times[0] if sample_times else 0
+        print(f"Track timing: timescale={mvhd_timescale}, elst_delay={elst_delay:.3f}s, "
+              f"first data at {sample_times[1] if len(sample_times) > 1 else '?'}s")
+    else:
+        print("Warning: Could not parse track timing; using packet index for timestamps")
+
     # Decode all packets
     print("Decoding telemetry packets...")
     all_records = []
@@ -1384,7 +1509,9 @@ def extract_telemetry(mp4_path, csv_path=None, verbose=False):
         if sz < 100:
             continue  # Skip init packet
 
-        records = decode_packet(packet, pkt_idx, ref_lat_range, hz100_size)
+        pkt_time = sample_times[pkt_idx] if sample_times else None
+        records = decode_packet(packet, pkt_idx, ref_lat_range, hz100_size,
+                                base_time=pkt_time)
         if records:
             all_records.extend(records)
             decoded_packets += 1

@@ -389,13 +389,18 @@ function avg50Hz(frames: Hz50Frame[]): { lat: number; lon: number; vert: number 
  * MMP ≤ 3: ~3247 bytes, 17-byte 100Hz frames
  * MMP ≥ 4: ~4050 bytes, 25-byte 100Hz frames
  * Returns up to 10 TelemetryRow records (one per 100ms frame at 10 Hz).
+ *
+ * @param baseTime - Presentation time in seconds for this packet's first frame.
+ *                   Derived from MP4 stts/elst timing when available.
+ * @param packetIdx - Sample index in the data track (for TelemetryRow.packetIdx).
  */
 export function decodePacket(
   packet: Uint8Array,
-  packetIdx: number,
+  baseTime: number,
   refLatRange?: GpsRefRange,
   hz100Size: number = 17,
-  cachedOffsets?: CachedOffsets
+  cachedOffsets?: CachedOffsets,
+  packetIdx: number = 0
 ): { rows: TelemetryRow[]; offsets: CachedOffsets | undefined } {
   if (packet.length < 100) return { rows: [], offsets: cachedOffsets }
 
@@ -417,7 +422,6 @@ export function decodePacket(
   const groupSize = 2 * hz100Size + 24
 
   const records: TelemetryRow[] = []
-  const baseTime = packetIdx // seconds
 
   // Carry-forward state for sparse channels within this packet
   let lastGearLabel: string | undefined

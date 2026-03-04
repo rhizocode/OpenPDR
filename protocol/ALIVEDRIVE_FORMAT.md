@@ -546,8 +546,26 @@ Each data sample represents **1 second** of telemetry.
 
 ### 4.2 Init Packet (14 bytes)
 
-The first sample is a 14-byte initialisation packet containing a format version
-and timing reference for the recording session.
+The first sample is a 14-byte initialisation packet. Its structure matches the
+data packet preamble layout (§4.5) but with all-zero values:
+
+```
+Offset  Size  Type    Field                   Value
+0       4     u32     zero padding            0x00000000
+4       4     u32 BE  timestamp               0 (epoch start)
+8       1     u8      flags                   0x01
+9       3     ---     zero padding            0x000000
+12      2     u16 BE  format identifier       0x0000 (vs 0x0CA1 in data packets)
+```
+
+The init packet establishes the telemetry clock epoch (timestamp = 0) and is
+distinguished from data packets by the absence of the `0x0CA1` format
+identifier. Parsers should skip it based on size (`< 100` bytes).
+
+The `stts` (decoding time to sample) box assigns this init packet a large
+duration (typically ~1.8 seconds), meaning the first real data packet's
+presentation time is offset from video start by this amount plus any `edts`
+delay (see §4.8).
 
 ### 4.3 Data Packet (3247 or 4050 bytes, nominal)
 
@@ -638,6 +656,78 @@ regular intervals determined by the interleaving pattern (~290-320 bytes apart).
 To locate GPS data, scan for the byte pattern of a known latitude in the
 expected range (e.g., `0x15 0x8F xxxx` for ~36° N), then validate with
 longitude, altitude, and clustering checks.
+
+### 4.8 Video/Telemetry Synchronization
+
+The telemetry data track does **not** start at video time 0, and individual
+packets are **not** exactly 1.000 seconds apart. Proper synchronisation
+requires reading three standard MP4 timing structures from the data track:
+
+1. **`mdhd`** (media header) — provides the track's `timescale` (ticks per
+   second). For the data track this is typically **1000**.
+
+2. **`stts`** (decoding time to sample) — run-length encoded list of
+   `(count, delta)` pairs giving each sample's duration in timescale ticks.
+   The init packet receives a large delta (~1856 ticks at timescale 1000 =
+   1.856 s), and subsequent data packets have jittery deltas averaging ~1.0 s
+   but ranging 944–1049 ms.
+
+3. **`edts`/`elst`** (edit list) — an optional empty-edit entry
+   (`media_time = −1`) that adds a delay before the track's media begins.
+   The delay is expressed in the movie timescale (`mvhd`), which is typically
+   **3000**. Example: a `segment_duration` of 64 at timescale 3000 = 21.3 ms.
+
+#### Computing Per-Sample Presentation Times
+
+```
+mvhd_timescale  = from moov/mvhd (typically 3000)
+track_timescale = from moov/trak/mdia/mdhd (typically 1000)
+
+elst_delay = 0
+for each edts/elst entry:
+    if media_time == -1:
+        elst_delay += segment_duration / mvhd_timescale
+
+cumulative = elst_delay
+for i in 0 .. sample_count - 1:
+    presentation_time[i] = cumulative
+    cumulative += stts_delta[i] / track_timescale
+```
+
+Sample 0 (the init packet) gets `presentation_time[0] = elst_delay`. The
+first real data packet gets `presentation_time[1] = elst_delay + init_delta / timescale`.
+
+#### Observed Values (ADV_0600.mp4, CT5-V Blackwing, ~11 min)
+
+| Parameter | Value |
+|-----------|-------|
+| `mvhd` timescale | 3000 |
+| Data track `mdhd` timescale | 1000 |
+| `elst` empty-edit delay | 21.3 ms (64 / 3000) |
+| Init packet `stts` delta | 1856 ticks → 1.856 s |
+| First data packet time | 1.877 s (0.021 + 1.856) |
+| Data packet `stts` range | 944–1049 ms (mean ≈ 1000 ms) |
+| Cumulative drift at 660 s | ~2.2 s (vs. naïve `packet_index` timing) |
+
+#### Why Naïve Timing Fails
+
+Assuming each data packet starts at exactly `packet_index × 1.0` seconds
+ignores three effects:
+
+1. The init packet's large `stts` delta pushes the first data packet to
+   ~1.877 s, not 0.0 s.
+2. Per-packet jitter (±50 ms) accumulates over long recordings.
+3. The `edts` empty edit adds a small but non-zero delay.
+
+Over an 11-minute recording, naïve timing drifts by ~2.2 seconds relative
+to the MP4-derived presentation times, causing visible HUD/video desync.
+
+#### Parser Implementation
+
+Both parsers compute per-sample presentation times from `mdhd` + `stts` +
+`edts`/`elst` and pass the resulting timestamp (in seconds) to the packet
+decoder. The user-facing A/V sync offset defaults to 0; it serves only as
+a fine-tuning adjustment if the firmware's timing metadata is slightly off.
 
 ---
 
@@ -1353,6 +1443,23 @@ timestamps (start-to-start timing).
    performance timing events (10 categories × start/end). Some numeric fields
    in `advi` (offsets 16–28) remain semantically unidentified.
 
+4. ~~**Video/telemetry sync mechanism**~~: **Resolved.** Synchronisation is
+   handled entirely by standard MP4 timing boxes (`mdhd`, `stts`, `edts`/`elst`)
+   on the data track — no proprietary sync signal exists. Per-sample
+   presentation times must be computed from these boxes; naïve
+   `packet_index × 1.0 s` timing drifts ~2.2 s over 11 minutes. See §4.8
+   for the full algorithm and observed values.
+
+5. **`advi` fields at offsets 16–28**: Several numeric fields in the `advi`
+   box remain semantically unidentified. Cross-referencing additional sample
+   files from different vehicles or firmware versions may help decode these.
+
+6. **`stts` jitter source**: Data packet durations vary 944–1049 ms
+   (mean ≈ 1000 ms) rather than a constant 1000 ms. It is unknown whether
+   this reflects real sampling jitter in the PDR firmware or rounding
+   artefacts from the MP4 muxer. The jitter does not appear to correlate
+   with recording position or vehicle state.
+
 ---
 
 ## 18. Reference Implementation
@@ -1373,7 +1480,8 @@ python protocol/alivedrive_parser.py telemetry_raw.bin --raw --csv output.csv
 > The parser implements all channel definitions, scale factors, and frame
 > layouts documented in this specification, including dual-format support
 > (17/25-byte 100 Hz frames, 31/34-byte 1 Hz frames), the full 1 Hz frame
-> decode (27 channels), corrected 4-byte heading, and confirmed torque formula.
+> decode (27 channels), corrected 4-byte heading, confirmed torque formula,
+> and MP4 timing-based video/telemetry synchronisation (§4.8).
 
 A TypeScript implementation is also available in `src/main/parser/` as
 part of the OpenPDR Electron viewer application.

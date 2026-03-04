@@ -154,3 +154,19 @@ export async function readMoovBox(source: PdrFileSource): Promise<Uint8Array> {
 
   throw new Error('Could not find moov box in MP4 file')
 }
+
+/**
+ * Parse the mvhd (Movie Header) box to extract the global timescale.
+ * Returns the timescale (ticks per second), or 1000 as fallback.
+ */
+export function parseMvhdTimescale(moovBuf: Uint8Array): number {
+  const moovHdr = readBoxHeader(moovBuf, 0)
+  if (!moovHdr) return 1000
+  const mvhd = findBox(moovBuf, 'mvhd', moovHdr.dataStart, moovBuf.length)
+  if (!mvhd) return 1000
+  const d = mvhd[2]
+  const version = moovBuf[d]
+  // timescale is at offset 12 (v0) or 20 (v1) from data start
+  const tsOffset = version === 0 ? 12 : 20
+  return readUint32BE(moovBuf, d + tsOffset)
+}

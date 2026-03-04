@@ -53,6 +53,26 @@ export interface SampleTable {
   sampleCount: number
 }
 
+/** Run-length entry from stts (decoding time to sample) box */
+export interface SttsEntry {
+  count: number
+  delta: number
+}
+
+/** Track timing metadata from mdhd + stts + edts/elst boxes */
+export interface TrackTiming {
+  /** mdhd timescale (ticks per second) */
+  timescale: number
+  /** mdhd duration in timescale units */
+  duration: number
+  /** stts entries (run-length encoded per-sample durations) */
+  sttsEntries: SttsEntry[]
+  /** Delay from edts/elst empty edit (seconds), 0 if no edit list */
+  elstDelay: number
+  /** Per-sample presentation times in seconds (elst delay + cumulative stts) */
+  sampleTimes: Float64Array
+}
+
 /** Rate group from adcr box */
 export interface RateGroup {
   period: number

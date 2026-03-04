@@ -15,9 +15,9 @@
 
 import type { PdrFileSource } from '../shared/file-source'
 import { readInt32BE } from '../shared/binary-reader'
-import { readMoovBox, scanForBox } from './mp4-boxes'
+import { readMoovBox, scanForBox, parseMvhdTimescale } from './mp4-boxes'
 import { findAdcoTrack, parseAdvi, parseAdop, parseAdeg } from './adco-track'
-import { parseSampleTable, getSampleOffsets } from './sample-table'
+import { parseSampleTable, getSampleOffsets, parseTrackTiming } from './sample-table'
 import { decodePacket, type CachedOffsets } from './telemetry-decoder'
 import { findGpsInPacket } from './gps-discovery'
 import { DEG_SCALE } from './constants'
@@ -60,12 +60,22 @@ export async function parsePdrFile(
     throw new Error('Could not find AliveDrive data track (adrv/adco)')
   }
 
-  // Step 3: Parse sample table
+  // Step 3: Parse sample table and track timing
   const sampleTable = parseSampleTable(moovBuf, trackInfo.trakData, trackInfo.trakEnd)
   if (!sampleTable) {
     throw new Error('Could not parse sample table')
   }
   const sampleOffsets = getSampleOffsets(sampleTable)
+
+  // Parse mvhd timescale (needed for edts/elst conversion)
+  const mvhdTimescale = parseMvhdTimescale(moovBuf)
+
+  // Parse track timing: mdhd timescale, stts durations, edts/elst delay
+  // This gives us per-sample presentation times for proper video sync
+  const trackTiming = parseTrackTiming(
+    moovBuf, trackInfo.trakData, trackInfo.trakEnd,
+    mvhdTimescale, sampleTable.sampleCount,
+  )
 
   onProgress?.('Parsing metadata...', 5)
 
@@ -167,7 +177,11 @@ export async function parsePdrFile(
 
     const packet = await source.read(offset, size)
 
-    const result = decodePacket(packet, i, refLatRange, hz100Size, cachedOffsets)
+    // Use MP4 presentation time from stts/elst when available,
+    // fall back to packet index (assumes 1 second per packet)
+    const baseTime = trackTiming ? trackTiming.sampleTimes[i] : i
+
+    const result = decodePacket(packet, baseTime, refLatRange, hz100Size, cachedOffsets, i)
     cachedOffsets = result.offsets
     for (const row of result.rows) {
       writeRow(store, store.length, row)
