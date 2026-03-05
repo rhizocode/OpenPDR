@@ -575,7 +575,7 @@ function resizeAndRender(): void {
   }
 
   renderStaticCache()
-  renderFrameCache()
+  renderFrameCache(true)
   invalidatePlayhead()
   drawPlayhead()
 }
@@ -983,11 +983,51 @@ function renderStaticCache(): void {
   }
 }
 
+/** Signature of the last values drawn by renderFrameCache (used to skip redundant redraws). */
+let lastFrameCacheSig = ''
+
 /** Composite static cache + current-value text into the frame cache. Called on row change. */
-function renderFrameCache(): void {
+function renderFrameCache(force?: boolean): void {
   const w = frameCache.width
   const h = frameCache.height
   if (w === 0 || h === 0) return
+
+  if (isCompareMode()) {
+    // Compare mode: build signature from both rows + track position
+    let sig = 'C'
+    for (let i = 0; i < compareChannelData.length; i++) {
+      const cd = compareChannelData[i]
+      const valA = currentRowA ? cd.config.rowAccessor(currentRowA) : null
+      const valB = currentRowB ? cd.config.rowAccessor(currentRowB) : null
+      sig += (valA !== null ? valA.toFixed(cd.config.precision) : 'x') + ','
+      sig += (valB !== null ? valB.toFixed(cd.config.precision) : 'x') + ','
+    }
+    if (deltaChannelData) {
+      const idx = Math.round(trackPosition * (DELTA_SAMPLES - 1))
+      sig += Math.max(0, Math.min(DELTA_SAMPLES - 1, idx))
+    }
+    if (!force && sig === lastFrameCacheSig) return
+    lastFrameCacheSig = sig
+
+    frameCacheCtx.clearRect(0, 0, w, h)
+    if (staticCache.width > 0 && staticCache.height > 0) {
+      frameCacheCtx.drawImage(staticCache, 0, 0)
+    }
+    renderFrameCacheCompare(w, h)
+    return
+  }
+
+  // Single-file: check if displayed values actually changed
+  const chartCount = channelData.length
+  if (chartCount === 0 || !currentRow) return
+
+  let sig = 'S'
+  for (let i = 0; i < chartCount; i++) {
+    const cd = channelData[i]
+    sig += cd.config.rowAccessor(currentRow).toFixed(cd.config.precision) + ','
+  }
+  if (!force && sig === lastFrameCacheSig) return
+  lastFrameCacheSig = sig
 
   frameCacheCtx.clearRect(0, 0, w, h)
 
@@ -995,15 +1035,6 @@ function renderFrameCache(): void {
   if (staticCache.width > 0 && staticCache.height > 0) {
     frameCacheCtx.drawImage(staticCache, 0, 0)
   }
-
-  if (isCompareMode()) {
-    renderFrameCacheCompare(w, h)
-    return
-  }
-
-  // Single-file: overlay current values
-  const chartCount = channelData.length
-  if (chartCount === 0 || !currentRow) return
 
   const chartH = h / chartCount
   for (let i = 0; i < chartCount; i++) {
