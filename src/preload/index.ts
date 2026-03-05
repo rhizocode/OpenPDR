@@ -3,10 +3,11 @@ import type {
   ParseResult, IpcChannels, ExportScope, VideoExportOptions, RenderOverlayRequest,
   UpdateStatus,
 } from '../shared/types'
+import type { PdrApi } from '../renderer/types'
 
 type Channel = keyof IpcChannels
 
-contextBridge.exposeInMainWorld('pdr', {
+const api: PdrApi = {
   openFileDialog: (): Promise<string | null> =>
     ipcRenderer.invoke('open-file-dialog' satisfies Channel),
 
@@ -34,6 +35,7 @@ contextBridge.exposeInMainWorld('pdr', {
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   getVideoUrl: (filePath: string): string => {
+    if (typeof filePath !== 'string') return ''
     // Use pdr-file:// protocol (secure — no webSecurity: false needed)
     const normalized = filePath.replace(/\\/g, '/')
     // Unix paths start with /, Windows paths start with C:/ — ensure exactly: pdr-file:// + / + path
@@ -98,4 +100,5 @@ contextBridge.exposeInMainWorld('pdr', {
 
   getAppVersion: (): Promise<string> =>
     ipcRenderer.invoke('get-app-version' satisfies Channel),
-})
+}
+contextBridge.exposeInMainWorld('pdr', api)
