@@ -12,8 +12,7 @@
  *   Comparison summary at the bottom: lap time A vs B + delta.
  */
 
-import { lapData, currentRow, duration, seekToTelemetryTime, getSyncedTime, setViewRange, selectedLapIdx, onViewRangeChange } from './state'
-import { onTelemetryLoad, onFrameTick } from './state'
+import { lapData, currentRow, duration, seekToTelemetryTime, getSyncedTime, setViewRange, selectedLapIdx, onViewRangeChange, onTelemetryLoad, onFrameTick, avSyncOffset } from './state'
 import type { LapInfo } from './types'
 import {
   isCompareMode,
@@ -26,15 +25,13 @@ import {
   onCompareExit,
   onCompareLapChange,
 } from './compare-state'
-import { avSyncOffset } from './state'
+import { formatLapTime } from './defaults'
 
 let container: HTMLElement
 let lapRows: HTMLElement[] = []
 let fullRecordingRow: HTMLElement | null = null
 let laps: LapInfo[] = []
 let currentLapIdx = -1
-
-import { formatLapTime } from './defaults'
 
 // ── Single-file mode ──
 

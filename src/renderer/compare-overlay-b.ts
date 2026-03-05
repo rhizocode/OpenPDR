@@ -14,6 +14,7 @@ import { drawRpmGauge } from './rpm-gauge'
 import { rpmConfigB } from './compare-state'
 import { drawGForce } from './gforce-ball'
 import { drawSteering } from './steering'
+import { GEAR_DISPLAY, formatTimestamp } from './defaults'
 
 // ── B-side DOM refs (created on enter, nulled on exit) ──
 let anchorB: HTMLDivElement | null = null
@@ -39,7 +40,6 @@ let lastFrameTimeB = 0
 let hudBActive = false
 
 // ── Gear carry-forward ──
-import { GEAR_DISPLAY, formatTimestamp } from './defaults'
 let lastKnownGearB = '-'
 
 /** Build the B-side overlay anchor and insert it into the video container. */

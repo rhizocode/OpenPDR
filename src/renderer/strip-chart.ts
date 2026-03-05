@@ -201,6 +201,16 @@ let container: HTMLDivElement
 let chartEmpty: HTMLDivElement
 let toolbar: HTMLDivElement
 let dpr = 1
+
+// Pre-computed font strings — rebuilt when dpr changes
+let fontBold11 = `bold ${11}px Consolas, monospace`
+let fontBold10 = `bold ${10}px Consolas, monospace`
+let font9 = `${9}px Consolas, monospace`
+function updateFonts(): void {
+  fontBold11 = `bold ${11 * dpr}px Consolas, monospace`
+  fontBold10 = `bold ${10 * dpr}px Consolas, monospace`
+  font9 = `${9 * dpr}px Consolas, monospace`
+}
 let chartScrubActive = false
 
 export function getIsChartScrubbing(): boolean {
@@ -226,6 +236,7 @@ export function initChartPanel(): void {
   chartEmpty = document.getElementById('chart-empty') as HTMLDivElement
   toolbar = document.getElementById('chart-toolbar') as HTMLDivElement
   dpr = window.devicePixelRatio || 1
+  updateFonts()
 
   // Create offscreen buffers
   staticCache = document.createElement('canvas')
@@ -856,14 +867,14 @@ function renderStaticCache(): void {
 
       // Channel label (top line) — in default color
       staticCacheCtx.fillStyle = cd.config.color
-      staticCacheCtx.font = `bold ${11 * dpr}px Consolas, monospace`
+      staticCacheCtx.font = fontBold11
       staticCacheCtx.textAlign = 'left'
       staticCacheCtx.textBaseline = 'top'
       staticCacheCtx.fillText(cd.config.label, 4 * dpr, y + 3 * dpr)
 
       // Min/max range labels
       staticCacheCtx.fillStyle = 'rgba(255,255,255,0.3)'
-      staticCacheCtx.font = `${9 * dpr}px Consolas, monospace`
+      staticCacheCtx.font = font9
       staticCacheCtx.textAlign = 'left'
       staticCacheCtx.textBaseline = 'bottom'
       staticCacheCtx.fillText(`${cd.config.min}–${cd.config.max}`, 4 * dpr, y + chartH - 2 * dpr)
@@ -889,13 +900,13 @@ function renderStaticCache(): void {
       staticCacheCtx.fillRect(0, y, labelW, chartH)
 
       staticCacheCtx.fillStyle = 'rgba(255,255,255,0.7)'
-      staticCacheCtx.font = `bold ${11 * dpr}px Consolas, monospace`
+      staticCacheCtx.font = fontBold11
       staticCacheCtx.textAlign = 'left'
       staticCacheCtx.textBaseline = 'top'
       staticCacheCtx.fillText('\u0394 Time', 4 * dpr, y + 3 * dpr)
 
       staticCacheCtx.fillStyle = 'rgba(255,255,255,0.3)'
-      staticCacheCtx.font = `${9 * dpr}px Consolas, monospace`
+      staticCacheCtx.font = font9
       staticCacheCtx.textBaseline = 'bottom'
       staticCacheCtx.fillText('sec', 4 * dpr, y + chartH - 2 * dpr)
 
@@ -929,14 +940,14 @@ function renderStaticCache(): void {
 
     // Channel label (top line)
     staticCacheCtx.fillStyle = cd.config.color
-    staticCacheCtx.font = `bold ${11 * dpr}px Consolas, monospace`
+    staticCacheCtx.font = fontBold11
     staticCacheCtx.textAlign = 'left'
     staticCacheCtx.textBaseline = 'top'
     staticCacheCtx.fillText(cd.config.label, 4 * dpr, y + 3 * dpr)
 
     // Min/max range labels (smaller, dimmer)
     staticCacheCtx.fillStyle = 'rgba(255,255,255,0.3)'
-    staticCacheCtx.font = `${9 * dpr}px Consolas, monospace`
+    staticCacheCtx.font = font9
     staticCacheCtx.textAlign = 'left'
     staticCacheCtx.textBaseline = 'bottom'
     staticCacheCtx.fillText(`${cd.config.min}–${cd.config.max}`, 4 * dpr, y + chartH - 2 * dpr)
@@ -1042,7 +1053,7 @@ function renderFrameCache(force?: boolean): void {
     const y = i * chartH
     const val = cd.config.rowAccessor(currentRow)
     frameCacheCtx.fillStyle = '#fff'
-    frameCacheCtx.font = `bold ${11 * dpr}px Consolas, monospace`
+    frameCacheCtx.font = fontBold11
     frameCacheCtx.textAlign = 'left'
     frameCacheCtx.textBaseline = 'top'
     frameCacheCtx.fillText(`${val.toFixed(cd.config.precision)} ${cd.config.unit}`, 4 * dpr, y + 17 * dpr)
@@ -1065,7 +1076,7 @@ function renderFrameCacheCompare(_w: number, h: number): void {
     const valA = rowA ? cd.config.rowAccessor(rowA) : null
     const valB = rowB ? cd.config.rowAccessor(rowB) : null
 
-    frameCacheCtx.font = `bold ${10 * dpr}px Consolas, monospace`
+    frameCacheCtx.font = fontBold10
     frameCacheCtx.textAlign = 'left'
     frameCacheCtx.textBaseline = 'top'
 
@@ -1093,7 +1104,7 @@ function renderFrameCacheCompare(_w: number, h: number): void {
       const clampedIdx = Math.max(0, Math.min(DELTA_SAMPLES - 1, idx))
       const dVal = deltaChannelData.delta[clampedIdx]
 
-      frameCacheCtx.font = `bold ${10 * dpr}px Consolas, monospace`
+      frameCacheCtx.font = fontBold10
       frameCacheCtx.textAlign = 'left'
       frameCacheCtx.textBaseline = 'top'
 

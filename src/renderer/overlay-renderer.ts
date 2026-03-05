@@ -689,7 +689,10 @@ function lerpRow(a: TelemetryRow, b: TelemetryRow, alpha: number, out: Telemetry
 let isRendering = false
 
 async function handleRenderRequest(request: RenderOverlayRequest): Promise<void> {
-  // Reset stuck flag so retries work after a previous failure
+  if (isRendering) {
+    console.warn('[overlay-renderer] Already rendering, ignoring duplicate request')
+    return
+  }
   isRendering = true
 
   const {

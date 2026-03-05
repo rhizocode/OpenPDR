@@ -41,9 +41,12 @@ import { updateOverlayBRow, smoothAndDrawB, updateAnchorBBounds } from './compar
 import { timeToTrackPosition, trackPositionToTime } from './compare-sync'
 import { createEmptyRow } from '../shared/telemetry-store'
 
-const BUILD_ID = 'phase4-v1'
 const btnPlay = document.getElementById('btn-play') as HTMLButtonElement
-dbg(`Renderer loaded [${BUILD_ID}], pdr API: ${window.pdr ? 'OK' : 'MISSING'}`)
+if (window.pdr?.getAppVersion) {
+  window.pdr.getAppVersion().then(v => dbg(`Renderer loaded [v${v}], pdr API: OK`))
+} else {
+  dbg('Renderer loaded, pdr API: OK')
+}
 
 // ── Initialize modules ──
 initHud()

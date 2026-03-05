@@ -35,6 +35,7 @@ import type { LapInfo, LapData } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
 import { createOverlayB, destroyOverlayB, applyOverlayConfigB, updateAnchorBBounds, populateSessionB } from './compare-overlay-b'
 import { getOverlayConfig } from './hud'
+import { formatLapTime } from './defaults'
 
 const pdr = window.pdr
 
@@ -109,7 +110,6 @@ function outsideClickHandler(e: PointerEvent): void {
 }
 
 // ── Format helpers ──
-import { formatLapTime } from './defaults'
 
 function findBestLapIdx(laps: LapInfo[]): number {
   let best = 0

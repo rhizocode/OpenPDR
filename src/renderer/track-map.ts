@@ -74,6 +74,7 @@ function buildProjection(layout: TrackLayout): void {
   }
 }
 
+/** Allocating version — used in non-hot paths (track cache, S/F marker). */
 function gpsToCanvas(lat: number, lon: number): { x: number; y: number } | null {
   if (!proj) return null
   const nx = (lon - proj.lonMin) / proj.lonRange
@@ -82,6 +83,15 @@ function gpsToCanvas(lat: number, lon: number): { x: number; y: number } | null 
     x: proj.padX + nx * proj.drawW,
     y: proj.padY + ny * proj.drawH,
   }
+}
+
+/** Pre-allocated output for per-frame gpsToCanvas calls (zero allocation). */
+const _canvasXY = { x: 0, y: 0 }
+function gpsToCanvasInto(lat: number, lon: number): typeof _canvasXY | null {
+  if (!proj) return null
+  _canvasXY.x = proj.padX + ((lon - proj.lonMin) / proj.lonRange) * proj.drawW
+  _canvasXY.y = proj.padY + (1 - (lat - proj.latMin) / proj.latRange) * proj.drawH
+  return _canvasXY
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -192,18 +202,23 @@ function blitTrack(): void {
   }
 }
 
-/** Interpolated GPS position for the current frame. */
-function currentGps(): { lat: number; lon: number; spd: number } | null {
+/** Pre-allocated output for currentGps — reused every frame. */
+const _gpsOut = { lat: NaN, lon: NaN, spd: 0 }
+
+/** Interpolated GPS position for the current frame (zero allocation). */
+function currentGps(): typeof _gpsOut | null {
   if (!currentRow) return null
   if (interpPrev && interpNext && interpPrev !== interpNext) {
     const a = interpAlpha
-    return {
-      lat: interpPrev.lat + (interpNext.lat - interpPrev.lat) * a,
-      lon: interpPrev.lon + (interpNext.lon - interpPrev.lon) * a,
-      spd: interpPrev.speed_kph + (interpNext.speed_kph - interpPrev.speed_kph) * a,
-    }
+    _gpsOut.lat = interpPrev.lat + (interpNext.lat - interpPrev.lat) * a
+    _gpsOut.lon = interpPrev.lon + (interpNext.lon - interpPrev.lon) * a
+    _gpsOut.spd = interpPrev.speed_kph + (interpNext.speed_kph - interpPrev.speed_kph) * a
+  } else {
+    _gpsOut.lat = currentRow.lat
+    _gpsOut.lon = currentRow.lon
+    _gpsOut.spd = currentRow.speed_kph
   }
-  return { lat: currentRow.lat, lon: currentRow.lon, spd: currentRow.speed_kph }
+  return _gpsOut
 }
 
 function drawPositionDot(gps?: { lat: number; lon: number; spd: number }): void {
@@ -211,7 +226,7 @@ function drawPositionDot(gps?: { lat: number; lon: number; spd: number }): void 
   const pos = gps ?? currentGps()
   if (!pos) return
 
-  const px = gpsToCanvas(pos.lat, pos.lon)
+  const px = gpsToCanvasInto(pos.lat, pos.lon)
   if (!px) return
 
   // Colour by speed: green → yellow → red

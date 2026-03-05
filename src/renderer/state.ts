@@ -267,9 +267,11 @@ const fpsCounter = document.getElementById('fps-counter') as HTMLSpanElement
 let debugVisible = false
 
 export function dbg(msg: string): void {
-  const line = `[${new Date().toLocaleTimeString()}] ${msg}`
-  console.log(line)
-  debugPanel.textContent = (debugPanel.textContent || '') + line + '\n'
+  const line = `[${new Date().toLocaleTimeString()}] ${msg}\n`
+  console.log(line.trimEnd())
+  debugPanel.appendChild(document.createTextNode(line))
+  // Cap at ~500 lines to prevent unbounded memory growth
+  while (debugPanel.childNodes.length > 500) debugPanel.removeChild(debugPanel.firstChild!)
   debugPanel.scrollTop = debugPanel.scrollHeight
 }
 

@@ -81,17 +81,14 @@ export function drawGForce(lat: number, lon: number, targetCanvas?: HTMLCanvasEl
     drawCtx = ctx
     bg = bgCache; bgW = bgCacheW; bgH = bgCacheH
   } else {
-    let entry = bgCacheMap.get(targetCanvas)
-    if (!entry) {
-      const tc = targetCanvas.getContext('2d')
-      if (!tc) return
-      // drawCtx will be retrieved from 2d context of targetCanvas each time
-      entry = { bg: document.createElement('canvas'), w: 0, h: 0 }
-      bgCacheMap.set(targetCanvas, entry)
-    }
     const tc = targetCanvas.getContext('2d')
     if (!tc) return
     drawCtx = tc
+    let entry = bgCacheMap.get(targetCanvas)
+    if (!entry) {
+      entry = { bg: document.createElement('canvas'), w: 0, h: 0 }
+      bgCacheMap.set(targetCanvas, entry)
+    }
     bg = entry.bg; bgW = entry.w; bgH = entry.h
   }
 
