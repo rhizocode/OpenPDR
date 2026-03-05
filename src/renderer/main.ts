@@ -6,6 +6,7 @@
  */
 
 import './types' // side-effect: augments Window with pdr
+import { formatLapTime } from './defaults'
 import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg, lapData, duration, viewRange, setViewRange, selectedLapIdx, getSyncedTime, seekToTelemetryTime, onTelemetryLoad, onViewRangeChange, avSyncOffset, setInterpState } from './state'
 import { initHud } from './hud'
 import { initControls, getIsScrubbing } from './controls'
@@ -426,13 +427,6 @@ startAnimationLoop()
 // ── Lap selector dropdown ──
 function initLapSelector(): void {
   const selector = document.getElementById('lap-selector') as HTMLSelectElement
-
-  function formatLapTime(seconds: number): string {
-    const m = Math.floor(seconds / 60)
-    const s = seconds - m * 60
-    const sFmt = s < 10 ? '0' + s.toFixed(3) : s.toFixed(3)
-    return `${m}:${sFmt}`
-  }
 
   onTelemetryLoad(() => {
     selector.innerHTML = ''

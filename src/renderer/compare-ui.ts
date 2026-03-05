@@ -109,12 +109,7 @@ function outsideClickHandler(e: PointerEvent): void {
 }
 
 // ── Format helpers ──
-function formatLapTime(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds - m * 60
-  const sFmt = s < 10 ? '0' + s.toFixed(3) : s.toFixed(3)
-  return `${m}:${sFmt}`
-}
+import { formatLapTime } from './defaults'
 
 function findBestLapIdx(laps: LapInfo[]): number {
   let best = 0

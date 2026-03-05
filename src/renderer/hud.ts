@@ -16,13 +16,9 @@ import { initRpmGauge, drawRpmGauge } from './rpm-gauge'
 import { initSteeringIndicator, drawSteering } from './steering'
 import { applyOverlayConfigB } from './compare-overlay-b'
 import { isCompareMode, rpmConfigA } from './compare-state'
+import { DEFAULT_OVERLAY, GEAR_DISPLAY, formatTimestamp } from './defaults'
 
 const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
-
-const DEFAULT_OVERLAY: OverlayConfig = {
-  speed: true, rpmGauge: true, gear: true, gforce: true,
-  pedals: true, steering: true, gps: true, trackMap: true, session: true,
-}
 
 // ── DOM refs ──
 const hudSpeedValue = document.getElementById('hud-speed-value') as HTMLSpanElement
@@ -70,13 +66,7 @@ let targetGLon = 0, displayedGLon = 0
 let lastFrameTime = 0
 let hudActive = false  // true after first telemetry row received
 
-// ── Gear label → display mapping ──
-const GEAR_DISPLAY: Record<string, string> = {
-  park: 'P', neutral: 'N', reverse: 'R',
-  first: '1', second: '2', third: '3',
-  fourth: '4', fifth: '5', sixth: '6',
-  seventh: '7', eighth: '8', ninth: '9', tenth: '10',
-}
+// ── Gear label → display mapping (from defaults.ts) ──
 
 // ── Carry-forward state for sparse channels ──
 let lastKnownGear = '-'
@@ -240,27 +230,7 @@ function populateSessionOverlay(): void {
   const info = sessionInfo
   if (!info) return
 
-  // Format timestamp for display, preserving the recording timezone from the file.
-  // ADOP stores ISO 8601 with offset: "2026-01-13T13:03:28+00:00" (25 bytes).
-  // We parse directly to avoid Date() converting to the viewer's local timezone.
-  let dateStr: string | undefined
-  if (info.timestamp) {
-    const m = info.timestamp.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})([+-]\d{2}:\d{2})$/)
-    if (m) {
-      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-      const month = months[parseInt(m[2], 10) - 1]
-      const day = parseInt(m[3], 10)
-      const year = m[1]
-      const hour24 = parseInt(m[4], 10)
-      const minute = m[5]
-      const ampm = hour24 >= 12 ? 'PM' : 'AM'
-      const hour12 = hour24 % 12 || 12
-      const offset = m[7]
-      dateStr = `${month} ${day}, ${year} ${hour12}:${minute} ${ampm}`
-    } else {
-      dateStr = info.timestamp
-    }
-  }
+  const dateStr = info.timestamp ? formatTimestamp(info.timestamp) : undefined
 
   // Combine year + vehicle into a single line, stripping parentheses
   // vehicle already includes model in parens, e.g. "Chevrolet (Corvette)"

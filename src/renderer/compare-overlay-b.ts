@@ -39,12 +39,7 @@ let lastFrameTimeB = 0
 let hudBActive = false
 
 // ── Gear carry-forward ──
-const GEAR_DISPLAY: Record<string, string> = {
-  park: 'P', neutral: 'N', reverse: 'R',
-  first: '1', second: '2', third: '3',
-  fourth: '4', fifth: '5', sixth: '6',
-  seventh: '7', eighth: '8', ninth: '9', tenth: '10',
-}
+import { GEAR_DISPLAY, formatTimestamp } from './defaults'
 let lastKnownGearB = '-'
 
 /** Build the B-side overlay anchor and insert it into the video container. */
@@ -97,24 +92,7 @@ export function populateSessionB(info: SessionInfo | null): void {
   contentB.innerHTML = ''
   if (!info) return
 
-  // Format timestamp — same logic as hud.ts populateSessionOverlay
-  let dateStr: string | undefined
-  if (info.timestamp) {
-    const m = info.timestamp.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})([+-]\d{2}:\d{2})$/)
-    if (m) {
-      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-      const month = months[parseInt(m[2], 10) - 1]
-      const day = parseInt(m[3], 10)
-      const year = m[1]
-      const hour24 = parseInt(m[4], 10)
-      const minute = m[5]
-      const ampm = hour24 >= 12 ? 'PM' : 'AM'
-      const hour12 = hour24 % 12 || 12
-      dateStr = `${month} ${day}, ${year} ${hour12}:${minute} ${ampm}`
-    } else {
-      dateStr = info.timestamp
-    }
-  }
+  const dateStr = info.timestamp ? formatTimestamp(info.timestamp) : undefined
 
   const vehicleParts = [info.year, info.vehicle]
     .filter(Boolean)

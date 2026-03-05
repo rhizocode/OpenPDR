@@ -6,51 +6,29 @@
  * Supports full recording and per-lap export when laps are detected.
  */
 
-import type { ExportScope, VideoExportOptions, OverlayConfig, OverlayLayout, RpmConfig } from './types'
+import type { ExportScope, VideoExportOptions } from './types'
 import { telemetryStore, lapData } from './state'
+import { DEFAULT_OVERLAY, DEFAULT_LAYOUT, DEFAULT_RPM_CONFIG } from './defaults'
 
 // localStorage keys (match hud.ts, edit-mode.ts, rpm-gauge.ts)
 const OVERLAY_CONFIG_KEY = 'pdr-overlay-config'
 const OVERLAY_LAYOUT_KEY = 'pdr-overlay-layout'
 const RPM_CONFIG_KEY = 'pdr-rpm-config'
 
-const DEFAULT_OVERLAY_CONFIG: OverlayConfig = {
-  speed: true, rpmGauge: true, gear: true, gforce: true,
-  pedals: true, steering: true, gps: true, trackMap: true,
-  session: true,
-}
-
-const DEFAULT_OVERLAY_LAYOUT: OverlayLayout = {
-  speed:    { left: 1.5, top: 82, scale: 1 },
-  rpmGauge: { left: 13,  top: 78, scale: 1 },
-  gear:     { left: 27,  top: 82, scale: 1 },
-  steering: { left: 33,  top: 76, scale: 1 },
-  gforce:   { left: 82,  top: 68, scale: 1 },
-  pedals:   { left: 68,  top: 84, scale: 1 },
-  gps:      { left: 85,  top: 2,  scale: 1 },
-  trackMap: { left: 1.5, top: 2,  scale: 1 },
-  session:  { left: 50,  top: 2,  scale: 1 },
-}
-
-const DEFAULT_RPM_CONFIG: RpmConfig = {
-  redline: 6500,
-  maxRpm: 8500,
-}
-
 /** Read current overlay/layout/RPM config from localStorage */
 function getVideoExportOptions(): VideoExportOptions {
-  let overlayConfig = DEFAULT_OVERLAY_CONFIG
-  let overlayLayout = DEFAULT_OVERLAY_LAYOUT
+  let overlayConfig = DEFAULT_OVERLAY
+  let overlayLayout = DEFAULT_LAYOUT
   let rpmConfig = DEFAULT_RPM_CONFIG
 
   try {
     const saved = localStorage.getItem(OVERLAY_CONFIG_KEY)
-    if (saved) overlayConfig = { ...DEFAULT_OVERLAY_CONFIG, ...JSON.parse(saved) }
+    if (saved) overlayConfig = { ...DEFAULT_OVERLAY, ...JSON.parse(saved) }
   } catch { /* use defaults */ }
 
   try {
     const saved = localStorage.getItem(OVERLAY_LAYOUT_KEY)
-    if (saved) overlayLayout = { ...DEFAULT_OVERLAY_LAYOUT, ...JSON.parse(saved) }
+    if (saved) overlayLayout = { ...DEFAULT_LAYOUT, ...JSON.parse(saved) }
   } catch { /* use defaults */ }
 
   try {

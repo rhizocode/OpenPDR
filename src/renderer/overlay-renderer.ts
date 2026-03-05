@@ -44,13 +44,8 @@ const PEDAL_GAP = 3
 // Gear box
 const GEAR_BOX_SIZE = 48
 
-// ── GEAR_DISPLAY map (from hud.ts) ──
-const GEAR_DISPLAY: Record<string, string> = {
-  park: 'P', neutral: 'N', reverse: 'R',
-  first: '1', second: '2', third: '3',
-  fourth: '4', fifth: '5', sixth: '6',
-  seventh: '7', eighth: '8', ninth: '9', tenth: '10',
-}
+// ── GEAR_DISPLAY map ──
+import { GEAR_DISPLAY } from './defaults'
 
 // ── Track map projection (from track-map.ts) ──
 

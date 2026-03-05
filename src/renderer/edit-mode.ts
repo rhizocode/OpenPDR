@@ -10,6 +10,7 @@ import type { OverlayConfig, OverlayKey, OverlayPosition, OverlayLayout } from '
 import { getEditMode, setEditMode, onEditModeChange } from './state'
 import { applyOverlayConfig, getOverlayConfig, setOverlayConfig } from './hud'
 import { syncPositionsToB } from './compare-overlay-b'
+import { DEFAULT_LAYOUT } from './defaults'
 
 const LAYOUT_STORAGE_KEY = 'pdr-overlay-layout'
 const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
@@ -24,21 +25,6 @@ const OVERLAY_LABELS: Record<OverlayKey, string> = {
   gps: 'GPS',
   trackMap: 'Track Map',
   session: 'Session',
-}
-
-// Default layout positions (pixel offsets from edges of video-container).
-// Uses left/bottom for bottom-row elements, right/top for GPS.
-// These are stored as % of container dimensions for responsive scaling.
-const DEFAULT_LAYOUT: OverlayLayout = {
-  speed:    { left: 1.5, top: 82, scale: 1 },
-  rpmGauge: { left: 13,  top: 78, scale: 1 },
-  gear:     { left: 27,  top: 82, scale: 1 },
-  steering: { left: 33,  top: 76, scale: 1 },
-  gforce:   { left: 82,  top: 68, scale: 1 },
-  pedals:   { left: 68,  top: 84, scale: 1 },
-  gps:      { left: 85,  top: 2,  scale: 1 },
-  trackMap: { left: 1.5, top: 2,  scale: 1 },
-  session:  { left: 85,  top: 12, scale: 1 },
 }
 
 let layout: OverlayLayout

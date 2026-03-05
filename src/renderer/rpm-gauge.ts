@@ -18,13 +18,9 @@ import { detectEngine, engineToRpmConfig, type EngineSpec } from '../shared/engi
 const STORAGE_KEY = 'pdr-rpm-config'
 const OVERRIDE_KEY = 'pdr-rpm-manual-override'
 
-// Default zone thresholds (fallback when engine not detected)
-const DEFAULT_CONFIG: RpmConfig = {
-  redline: 6500,
-  maxRpm: 8500,
-}
+import { DEFAULT_RPM_CONFIG } from './defaults'
 
-let config: RpmConfig = DEFAULT_CONFIG
+let config: RpmConfig = DEFAULT_RPM_CONFIG
 
 // Auto-detection state
 let detectedEngine: EngineSpec | null = null
@@ -238,12 +234,12 @@ export function loadRpmConfig(): RpmConfig {
   const saved = localStorage.getItem(STORAGE_KEY)
   if (saved) {
     try {
-      config = { ...DEFAULT_CONFIG, ...JSON.parse(saved) }
+      config = { ...DEFAULT_RPM_CONFIG, ...JSON.parse(saved) }
     } catch {
-      config = { ...DEFAULT_CONFIG }
+      config = { ...DEFAULT_RPM_CONFIG }
     }
   } else {
-    config = { ...DEFAULT_CONFIG }
+    config = { ...DEFAULT_RPM_CONFIG }
   }
   return config
 }

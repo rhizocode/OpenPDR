@@ -34,13 +34,7 @@ let fullRecordingRow: HTMLElement | null = null
 let laps: LapInfo[] = []
 let currentLapIdx = -1
 
-/** Format seconds as M:SS.mmm */
-function formatLapTime(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds - m * 60
-  const sFmt = s < 10 ? '0' + s.toFixed(3) : s.toFixed(3)
-  return `${m}:${sFmt}`
-}
+import { formatLapTime } from './defaults'
 
 // ── Single-file mode ──
 
