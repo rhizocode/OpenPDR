@@ -97,7 +97,13 @@ app.whenReady().then(() => {
         const match = rangeHeader.match(/bytes=(\d+)-(\d*)/)
         if (match) {
           const start = parseInt(match[1], 10)
-          const end = match[2] ? parseInt(match[2], 10) : fileSize - 1
+          const end = match[2] ? Math.min(parseInt(match[2], 10), fileSize - 1) : fileSize - 1
+          if (start >= fileSize || start > end) {
+            return new Response('Range Not Satisfiable', {
+              status: 416,
+              headers: { 'Content-Range': `bytes */${fileSize}` }
+            })
+          }
           const chunkSize = end - start + 1
 
           const stream = createReadStream(filePath, { start, end })
