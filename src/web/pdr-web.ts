@@ -16,6 +16,9 @@ import { exportGpxBlob } from './export-gpx-browser'
 /** Map of string keys to stashed File objects (substitutes for file paths). */
 const fileMap = new Map<string, File>()
 
+/** Track blob URLs created by getVideoUrl so we can revoke previous ones. */
+const videoBlobUrls = new Map<string, string>()
+
 /** Most recent parse result (needed for exports). */
 let lastParseResult: ParseResult | null = null
 let lastFileName: string | null = null
@@ -23,10 +26,12 @@ let lastFileName: string | null = null
 /** Trigger a browser download for a Blob. */
 function downloadBlob(blob: Blob, filename: string): void {
   const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
+  const url = URL.createObjectURL(blob)
+  a.href = url
   a.download = filename
   a.click()
-  URL.revokeObjectURL(a.href)
+  // Defer revocation so the browser has time to initiate the download
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 /** Stash a File and return a string key for it. */
@@ -132,7 +137,12 @@ const pdrWeb: PdrApi = {
   getVideoUrl(filePath: string): string {
     const file = fileMap.get(filePath)
     if (!file) return ''
-    return URL.createObjectURL(file)
+    // Revoke previous blob URL for this key to prevent memory leaks
+    const prev = videoBlobUrls.get(filePath)
+    if (prev) URL.revokeObjectURL(prev)
+    const url = URL.createObjectURL(file)
+    videoBlobUrls.set(filePath, url)
+    return url
   },
 
   async exportCsv(scope: ExportScope): Promise<boolean> {
