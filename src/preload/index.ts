@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('pdr', {
   setAllowedVideoPath: (filePath: string): Promise<void> =>
     ipcRenderer.invoke('set-allowed-video-path' satisfies Channel, filePath),
 
+  resetAllowedVideoPaths: (): Promise<void> =>
+    ipcRenderer.invoke('reset-allowed-video-paths' satisfies Channel),
+
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   getVideoUrl: (filePath: string): string => {

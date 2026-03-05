@@ -238,6 +238,7 @@ export interface IpcChannels {
   'parse-pdr-file': { args: [string]; return: ParseResult }
   'parse-progress': { args: [string, number]; return: void }
   'set-allowed-video-path': { args: [string]; return: void }
+  'reset-allowed-video-paths': { args: []; return: void }
   'export-csv': { args: [ExportScope]; return: boolean }
   'export-gpx': { args: [ExportScope]; return: boolean }
   'export-video': { args: [ExportScope, VideoExportOptions]; return: boolean }

@@ -37,6 +37,9 @@ async function openFile(filePath?: string): Promise<void> {
   }
   dbg('Selected: ' + filePath)
 
+  // New primary file — clear previously allowed video paths
+  await pdr.resetAllowedVideoPaths()
+
   // Display file name
   const parts = filePath.replace(/\\/g, '/').split('/')
   fileNameEl.textContent = parts[parts.length - 1]

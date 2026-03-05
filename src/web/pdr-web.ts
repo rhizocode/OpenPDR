@@ -121,6 +121,10 @@ const pdrWeb: PdrApi = {
     // No-op in browser — no security boundary to manage
   },
 
+  async resetAllowedVideoPaths(): Promise<void> {
+    // No-op in browser — no security boundary to manage
+  },
+
   getPathForFile(file: File): string {
     return stashFile(file)
   },

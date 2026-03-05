@@ -17,6 +17,19 @@ console.log(`[OpenPDR main] build=${BUILD_ID}`)
 
 let mainWindow: BrowserWindow | null = null
 let allowedVideoPaths = new Set<string>()
+
+/** Add a video path, capping at 2 entries (primary + compare). */
+function addAllowedVideoPath(filePath: string): void {
+  const normalized = filePath.replace(/\\/g, '/')
+  if (allowedVideoPaths.has(normalized)) return
+  if (allowedVideoPaths.size >= 2) {
+    // Keep only the first entry (primary), evict the old compare path
+    const primary = allowedVideoPaths.values().next().value!
+    allowedVideoPaths.clear()
+    allowedVideoPaths.add(primary)
+  }
+  allowedVideoPaths.add(normalized)
+}
 let lastParseResult: ParseResult | null = null
 let lastFilePath: string | null = null
 
@@ -165,7 +178,7 @@ ipcMain.handle('open-file-dialog' satisfies Channel, async () => {
   })
 
   if (result.canceled || result.filePaths.length === 0) return null
-  allowedVideoPaths.add(result.filePaths[0].replace(/\\/g, '/'))
+  addAllowedVideoPath(result.filePaths[0])
   return result.filePaths[0]
 })
 
@@ -173,7 +186,12 @@ ipcMain.handle('open-file-dialog' satisfies Channel, async () => {
 // Restrict to .mp4 files to prevent renderer from authorizing arbitrary file reads
 ipcMain.handle('set-allowed-video-path' satisfies Channel, (_event, filePath: string) => {
   if (typeof filePath !== 'string' || !filePath.toLowerCase().endsWith('.mp4')) return
-  allowedVideoPaths.add(filePath.replace(/\\/g, '/'))
+  addAllowedVideoPath(filePath)
+})
+
+// IPC: Reset allowed video paths (called when opening a new primary file)
+ipcMain.handle('reset-allowed-video-paths' satisfies Channel, () => {
+  allowedVideoPaths.clear()
 })
 
 // IPC: Parse PDR file — extracts telemetry directly from MP4
