@@ -17,7 +17,7 @@ export interface TelemetryStore {
 
   // ── Timing (always populated) ──
   time: Float64Array
-  packetIdx: Uint16Array
+  packetIdx: Uint32Array
   frameIdx: Uint8Array
 
   // ── GPS 10 Hz (always populated) ──
@@ -100,7 +100,7 @@ export function createTelemetryStore(capacity: number): TelemetryStore {
     length: 0,
 
     time: new Float64Array(capacity),
-    packetIdx: new Uint16Array(capacity),
+    packetIdx: new Uint32Array(capacity),
     frameIdx: new Uint8Array(capacity),
 
     lat: new Float64Array(capacity),

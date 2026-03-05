@@ -40,8 +40,10 @@ export function parseSampleTable(
   const stsz = findBox(moovBuf, 'stsz', stblData, stblEnd)
   if (!stsz) return null
 
-  const stszData = stsz[2]
+  const [stszOffset, stszSize, stszData] = stsz
+  const stszEnd = Math.min(stszOffset + stszSize, moovBuf.length)
   // stsz: version(4) + sample_size(4) + count(4) + [sizes...]
+  if (stszData + 12 > stszEnd) return null
   const defaultSize = readUint32BE(moovBuf, stszData + 4, dv)
   const sampleCount = readUint32BE(moovBuf, stszData + 8, dv)
 
@@ -49,8 +51,10 @@ export function parseSampleTable(
   if (defaultSize !== 0) {
     sampleSizes = new Array(sampleCount).fill(defaultSize)
   } else {
+    const maxSizes = Math.floor((stszEnd - (stszData + 12)) / 4)
+    const safeCount = Math.min(sampleCount, maxSizes)
     sampleSizes = []
-    for (let i = 0; i < sampleCount; i++) {
+    for (let i = 0; i < safeCount; i++) {
       sampleSizes.push(readUint32BE(moovBuf, stszData + 12 + i * 4, dv))
     }
   }
@@ -61,16 +65,26 @@ export function parseSampleTable(
 
   const chunkOffsets: number[] = []
   if (co64) {
-    const coData = co64[2]
-    const coCount = readUint32BE(moovBuf, coData + 4, dv)
-    for (let i = 0; i < coCount; i++) {
-      chunkOffsets.push(Number(readBigUint64BE(moovBuf, coData + 8 + i * 8, dv)))
+    const [co64Offset, co64Size, coData] = co64
+    const co64End = Math.min(co64Offset + co64Size, moovBuf.length)
+    if (coData + 8 <= co64End) {
+      const coCount = readUint32BE(moovBuf, coData + 4, dv)
+      const maxEntries = Math.floor((co64End - (coData + 8)) / 8)
+      const safeCount = Math.min(coCount, maxEntries)
+      for (let i = 0; i < safeCount; i++) {
+        chunkOffsets.push(Number(readBigUint64BE(moovBuf, coData + 8 + i * 8, dv)))
+      }
     }
   } else if (stco) {
-    const coData = stco[2]
-    const coCount = readUint32BE(moovBuf, coData + 4, dv)
-    for (let i = 0; i < coCount; i++) {
-      chunkOffsets.push(readUint32BE(moovBuf, coData + 8 + i * 4, dv))
+    const [stcoOffset, stcoSize, coData] = stco
+    const stcoEnd = Math.min(stcoOffset + stcoSize, moovBuf.length)
+    if (coData + 8 <= stcoEnd) {
+      const coCount = readUint32BE(moovBuf, coData + 4, dv)
+      const maxEntries = Math.floor((stcoEnd - (coData + 8)) / 4)
+      const safeCount = Math.min(coCount, maxEntries)
+      for (let i = 0; i < safeCount; i++) {
+        chunkOffsets.push(readUint32BE(moovBuf, coData + 8 + i * 4, dv))
+      }
     }
   }
 
@@ -78,15 +92,20 @@ export function parseSampleTable(
   const stsc = findBox(moovBuf, 'stsc', stblData, stblEnd)
   const stscEntries: Array<{ firstChunk: number; samplesPerChunk: number; descriptionIndex: number }> = []
   if (stsc) {
-    const stscData = stsc[2]
-    const stscCount = readUint32BE(moovBuf, stscData + 4, dv)
-    for (let i = 0; i < stscCount; i++) {
-      const base = stscData + 8 + i * 12
-      stscEntries.push({
-        firstChunk: readUint32BE(moovBuf, base, dv),
-        samplesPerChunk: readUint32BE(moovBuf, base + 4, dv),
-        descriptionIndex: readUint32BE(moovBuf, base + 8, dv),
-      })
+    const [stscOffset, stscSize, stscData] = stsc
+    const stscEnd = Math.min(stscOffset + stscSize, moovBuf.length)
+    if (stscData + 8 <= stscEnd) {
+      const stscCount = readUint32BE(moovBuf, stscData + 4, dv)
+      const maxEntries = Math.floor((stscEnd - (stscData + 8)) / 12)
+      const safeCount = Math.min(stscCount, maxEntries)
+      for (let i = 0; i < safeCount; i++) {
+        const base = stscData + 8 + i * 12
+        stscEntries.push({
+          firstChunk: readUint32BE(moovBuf, base, dv),
+          samplesPerChunk: readUint32BE(moovBuf, base + 4, dv),
+          descriptionIndex: readUint32BE(moovBuf, base + 8, dv),
+        })
+      }
     }
   }
 
