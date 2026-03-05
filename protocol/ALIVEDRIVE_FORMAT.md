@@ -653,9 +653,9 @@ The first GPS latitude position occurs at a consistent offset of approximately
 sub-frame data + 2 bytes of speed). Subsequent GPS positions are spaced at
 regular intervals determined by the interleaving pattern (~290-320 bytes apart).
 
-To locate GPS data, scan for the byte pattern of a known latitude in the
-expected range (e.g., `0x15 0x8F xxxx` for ~36° N), then validate with
-longitude, altitude, and clustering checks.
+To locate GPS data, scan for int32 BE values that decode to valid
+latitude/longitude/altitude triplets, then validate with spacing and
+clustering checks.
 
 ### 4.8 Video/Telemetry Synchronization
 

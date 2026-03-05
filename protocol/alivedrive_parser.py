@@ -795,14 +795,13 @@ def find_gps_offsets(packet, packet_size=3247):
     """Find the 10 GPS lat offsets within a packet by searching for valid coords."""
     gps_offsets = []
     for off in range(0, packet_size - 8):
-        # Check for lat pattern (Spring Mountain area: ~36.17°)
         if len(packet) > off + 8:
             lat_raw = struct.unpack('>i', packet[off:off+4])[0]
             lon_raw = struct.unpack('>i', packet[off+4:off+8])[0]
             lat_deg = lat_raw * DEG_SCALE
             lon_deg = lon_raw * DEG_SCALE
-            # Wide range for general GPS validity
-            if -90 < lat_deg < 90 and -180 < lon_deg < 180 and abs(lat_deg) > 1.0:
+            # lat > 1° excludes null-island (0,0) junk; lon accepts full range
+            if 1.0 < abs(lat_deg) < 85.0 and 1.0 < abs(lon_deg) <= 180.0:
                 # Additional check: next few bytes should look like altitude
                 if off + 12 <= len(packet):
                     alt_raw = struct.unpack('>I', packet[off+8:off+12])[0]
@@ -1248,8 +1247,9 @@ def find_gps_in_packet(packet, reference_lat_range=None):
                 candidates.append(off)
         else:
             # Strict search: require plausible lat AND lon AND altitude
-            if (10.0 < abs(lat_deg) < 80.0 and
-                10.0 < abs(lon_deg) < 180.0 and
+            # lat > 1° excludes null-island (0,0) junk; lon accepts full range
+            if (1.0 < abs(lat_deg) < 85.0 and
+                1.0 < abs(lon_deg) <= 180.0 and
                 0 < alt_m < 10000):
                 candidates.append(off)
 
@@ -1282,29 +1282,112 @@ def find_gps_in_packet(packet, reference_lat_range=None):
 # =============================================================================
 
 def parse_adop(data):
-    """Parse outing properties from adop box to get reference location."""
-    # Search for GPS coordinates in the properties
-    # The outing properties contain max/min lat/lon as float64 values
-    # This gives us the reference location to search for GPS data in packets
+    """Parse outing properties from adop box.
 
+    The adop box stores key-value pairs in this format:
+      <null-terminated key> <4-byte type tag> <value>
+
+    Type tags:
+      strn — null-terminated string value
+      vrsn — version (u16 major + u16 minor + u16 patch)
+      siva — typed numeric: 3-byte prefix (u8 reserved, u8 unit_id, u8 value_type) + value
+             value_type: 0x04=u16, 0x09=f32, 0x0a=f64
+      dtim — 25-byte ISO 8601 datetime string
+      guid — 16-byte UUID
+
+    Returns dict with 'properties' (dict of key->value), and optionally 'lat'/'lon'.
+    """
     props = {}
-    # Look for recognizable strings and values
-    text = data.decode('ascii', errors='replace')
+    properties = {}
+    pos = 0
 
-    # Search for lat/lon values stored as 8-byte doubles
-    for i in range(0, len(data) - 8):
-        try:
-            val = struct.unpack('>d', data[i:i+8])[0]
-            if 25.0 < val < 50.0:  # Plausible US latitude
-                # Check if the next double is a longitude
-                if i + 16 <= len(data):
+    while pos < len(data):
+        # Read null-terminated key string
+        key_end = data.find(b'\x00', pos)
+        if key_end == -1 or key_end == pos:
+            break
+        key = data[pos:key_end].decode('ascii', errors='replace')
+        pos = key_end + 1
+
+        # Read 4-byte type tag
+        if pos + 4 > len(data):
+            break
+        tag = data[pos:pos+4].decode('ascii', errors='replace')
+        pos += 4
+
+        # Strip common prefix for shorter keys
+        short_key = key.replace('com.cosworth.outingproperty.', '')
+
+        if tag == 'strn':
+            val_end = data.find(b'\x00', pos)
+            if val_end == -1:
+                break
+            properties[short_key] = data[pos:val_end].decode('ascii', errors='replace')
+            pos = val_end + 1
+        elif tag == 'dtim':
+            if pos + 25 > len(data):
+                break
+            properties[short_key] = data[pos:pos+25].decode('ascii', errors='replace')
+            pos += 25
+        elif tag == 'vrsn':
+            if pos + 6 > len(data):
+                break
+            major = struct.unpack('>H', data[pos:pos+2])[0]
+            minor = struct.unpack('>H', data[pos+2:pos+4])[0]
+            patch = struct.unpack('>H', data[pos+4:pos+6])[0]
+            pos += 6
+            properties[short_key] = f'{major}.{minor}.{patch}' if patch else f'{major}.{minor}'
+        elif tag == 'siva':
+            if pos + 3 > len(data):
+                break
+            val_type = data[pos + 2]
+            pos += 3
+            val_size = {0x04: 2, 0x09: 4, 0x0a: 8}.get(val_type, -1)
+            if val_size == -1 or pos + val_size > len(data):
+                break
+            if val_type == 0x04:
+                value = struct.unpack('>H', data[pos:pos+val_size])[0]
+            elif val_type == 0x09:
+                value = struct.unpack('>f', data[pos:pos+val_size])[0]
+            else:
+                value = struct.unpack('>d', data[pos:pos+val_size])[0]
+            pos += val_size
+            properties[short_key] = value
+        elif tag == 'guid':
+            if pos + 16 > len(data):
+                break
+            pos += 16  # skip UUID
+        else:
+            break  # Unknown tag — stop to avoid corruption
+
+    props['properties'] = properties
+
+    # Extract GPS reference from location properties (stored as radians)
+    RAD_TO_DEG = 180.0 / math.pi
+    lat_val = properties.get('location.center.latitude') or properties.get('location.starting.latitude')
+    lon_val = properties.get('location.center.longitude') or properties.get('location.starting.longitude')
+    if lat_val is not None and lon_val is not None:
+        lat_rad = float(lat_val)
+        lon_rad = float(lon_val)
+        lat = lat_rad * RAD_TO_DEG
+        lon = lon_rad * RAD_TO_DEG
+        if 1.0 < abs(lat) < 85.0 and 1.0 < abs(lon) < 180.0:
+            props['lat'] = lat
+            props['lon'] = lon
+
+    # Fallback: heuristic float64 search if structured parsing didn't find GPS
+    if 'lat' not in props:
+        for i in range(0, len(data) - 16):
+            try:
+                val = struct.unpack('>d', data[i:i+8])[0]
+                if 1.0 < abs(val) < 85.0:
                     val2 = struct.unpack('>d', data[i+8:i+16])[0]
-                    if -130.0 < val2 < -60.0:  # Plausible US longitude
+                    if 1.0 < abs(val2) < 180.0:
                         props['lat'] = val
                         props['lon'] = val2
                         break
-        except:
-            pass
+            except:
+                pass
 
     return props
 

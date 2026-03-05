@@ -40,9 +40,10 @@ export function findGpsInPacket(packet: Uint8Array, refRange?: GpsRefRange): num
       }
     } else {
       // Strict search: require plausible lat AND lon AND altitude
+      // lat > 1° excludes null-island (0,0) junk; lon accepts full range
       if (
-        Math.abs(latDeg) > 10.0 && Math.abs(latDeg) < 80.0 &&
-        Math.abs(lonDeg) > 10.0 && Math.abs(lonDeg) < 180.0 &&
+        Math.abs(latDeg) > 1.0 && Math.abs(latDeg) < 85.0 &&
+        Math.abs(lonDeg) > 1.0 && Math.abs(lonDeg) <= 180.0 &&
         altM > 0 && altM < 10000
       ) {
         candidates.push(off)
@@ -102,8 +103,8 @@ export function verifyGpsOffsets(
       ) return null
     } else {
       if (
-        Math.abs(latDeg) <= 10.0 || Math.abs(latDeg) >= 80.0 ||
-        Math.abs(lonDeg) <= 10.0 || Math.abs(lonDeg) >= 180.0 ||
+        Math.abs(latDeg) <= 1.0 || Math.abs(latDeg) >= 85.0 ||
+        Math.abs(lonDeg) <= 1.0 || Math.abs(lonDeg) > 180.0 ||
         altM <= 0 || altM >= 10000
       ) return null
     }
