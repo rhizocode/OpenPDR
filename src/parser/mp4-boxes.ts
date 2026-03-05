@@ -160,6 +160,10 @@ export async function readMoovBox(source: PdrFileSource): Promise<Uint8Array> {
     if (size < 8) break
 
     if (type === 'moov') {
+      const MAX_MOOV_SIZE = 50_000_000 // 50 MB — generous upper bound
+      if (size > MAX_MOOV_SIZE) {
+        throw new Error(`moov box too large: ${size} bytes (max ${MAX_MOOV_SIZE})`)
+      }
       return source.read(offset, size)
     }
 

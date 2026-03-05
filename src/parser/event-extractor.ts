@@ -42,8 +42,12 @@ export function extractEvents(
     const timeSec = (tsHi * 0x100000000 + tsLo) / TICKS_PER_SECOND
 
     const eventId = extra[off + 10]
-    const eventName = defMap.get(eventId) ?? `unknown_event_${eventId}`
 
+    // Reject events with implausible timestamps (> 24 hours) or unknown event IDs
+    if (timeSec < 0 || timeSec > 86400) continue
+    if (!defMap.has(eventId)) continue
+
+    const eventName = defMap.get(eventId)!
     events.push({ eventId, eventName, time: timeSec })
   }
 

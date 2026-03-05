@@ -14,7 +14,7 @@
  */
 
 import type { PdrFileSource } from '../shared/file-source'
-import { readMoovBox, scanForBox, parseMvhdTimescale } from './mp4-boxes'
+import { readMoovBox, findBox, readBoxHeader, scanForBox, parseMvhdTimescale } from './mp4-boxes'
 import { findAdcoTrack, parseAdvi, parseAdop, parseAdeg } from './adco-track'
 import { parseSampleTable, getSampleOffsets, parseTrackTiming } from './sample-table'
 import { decodePacket } from './telemetry-decoder'
@@ -77,7 +77,13 @@ export async function parsePdrFile(
   onProgress?.('Parsing metadata...', 5)
 
   // Step 4: Parse metadata sub-boxes (advi, adop)
-  const adviBox = scanForBox(moovBuf, 'advi')
+  // Prefer structured findBox within moov (O(n) walk), fall back to brute-force scanForBox
+  const moovHdr = readBoxHeader(moovBuf, 0)
+  const moovDataStart = moovHdr?.dataStart ?? 8
+  const findMetaBox = (tag: string) =>
+    findBox(moovBuf, tag, moovDataStart) ?? scanForBox(moovBuf, tag)
+
+  const adviBox = findMetaBox('advi')
   const adviInfo = adviBox
     ? parseAdvi(moovBuf.subarray(adviBox[2], adviBox[0] + adviBox[1]))
     : undefined
@@ -88,7 +94,7 @@ export async function parsePdrFile(
   const dominantPktSize = mostCommonValue(sampleTable.sampleSizes)
   const hz100Size = dominantPktSize > 3500 ? 25 : 17
 
-  const adopBox = scanForBox(moovBuf, 'adop')
+  const adopBox = findMetaBox('adop')
   let refLocation: { lat: number; lon: number } | undefined
   let sessionInfo: SessionInfo | undefined
 
@@ -117,7 +123,7 @@ export async function parsePdrFile(
   }
 
   // Step 4c: Parse event definitions (adeg)
-  const adegBox = scanForBox(moovBuf, 'adeg')
+  const adegBox = findMetaBox('adeg')
   const eventDefs = adegBox
     ? parseAdeg(moovBuf.subarray(adegBox[2], adegBox[0] + adegBox[1]))
     : []

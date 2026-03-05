@@ -4,7 +4,7 @@
  */
 
 import { readBoxHeader, findAllBoxes } from './mp4-boxes'
-import { readUint16BE, readAscii, indexOf, readDoubleBE, dataViewFor } from '../shared/binary-reader'
+import { readUint16BE, readAscii, indexOf, dataViewFor } from '../shared/binary-reader'
 import type { TrackInfo, AdviInfo, AdopProps } from './types'
 
 /**
@@ -135,10 +135,18 @@ export function parseAdop(data: Uint8Array): AdopProps {
       props.properties.set(shortKey, readAscii(data, pos, valEnd))
       pos = valEnd + 1
     } else if (tag === 'dtim') {
-      // Fixed 25-byte ISO 8601 timestamp (YYYY-MM-DDTHH:MM:SS+HH:MM), not null-terminated
-      if (pos + 25 > data.length) break
-      props.properties.set(shortKey, readAscii(data, pos, pos + 25))
-      pos += 25
+      // ISO 8601 timestamp — try null-terminated first (handles variable-length TZ offsets like 'Z'),
+      // fall back to fixed 25-byte read (YYYY-MM-DDTHH:MM:SS+HH:MM)
+      const valEnd = indexOf(data, 0, pos)
+      if (valEnd !== -1 && valEnd - pos <= 30) {
+        props.properties.set(shortKey, readAscii(data, pos, valEnd))
+        pos = valEnd + 1
+      } else if (pos + 25 <= data.length) {
+        props.properties.set(shortKey, readAscii(data, pos, pos + 25))
+        pos += 25
+      } else {
+        break
+      }
     } else if (tag === 'vrsn') {
       // 6 bytes: u16 major + u16 minor + u16 patch
       if (pos + 6 > data.length) break
@@ -191,20 +199,8 @@ export function parseAdop(data: Uint8Array): AdopProps {
     }
   }
 
-  // Fallback: heuristic float64 search if structured parsing didn't find GPS
-  if (props.lat === undefined) {
-    for (let i = 0; i <= data.length - 16; i++) {
-      const val = readDoubleBE(data, i, dv)
-      if (Math.abs(val) > 1.0 && Math.abs(val) < 85.0) {
-        const val2 = readDoubleBE(data, i + 8, dv)
-        if (Math.abs(val2) > 1.0 && Math.abs(val2) < 180.0) {
-          props.lat = val
-          props.lon = val2
-          break
-        }
-      }
-    }
-  }
+  // If structured parsing didn't find GPS, caller derives refLocation from
+  // decoded telemetry GPS data (more reliable than heuristic binary scanning).
 
   return props
 }

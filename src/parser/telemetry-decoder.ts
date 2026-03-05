@@ -384,6 +384,7 @@ function avg100Hz(frames: Hz100Frame[]): {
   wsFl: number; wsFr: number; wsRl: number; wsRr: number; gyro: number
 } {
   const n = frames.length
+  if (n === 0) return { brake: 0, brakeRaw: 0, rpm: 0, torque: 0, steering: 0, wsFl: 0, wsFr: 0, wsRl: 0, wsRr: 0, gyro: 0 }
   let brake = 0, rpm = 0, torque = 0, steering = 0
   let wsFl = 0, wsFr = 0, wsRl = 0, wsRr = 0, gyro = 0
   for (const f of frames) {
@@ -406,6 +407,7 @@ function avg100Hz(frames: Hz100Frame[]): {
 
 function avg50Hz(frames: Hz50Frame[]): { lat: number; lon: number; vert: number } {
   const n = frames.length
+  if (n === 0) return { lat: 0, lon: 0, vert: 0 }
   let lat = 0, lon = 0, vert = 0
   for (const f of frames) {
     lat += f.accel_vehicle_x_g

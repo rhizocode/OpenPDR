@@ -88,9 +88,9 @@ function buildTrackLayout(
   let minLon = Infinity
   let maxLon = -Infinity
 
-  for (let i = 0; i < store.length; i++) {
+  const startIdx = findClosestIndex(store, lastLap.startTime)
+  for (let i = startIdx; i < store.length; i++) {
     const t = store.time[i]
-    if (t < lastLap.startTime) continue
     if (t > lastLap.endTime) break
     if (store.gps_fix_quality[i] < 1 || store.lat[i] === 0 || store.lon[i] === 0) continue
     const lat = store.lat[i]
