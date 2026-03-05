@@ -68,6 +68,15 @@ export function findBoxPath(buf: Uint8Array, path: string): BoxResult | null {
   return null
 }
 
+/** Check if 4 bytes at offset look like a valid MP4 box type (printable ASCII). */
+function looksLikeBoxType(buf: Uint8Array, offset: number): boolean {
+  for (let i = 0; i < 4; i++) {
+    const b = buf[offset + i]
+    if (b < 0x20 || b > 0x7e) return false
+  }
+  return true
+}
+
 /** Brute-force scan for a box by its 4-byte type tag anywhere in the buffer. */
 export function scanForBox(buf: Uint8Array, boxType: string, startOffset = 0): BoxResult | null {
   const tag = asciiBytes(boxType)
@@ -76,9 +85,14 @@ export function scanForBox(buf: Uint8Array, boxType: string, startOffset = 0): B
   while (true) {
     const idx = indexOf(buf, tag, pos)
     if (idx === -1 || idx < 4) return null
-    const size = readUint32BE(buf, idx - 4, dv)
-    if (size > 8 && size < 100000) {
-      return [idx - 4, size, idx + 4]
+    const boxStart = idx - 4
+    const size = readUint32BE(buf, boxStart, dv)
+    if (size > 8 && size < 100000 && boxStart + size <= buf.length) {
+      const nextBox = boxStart + size
+      // Accept if box reaches buffer end, or a plausible successor box follows
+      if (nextBox + 8 > buf.length || looksLikeBoxType(buf, nextBox + 4)) {
+        return [boxStart, size, idx + 4]
+      }
     }
     pos = idx + 4
   }

@@ -18,17 +18,6 @@ import type { EmbeddedEvent } from './types'
 const EVENT_RECORD_SIZE = 11
 const TICKS_PER_SECOND = 10_000_000
 
-/** Pre-built Map for O(1) event name lookups. Lazily built on first call. */
-let eventDefMap: Map<number, string> | null = null
-let eventDefSource: Array<{ eventId: number; name: string }> | null = null
-
-function getEventDefMap(eventDefs: Array<{ eventId: number; name: string }>): Map<number, string> {
-  if (eventDefMap && eventDefSource === eventDefs) return eventDefMap
-  eventDefMap = new Map(eventDefs.map(e => [e.eventId, e.name]))
-  eventDefSource = eventDefs
-  return eventDefMap
-}
-
 export function extractEvents(
   packet: Uint8Array,
   nominalSize: number,
@@ -39,7 +28,7 @@ export function extractEvents(
   const extra = packet.subarray(nominalSize)
   if (extra.length % EVENT_RECORD_SIZE !== 0) return []
 
-  const defMap = getEventDefMap(eventDefs)
+  const defMap = new Map(eventDefs.map(e => [e.eventId, e.name]))
   const events: EmbeddedEvent[] = []
   const numEvents = Math.floor(extra.length / EVENT_RECORD_SIZE)
   const dv = dataViewFor(extra)

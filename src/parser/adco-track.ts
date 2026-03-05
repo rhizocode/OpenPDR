@@ -215,10 +215,11 @@ export function parseAdop(data: Uint8Array): AdopProps {
  */
 export function parseAdeg(data: Uint8Array): Array<{ eventId: number; name: string }> {
   const events: Array<{ eventId: number; name: string }> = []
+  const dv = dataViewFor(data)
   let pos = 0
 
   while (pos < data.length - 2) {
-    const eventId = readUint16BE(data, pos)
+    const eventId = readUint16BE(data, pos, dv)
     pos += 2
     const end = indexOf(data, 0, pos)
     if (end === -1) break
