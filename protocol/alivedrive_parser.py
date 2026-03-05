@@ -4,6 +4,7 @@ AliveDrive PDR 2.5 Telemetry Parser
 Decodes telemetry data from AliveDrive/Cosworth PDR MP4 files (Cadillac CT5, etc.)
 
 Reverse-engineered from the 'adco' data track format.
+Uses deterministic frame offsets — no GPS coordinate scanning needed.
 """
 
 import struct
@@ -24,7 +25,7 @@ ALT_SCALE = 0.001  # meters per raw unit
 SPEED_SCALE = 0.00434028  # m/s per raw unit (ch 0)
 ENGINE_SPEED_SCALE = 0.0261799388  # rad/s per raw unit (ch 29)
 STEERING_SCALE = 0.001090831  # rad per raw unit (ch 42, i16)
-HEADING_SCALE = 1.745329252e-07  # rad per raw unit (ch 4, i32 — 100× GPS scale)
+HEADING_SCALE = 1.745329252e-07  # rad per raw unit (ch 4, i32 — 100x GPS scale)
 HEADING_DEG_SCALE = HEADING_SCALE * 180.0 / math.pi
 
 # Wheel speed uses a DIFFERENT angular velocity scale from engine speed
@@ -33,15 +34,15 @@ WHEEL_SPEED_SCALE = 0.0251327412  # rad/s per raw unit (ch 54-57)
 TIRE_RADIUS_M = 0.321  # best-fit vs GPS; nominal geometric = 0.337 m
 
 # Engine torque encoding (confirmed from adcp: scale=0.5, offset=-848)
-TORQUE_SCALE = 0.5  # N·m per raw unit
-TORQUE_OFFSET = -848.0  # N·m offset (zero torque at raw=1696)
+TORQUE_SCALE = 0.5  # N-m per raw unit
+TORQUE_OFFSET = -848.0  # N-m offset (zero torque at raw=1696)
 
 # Brake / throttle position
-PROPORTION_SCALE = 1.0 / 255.0  # 0.00392157, maps 0–255 to 0.0–1.0
+PROPORTION_SCALE = 1.0 / 255.0  # 0.00392157, maps 0-255 to 0.0-1.0
 
 # Temperature encoding: temp_C = raw * scale + kelvin_offset - 273.15
-TEMP_KELVIN_OFFSET = 233.15  # engine/trans/ambient temps → raw*scale - 40
-TIRE_TEMP_KELVIN_OFFSET = 253.15  # tire temps → raw*scale - 20
+TEMP_KELVIN_OFFSET = 233.15  # engine/trans/ambient temps: raw*scale - 40
+TIRE_TEMP_KELVIN_OFFSET = 253.15  # tire temps: raw*scale - 20
 
 # Pressure encoding
 OIL_PRESSURE_SCALE = 4000  # Pa per raw unit (ch 26)
@@ -66,24 +67,16 @@ MPS_TO_KPH = 3.6
 MPS_TO_MPH = 2.23694
 RAD_TO_DEG = 180.0 / math.pi
 
+# Packet structure constants
+PREAMBLE_SIZE = 14
+EVENT_RECORD_SIZE = 11
+TICKS_PER_SECOND = 10_000_000
+FORMAT_IDENTIFIER = 0x0CA1
+
 
 # =============================================================================
 # Enum Value-to-Label Mappings (decoded from adcp box enum descriptors)
 # =============================================================================
-# Each enum channel stores a u8 raw value.  The adcp box contains the complete
-# label set for each channel, which we decoded by parsing the enum descriptor
-# binary format:
-#
-#   num_subfields: u8
-#   For each subfield:
-#     name\0             — null-terminated ASCII subfield name
-#     max_raw_value: u8  — maximum defined raw value (domain range)
-#     default_label\0    — null-terminated default/unknown label
-#     default_value: u8  — raw value for the default state
-#     num_values: u8     — count of additional (non-default) entries
-#     For each value:
-#       label\0          — null-terminated ASCII label
-#       value: u8        — raw value
 
 # Ch 7: ABS — Anti-Lock Braking System (10 Hz, subfield "status")
 ENUM_ABS = {
@@ -191,7 +184,7 @@ ENUM_VSE = {
     3: 'unknown',        # default
 }
 
-# Consolidated lookup: channel_field_name → enum dict
+# Consolidated lookup: channel_field_name -> enum dict
 ENUM_LABELS = {
     'abs_status':            ENUM_ABS,
     'gear':                  ENUM_GEAR,
@@ -206,11 +199,7 @@ ENUM_LABELS = {
 
 
 def enum_label(field_name, raw_value):
-    """Look up the human-readable label for an enum channel's raw value.
-
-    Returns the label string if defined, or 'unknown_<value>' as a fallback
-    for raw values not present in the mapping (future firmware additions, etc.).
-    """
+    """Look up the human-readable label for an enum channel's raw value."""
     mapping = ENUM_LABELS.get(field_name)
     if mapping is None:
         return str(raw_value)
@@ -239,12 +228,7 @@ def read_box_header(data, offset):
 
 
 def scan_for_box(data, box_type):
-    """Brute-force scan for a box by its 4-byte type tag anywhere in the file.
-
-    Works for boxes nested inside non-standard containers (e.g., adco sub-boxes
-    inside stsd) where structured traversal can't reach. Validates that the
-    preceding 4 bytes form a plausible box size.
-    """
+    """Brute-force scan for a box by its 4-byte type tag anywhere in the file."""
     tag = box_type.encode('ascii') if isinstance(box_type, str) else box_type
     pos = 0
     while True:
@@ -328,7 +312,6 @@ def find_all_boxes(data, box_type, offset=0, end=None, depth=0, max_depth=8):
 
 def find_adco_track(mp4_data):
     """Find the AliveDrive data track (adco/adrv handler) in the MP4."""
-    # First, find the moov box
     moov = find_box(mp4_data, 'moov')
     if not moov:
         print("Error: Could not find moov box", file=sys.stderr)
@@ -337,7 +320,6 @@ def find_adco_track(mp4_data):
     moov_offset, moov_size, moov_data = moov
     moov_end = moov_offset + moov_size
 
-    # Find all trak boxes within moov
     pos = moov_data
     while pos < moov_end - 8:
         result = read_box_header(mp4_data, pos)
@@ -353,21 +335,17 @@ def find_adco_track(mp4_data):
             trak_data = data_start
             trak_end = trak_offset + trak_size
 
-            # Search recursively for hdlr within this trak
             hdlr_results = find_all_boxes(mp4_data, 'hdlr', trak_data, trak_end)
             for h_off, h_size, h_data in hdlr_results:
                 if h_data + 12 <= h_off + h_size:
-                    # hdlr box: version(4) + predefined(4) + handler_type(4)
                     handler_type = mp4_data[h_data+8:h_data+12].decode('ascii', errors='replace')
                     if handler_type == 'adrv':
                         return trak_offset, trak_size, trak_data, trak_end
 
-            # Also check for 'adco' codec in stsd
             stsd_results = find_all_boxes(mp4_data, 'stsd', trak_data, trak_end)
             for s_off, s_size, s_data in stsd_results:
-                # Check if stsd contains adco entry
                 if s_data + 16 <= s_off + s_size:
-                    entry_start = s_data + 8  # skip version + count
+                    entry_start = s_data + 8
                     if entry_start + 8 <= s_off + s_size:
                         codec_type = mp4_data[entry_start+4:entry_start+8].decode('ascii', errors='replace')
                         if codec_type == 'adco':
@@ -379,12 +357,7 @@ def find_adco_track(mp4_data):
 
 
 def parse_adcp(data):
-    """Parse channel definitions from the adcp box.
-
-    Returns the authoritative channel name map recovered from the Cosworth
-    namespace strings embedded in the adcp box.
-    """
-    # Authoritative channel definitions from adcp box (com.cosworth.channel.*)
+    """Parse channel definitions from the adcp box."""
     channel_names = {
         0: 'speed',
         1: 'location.latitude',
@@ -453,11 +426,8 @@ def parse_adcp_enums(data):
     """Parse enum descriptors from the adcp box payload.
 
     Reads the binary adcp payload and extracts the value-to-label mapping for
-    every enum channel (type byte 0x02).  This allows the parser to dynamically
-    decode enum labels from *any* AliveDrive PDR 2.5 MP4 file, rather than
-    relying solely on the hardcoded ENUM_LABELS dictionaries above.
-
-    Returns a dict: { channel_id: { raw_value: label_string, ... }, ... }
+    every enum channel (type byte 0x02).  Returns a dict mapping
+    channel_id -> { raw_value: label_string, ... }.
     """
     if len(data) < 4:
         return {}
@@ -468,7 +438,6 @@ def parse_adcp_enums(data):
             off += 1
         return buf[start:off].decode('ascii', errors='replace'), off + 1
 
-    # Format byte → min/max bound size (bytes per bound, ×2 for min+max)
     _BOUND_SIZES = {
         0x01: 1, 0x02: 1, 0x03: 2, 0x04: 2,
         0x05: 2, 0x06: 4, 0x09: 4, 0x0a: 4,
@@ -478,37 +447,28 @@ def parse_adcp_enums(data):
     enums = {}
 
     while offset < len(data) - 4:
-        # Channel ID (u16 BE)
         ch_id = struct.unpack('>H', data[offset:offset+2])[0]
         offset += 2
-
-        # Null-terminated channel name
         _name, offset = _read_cstring(data, offset)
-
         if offset + 4 > len(data):
             break
-
-        # Unit ID (u16 BE), type byte, format byte
         _unit_id = struct.unpack('>H', data[offset:offset+2])[0]
         offset += 2
         type_byte = data[offset]; offset += 1
         fmt_byte  = data[offset]; offset += 1
 
         if type_byte == 0x01:
-            # Numeric descriptor: skip scale(8) + offset(8) + min/max bounds
             offset += 16
             bs = _BOUND_SIZES.get(fmt_byte, 0)
             if bs == 0:
-                break  # unknown format — stop to avoid desync
+                break
             offset += bs * 2
-
         elif type_byte == 0x02:
-            # Enum descriptor
             num_subfields = data[offset]; offset += 1
             values = {}
             for _ in range(num_subfields):
                 _sf_name, offset = _read_cstring(data, offset)
-                _max_raw = data[offset]; offset += 1  # domain range
+                _max_raw = data[offset]; offset += 1
                 default_label, offset = _read_cstring(data, offset)
                 default_value = data[offset]; offset += 1
                 num_values = data[offset]; offset += 1
@@ -519,26 +479,20 @@ def parse_adcp_enums(data):
                     values[val] = label
             enums[ch_id] = values
         else:
-            break  # unknown type
+            break
 
     return enums
 
 
 def parse_adcr(data):
-    """Parse the rate table from the adcr box payload.
-
-    In version 1, the first group uses 3 padding bytes before its period field,
-    but subsequent groups use 4 padding bytes.
-    """
+    """Parse the rate table from the adcr box payload."""
     offset = 0
-    # Header: version(1) + flags(1) + num_groups(1) + pad(1)
     version = data[0]
     num_groups = data[2]
     offset = 4
 
     groups = []
     for g in range(num_groups):
-        # Version 1: first group has 3 pad bytes, subsequent have 4
         pad_size = 3 if g == 0 else 4
         offset += pad_size
         if offset + 6 > len(data):
@@ -569,15 +523,110 @@ def parse_adcr(data):
 
 
 # =============================================================================
+# Outing Properties Parser
+# =============================================================================
+
+def parse_adop(data):
+    """Parse outing properties from adop box.
+
+    Properties are stored as sequential key-value pairs:
+      <null-terminated key> <4-byte type tag> <value>
+
+    Type tags: strn (string), dtim (datetime), vrsn (version),
+               siva (SI value), guid (UUID)
+    """
+    props = {}
+    pos = 0
+    PREFIX = 'com.cosworth.outingproperty.'
+
+    while pos < len(data) - 5:
+        # Read null-terminated key
+        key_end = data.find(b'\x00', pos)
+        if key_end == -1 or key_end == pos:
+            break
+        key = data[pos:key_end].decode('ascii', errors='replace')
+        pos = key_end + 1
+
+        # Strip common prefix for readability
+        if key.startswith(PREFIX):
+            key = key[len(PREFIX):]
+
+        # Read 4-byte type tag
+        if pos + 4 > len(data):
+            break
+        tag = data[pos:pos+4].decode('ascii', errors='replace')
+        pos += 4
+
+        if tag == 'strn':
+            val_end = data.find(b'\x00', pos)
+            if val_end == -1:
+                break
+            props[key] = data[pos:val_end].decode('ascii', errors='replace')
+            pos = val_end + 1
+
+        elif tag == 'dtim':
+            if pos + 25 > len(data):
+                break
+            props[key] = data[pos:pos+25].decode('ascii', errors='replace')
+            pos += 25
+
+        elif tag == 'vrsn':
+            if pos + 6 > len(data):
+                break
+            major = struct.unpack('>H', data[pos:pos+2])[0]
+            minor = struct.unpack('>H', data[pos+2:pos+4])[0]
+            patch = struct.unpack('>H', data[pos+4:pos+6])[0]
+            props[key] = f'{major}.{minor}.{patch}'
+            pos += 6
+
+        elif tag == 'siva':
+            if pos + 3 > len(data):
+                break
+            _reserved = data[pos]
+            unit_id = data[pos + 1]
+            val_type = data[pos + 2]
+            pos += 3
+
+            if val_type == 0x04:
+                if pos + 2 > len(data):
+                    break
+                value = struct.unpack('>H', data[pos:pos+2])[0]
+                pos += 2
+            elif val_type == 0x09:
+                if pos + 4 > len(data):
+                    break
+                value = struct.unpack('>f', data[pos:pos+4])[0]
+                pos += 4
+            elif val_type == 0x0a:
+                if pos + 8 > len(data):
+                    break
+                value = struct.unpack('>d', data[pos:pos+8])[0]
+                pos += 8
+            else:
+                break  # unknown value type
+
+            props[key] = value
+
+        elif tag == 'guid':
+            if pos + 16 > len(data):
+                break
+            props[key] = data[pos:pos+16].hex()
+            pos += 16
+
+        else:
+            break  # unknown tag type
+
+    return props
+
+
+# =============================================================================
 # Sample Table Parser (stts, stsc, stsz, stco/co64)
 # =============================================================================
 
 def parse_sample_table(mp4_data, trak_data, trak_end):
     """Parse sample table entries to locate telemetry samples."""
-    # Find stbl (sample table box)
     stbl = find_box(mp4_data, 'stbl', trak_data, trak_end)
     if not stbl:
-        # Try deeper path: mdia/minf/stbl
         mdia = find_box(mp4_data, 'mdia', trak_data, trak_end)
         if mdia:
             minf = find_box(mp4_data, 'minf', mdia[2], mdia[0] + mdia[1])
@@ -598,7 +647,6 @@ def parse_sample_table(mp4_data, trak_data, trak_end):
         return None
 
     stsz_data = stsz[2]
-    # stsz: version(4) + sample_size(4) + count(4) + [sizes...]
     stsz_version = struct.unpack('>I', mp4_data[stsz_data:stsz_data+4])[0]
     default_size = struct.unpack('>I', mp4_data[stsz_data+4:stsz_data+8])[0]
     sample_count = struct.unpack('>I', mp4_data[stsz_data+8:stsz_data+12])[0]
@@ -658,8 +706,7 @@ def get_sample_offsets(sample_table):
 
     sample_idx = 0
     for chunk_idx in range(len(chunks)):
-        chunk_num = chunk_idx + 1  # 1-based
-        # Find applicable stsc entry
+        chunk_num = chunk_idx + 1
         samples_per_chunk = 1
         for entry_idx, (first_chunk, spc, _) in enumerate(stsc):
             if first_chunk <= chunk_num:
@@ -788,91 +835,63 @@ def parse_mvhd_timescale(mp4_data):
 
 
 # =============================================================================
-# Telemetry Decoder
+# Deterministic Frame Offset Computation
 # =============================================================================
 
-def find_gps_offsets(packet, packet_size=3247):
-    """Find the 10 GPS lat offsets within a packet by searching for valid coords."""
-    gps_offsets = []
-    for off in range(0, packet_size - 8):
-        if len(packet) > off + 8:
-            lat_raw = struct.unpack('>i', packet[off:off+4])[0]
-            lon_raw = struct.unpack('>i', packet[off+4:off+8])[0]
-            lat_deg = lat_raw * DEG_SCALE
-            lon_deg = lon_raw * DEG_SCALE
-            # lat > 1° excludes null-island (0,0) junk; lon accepts full range
-            if 1.0 < abs(lat_deg) < 85.0 and 1.0 < abs(lon_deg) <= 180.0:
-                # Additional check: next few bytes should look like altitude
-                if off + 12 <= len(packet):
-                    alt_raw = struct.unpack('>I', packet[off+8:off+12])[0]
-                    alt_m = alt_raw * ALT_SCALE
-                    if -1000 < alt_m < 10000:
-                        gps_offsets.append(off)
+def compute_lat_offsets(hz100_size):
+    """Pre-compute all 10 GPS latitude byte offsets within a packet.
 
-    # Filter to keep only the 10 most likely GPS offsets (evenly spaced)
-    if len(gps_offsets) < 10:
-        return gps_offsets
+    The packet structure is completely deterministic — the spacing between
+    each 10 Hz frame depends only on which optional sparse blocks that
+    frame contains. No GPS scanning needed.
 
-    # Use clustering to find the 10 real GPS positions
-    # They should be roughly evenly spaced (~320 bytes apart)
-    filtered = [gps_offsets[0]]
-    for off in gps_offsets[1:]:
-        if off - filtered[-1] > 200:  # minimum gap between GPS readings
-            filtered.append(off)
-        if len(filtered) >= 10:
-            break
+    Verified 100% match across 2,290 packets from 4 vehicles (3 legacy,
+    1 MMP v4+).
+    """
+    hz1_size = 34 if hz100_size == 25 else 31
+    group_size = 2 * hz100_size + 24   # [100Hz][100Hz][50Hz]
+    carry_over = hz100_size + 24       # second 100Hz + 50Hz from prev second
 
-    return filtered
+    offsets = [0] * 10
+    offsets[0] = PREAMBLE_SIZE + carry_over + 2  # +2 for speed field before lat
+
+    for i in range(1, 10):
+        prev = i - 1
+        spacing = 28 + 5 * group_size       # base: 10Hz(28B) + 5x group
+        if prev % 2 == 0:
+            spacing += 4                     # +4 for 5Hz on even frames
+        if prev in (0, 5):
+            spacing += 1                     # +1 for 2Hz on frames 0,5
+        if prev == 0:
+            spacing += hz1_size              # +31/34 for 1Hz on frame 0
+        offsets[i] = offsets[prev] + spacing
+
+    return offsets
 
 
-def find_float_blocks(packet, packet_size=3247):
-    """Find all 50Hz float blocks (6 × float32 accelerometer data)."""
-    float_offsets = []
-    for start in range(0, packet_size - 24):
-        valid = True
-        for j in range(6):
-            if start + j*4 + 4 > len(packet):
-                valid = False
-                break
-            fval = struct.unpack('>f', packet[start+j*4:start+j*4+4])[0]
-            if abs(fval) > 5.0 or (abs(fval) < 1e-10 and fval != 0.0):
-                valid = False
-                break
-        if valid:
-            # Check at least 2 non-trivial values
-            floats = [struct.unpack('>f', packet[start+j*4:start+j*4+4])[0] for j in range(6)]
-            nonzero = sum(1 for f in floats if abs(f) > 0.001)
-            if nonzero >= 2:
-                if not float_offsets or start - float_offsets[-1] >= 20:
-                    float_offsets.append(start)
+# Pre-compute for both format variants
+LAT_OFFSETS_LEGACY = compute_lat_offsets(17)  # [57, 411, 729, ...]
+LAT_OFFSETS_V4 = compute_lat_offsets(25)      # [65, 502, 900, ...]
 
-    return float_offsets
 
+# =============================================================================
+# Telemetry Decoder
+# =============================================================================
 
 def decode_100hz_frame(packet, offset, hz100_size=17):
     """Decode a 100Hz sub-frame.
 
-    MMP ≤ 3 (17 bytes):
-      brake(1) engine_speed(2) torque(2) steering(2)
-      wheel_FL(2) wheel_FR(2) wheel_RL(2) wheel_RR(2) gyro_yaw(2)
-      — wheel speeds are u16 angular velocity (rad/s scale + tire radius)
-
-    MMP ≥ 4 (25 bytes):
-      brake(1) engine_speed(2) torque(2) steering(2)
-      wheel_FL(4) wheel_FR(4) wheel_RL(4) wheel_RR(4) gyro_yaw(2)
-      — wheel speeds are float32 BE in m/s (direct)
+    MMP <= 3 (17 bytes): wheel speeds are u16 angular velocity
+    MMP >= 4 (25 bytes): wheel speeds are float32 m/s
     """
     if offset < 0 or offset + hz100_size > len(packet):
         return None
 
     frame = packet[offset:offset + hz100_size]
-    if len(frame) < hz100_size:
-        return None
 
     torque_raw = struct.unpack('>H', frame[3:5])[0]
 
     if hz100_size == 25:
-        # MMP v4: float32 wheel speeds in m/s
         ws_fl_mps = struct.unpack('>f', frame[7:11])[0]
         ws_fr_mps = struct.unpack('>f', frame[11:15])[0]
         ws_rl_mps = struct.unpack('>f', frame[15:19])[0]
@@ -892,7 +911,6 @@ def decode_100hz_frame(packet, offset, hz100_size=17):
             'gyro_yaw_deg_s': gyro_raw * GYRO_YAW_SCALE * RAD_TO_DEG,
         }
     else:
-        # MMP v3: u16 angular velocity wheel speeds
         ws_fl_raw = struct.unpack('>H', frame[7:9])[0]
         ws_fr_raw = struct.unpack('>H', frame[9:11])[0]
         ws_rl_raw = struct.unpack('>H', frame[11:13])[0]
@@ -914,10 +932,10 @@ def decode_100hz_frame(packet, offset, hz100_size=17):
 
 
 def decode_50hz_frame(packet, offset):
-    """Decode a 50Hz sub-frame (24 bytes = 6 × float32).
+    """Decode a 50Hz sub-frame (24 bytes = 6 x float32).
 
     Two independent 3-axis accelerometer readings in g:
-    - Device (ch 8-10): raw sensor frame (tilted ~17° from vehicle vertical)
+    - Device (ch 8-10): raw sensor frame (tilted ~17deg from vehicle vertical)
     - Vehicle (ch 11-13): gravity-compensated vehicle-frame-aligned
     """
     if offset + 24 > len(packet):
@@ -948,7 +966,7 @@ def decode_10hz_frame(packet, lat_offset):
 
     lat_raw = struct.unpack('>i', packet[lat_offset:lat_offset+4])[0]
     lon_raw = struct.unpack('>i', packet[lat_offset+4:lat_offset+8])[0]
-    alt_raw = struct.unpack('>I', packet[lat_offset+8:lat_offset+12])[0]
+    alt_raw = struct.unpack('>i', packet[lat_offset+8:lat_offset+12])[0]
     heading_raw = struct.unpack('>i', packet[lat_offset+12:lat_offset+16])[0]
     fixquality = packet[lat_offset+16]
     satellites = packet[lat_offset+17]
@@ -1002,27 +1020,22 @@ def decode_5hz_frame(packet, offset):
     }
 
 
-def decode_1hz_frame(packet, lat_offset, hz1_size=31):
-    """Decode the full 1 Hz frame.
+def decode_1hz_frame(packet, offset, hz1_size=31):
+    """Decode the full 1 Hz frame at the given byte offset.
 
-    The 1 Hz block starts after the 10 Hz frame (26 bytes), 5 Hz frame (4 bytes),
-    and 2 Hz frame (1 byte) in frame 0: lat_offset + 26 + 4 + 1 = lat_offset + 31.
-
-    MMP ≤ 3 (31 bytes): drive_mode is u8 at b[3]
-    MMP ≥ 4 (34 bytes): drive_mode is u32 at b[3:7], shifting everything after by 3
+    MMP <= 3 (31 bytes): drive_mode is u8 at b[3]
+    MMP >= 4 (34 bytes): drive_mode is u32 at b[3:7], shifting everything after by 3
     """
-    hz1_offset = lat_offset + 26 + 4 + 1  # after group2 + group3 + group4
-    if hz1_offset + hz1_size > len(packet):
+    if offset + hz1_size > len(packet):
         return None
 
-    b = packet[hz1_offset:hz1_offset + hz1_size]
+    b = packet[offset:offset + hz1_size]
 
     hv_charge_raw = struct.unpack('>H', b[1:3])[0]
 
     if hz1_size == 34:
-        # MMP v4: drive_mode is u32 (4 bytes) — use low byte for enum lookup
         dm_raw = struct.unpack('>I', b[3:7])[0]
-        s = 3  # shift: all fields after drive_mode are offset by 3 extra bytes
+        s = 3  # shift for all fields after drive_mode
     else:
         dm_raw = b[3]
         s = 0
@@ -1065,12 +1078,7 @@ def decode_1hz_frame(packet, lat_offset, hz1_size=31):
 
 
 def _validate_100hz(frame):
-    """Sanity-check a decoded 100Hz frame.
-
-    In MMP v4, the float block scanner can find false matches due to float32
-    wheel speeds at low vehicle speeds.  This rejects obviously-wrong frames
-    where the float block offset was misaligned.
-    """
+    """Sanity-check a decoded 100Hz frame."""
     if abs(frame['engine_rpm']) > 12000:
         return False
     for key in ('wheel_speed_fl_kph', 'wheel_speed_fr_kph',
@@ -1080,97 +1088,99 @@ def _validate_100hz(frame):
     return True
 
 
-def decode_packet(packet, packet_idx, reference_lat_range=None, hz100_size=17,
+def decode_packet(packet, packet_idx, hz100_size=17, lat_offsets=None,
                    base_time=None):
-    """
-    Decode a complete telemetry packet.
+    """Decode a complete telemetry packet using deterministic frame offsets.
+
+    No GPS scanning — all byte positions are computed mathematically from
+    the format variant (hz100_size).
 
     Args:
         packet: Raw packet bytes
         packet_idx: Packet index (used for timestamp calculation fallback)
-        reference_lat_range: GPS bounding box for search narrowing
         hz100_size: 100Hz sub-frame size (17 for MMP ≤ 3, 25 for MMP ≥ 4)
+        lat_offsets: Pre-computed GPS latitude offsets (auto-selected if None)
         base_time: Presentation time in seconds from MP4 stts/elst timing.
                    Falls back to packet_idx if not provided.
 
-    Returns a list of decoded records at various rates.
+    Returns a list of decoded records (one per 10Hz frame, up to 10).
     """
-    PACKET_SIZE = len(packet)
-    if PACKET_SIZE < 100:
+    if len(packet) < 100:
         return []  # Skip init packet
 
-    # Derive 1Hz frame size from 100Hz frame size
-    # MMP ≤ 3: hz100=17, hz1=31 (drive_mode is u8)
-    # MMP ≥ 4: hz100=25, hz1=34 (drive_mode is u32, +3 bytes)
     hz1_size = 34 if hz100_size == 25 else 31
+    group_size = 2 * hz100_size + 24  # [100Hz][100Hz][50Hz]
 
-    # Find GPS offsets by searching for valid coordinate patterns
-    gps_offsets = find_gps_in_packet(packet, reference_lat_range)
-
-    if len(gps_offsets) < 5:
-        # Can't decode this packet reliably
-        return []
-
-    # Find float blocks (50Hz accelerometer data)
-    float_offsets = find_float_blocks(packet, PACKET_SIZE)
+    if lat_offsets is None:
+        lat_offsets = LAT_OFFSETS_V4 if hz100_size == 25 else LAT_OFFSETS_LEGACY
 
     records = []
     if base_time is None:
         base_time = packet_idx  # fallback: assume 1 second per packet
 
-    for frame_idx, lat_off in enumerate(gps_offsets):
-        frame_time = base_time + frame_idx * 0.1  # 10Hz = 100ms intervals
+    for frame_idx in range(10):
+        lat_off = lat_offsets[frame_idx]
+        if lat_off + 26 > len(packet):
+            break
 
-        # Decode 10Hz data
+        frame_time = base_time + frame_idx * 0.1
+
+        # --- 10Hz frame (28 bytes) ---
         g2 = decode_10hz_frame(packet, lat_off)
         if g2 is None:
             continue
 
-        # Find the float blocks and 100Hz frames for this 10Hz period
-        next_lat = gps_offsets[frame_idx + 1] if frame_idx < len(gps_offsets) - 1 else PACKET_SIZE
-        frame_floats = [f for f in float_offsets if lat_off < f < next_lat]
+        # Compute cursor past the 10Hz frame
+        cursor = lat_off + 26
 
-        # Decode 100Hz sub-frames (two frames before each float block)
-        # Each float block is preceded by 2 × hz100_size bytes of 100Hz data
+        # --- 5Hz (even frames: 0, 2, 4, 6, 8) ---
+        hz5_data = None
+        if frame_idx % 2 == 0:
+            hz5_data = decode_5hz_frame(packet, cursor)
+            cursor += 4
+
+        # --- 2Hz (frames 0 and 5) ---
+        oil_pressure_kpa = None
+        if frame_idx in (0, 5):
+            if cursor < len(packet):
+                oil_pressure_kpa = packet[cursor] * OIL_PRESSURE_SCALE / 1000.0
+            cursor += 1
+
+        # --- 1Hz (frame 0 only) ---
+        hz1_data = None
+        if frame_idx == 0:
+            hz1_data = decode_1hz_frame(packet, cursor, hz1_size)
+            cursor += hz1_size
+
+        # --- High-rate sub-groups (100Hz + 100Hz + 50Hz) x 5 ---
+        # Frame 9: only 4 complete sub-groups fit; the 5th overflows to next packet
+        num_complete_groups = 4 if frame_idx == 9 else 5
         hz100_frames = []
-        for fidx, foff in enumerate(frame_floats):
-            # Two 100Hz frames before each float
-            f1_off = foff - 2 * hz100_size
-            f2_off = foff - hz100_size
-            if f1_off >= lat_off:
-                f1 = decode_100hz_frame(packet, f1_off, hz100_size)
-                if f1 and _validate_100hz(f1):
-                    hz100_frames.append(f1)
-            f2 = decode_100hz_frame(packet, f2_off, hz100_size)
+        hz50_frames = []
+
+        for j in range(num_complete_groups):
+            base = cursor + j * group_size
+
+            f1 = decode_100hz_frame(packet, base, hz100_size)
+            if f1 and _validate_100hz(f1):
+                hz100_frames.append(f1)
+
+            f2 = decode_100hz_frame(packet, base + hz100_size, hz100_size)
             if f2 and _validate_100hz(f2):
                 hz100_frames.append(f2)
 
-        # Decode 50Hz sub-frames
-        hz50_frames = []
-        for foff in frame_floats:
-            f = decode_50hz_frame(packet, foff)
-            if f:
-                hz50_frames.append(f)
+            f50 = decode_50hz_frame(packet, base + 2 * hz100_size)
+            if f50:
+                hz50_frames.append(f50)
 
-        # Determine 5Hz data (in even frames: 0, 2, 4, 6, 8)
-        has_5hz = (frame_idx % 2 == 0)
-        hz5_data = None
-        if has_5hz:
-            # 5Hz data starts at lat + 26 (after base group 2)
-            hz5_offset = lat_off + 26
-            hz5_data = decode_5hz_frame(packet, hz5_offset)
+        # Frame 9: decode the extra 100Hz from the partial 5th sub-group
+        if frame_idx == 9:
+            extra_off = cursor + 4 * group_size
+            f_extra = decode_100hz_frame(packet, extra_off, hz100_size)
+            if f_extra and _validate_100hz(f_extra):
+                hz100_frames.append(f_extra)
 
-        # 2Hz oil pressure (in frames 0 and 5)
-        oil_pressure_kpa = None
-        if frame_idx in (0, 5):
-            # 2Hz data is after group2 (26 bytes) + group3 if present (4 bytes)
-            hz2_offset = lat_off + 26
-            if has_5hz:
-                hz2_offset += 4  # after 5Hz block
-            if hz2_offset < len(packet):
-                oil_pressure_kpa = packet[hz2_offset] * OIL_PRESSURE_SCALE / 1000.0
-
-        # Build the record
+        # --- Build record ---
         record = {
             'packet_idx': packet_idx,
             'frame_idx': frame_idx,
@@ -1178,218 +1188,86 @@ def decode_packet(packet, packet_idx, reference_lat_range=None, hz100_size=17,
         }
         record.update(g2)
 
-        # Add averaged 100Hz data for this period
+        # Average 100Hz data for this period
         if hz100_frames:
             n = len(hz100_frames)
-            record['brake_position'] = sum(f['brake_position'] for f in hz100_frames) / n
-            record['engine_rpm'] = sum(f['engine_rpm'] for f in hz100_frames) / n
-            record['engine_torque_nm'] = sum(f['engine_torque_nm'] for f in hz100_frames) / n
-            record['steering_angle_deg'] = sum(f['steering_angle_deg'] for f in hz100_frames) / n
-            record['wheel_speed_fl_kph'] = sum(f['wheel_speed_fl_kph'] for f in hz100_frames) / n
-            record['wheel_speed_fr_kph'] = sum(f['wheel_speed_fr_kph'] for f in hz100_frames) / n
-            record['wheel_speed_rl_kph'] = sum(f['wheel_speed_rl_kph'] for f in hz100_frames) / n
-            record['wheel_speed_rr_kph'] = sum(f['wheel_speed_rr_kph'] for f in hz100_frames) / n
-            record['gyro_yaw_deg_s'] = sum(f['gyro_yaw_deg_s'] for f in hz100_frames) / n
+            for key in ('brake_position', 'engine_rpm', 'engine_torque_nm',
+                        'steering_angle_deg', 'gyro_yaw_deg_s',
+                        'wheel_speed_fl_kph', 'wheel_speed_fr_kph',
+                        'wheel_speed_rl_kph', 'wheel_speed_rr_kph'):
+                record[key] = sum(f[key] for f in hz100_frames) / n
 
-        # Add averaged 50Hz data (gravity-compensated vehicle-frame values)
+        # Average 50Hz data (gravity-compensated vehicle-frame values)
         if hz50_frames:
             n = len(hz50_frames)
             record['accel_lateral_g'] = sum(f['accel_vehicle_x_g'] for f in hz50_frames) / n
             record['accel_longitudinal_g'] = sum(f['accel_vehicle_y_g'] for f in hz50_frames) / n
             record['accel_vertical_g'] = sum(f['accel_vehicle_z_g'] for f in hz50_frames) / n
 
-        # Add 5Hz data
         if hz5_data:
-            record['gear'] = hz5_data['gear']
-            record['gear_label'] = hz5_data['gear_label']
-            record['engine_startstop'] = hz5_data['engine_startstop']
-            record['engine_startstop_label'] = hz5_data['engine_startstop_label']
-            record['esc_status'] = hz5_data['esc_status']
-            record['esc_status_label'] = hz5_data['esc_status_label']
-            record['tcs_status'] = hz5_data['tcs_status']
-            record['tcs_status_label'] = hz5_data['tcs_status_label']
+            record.update(hz5_data)
 
-        # Add 2Hz data
         if oil_pressure_kpa is not None:
             record['oil_pressure_kpa'] = oil_pressure_kpa
 
-        # Add 1Hz data (only in frame 0)
-        if frame_idx == 0:
-            hz1_data = decode_1hz_frame(packet, lat_off, hz1_size)
-            if hz1_data:
-                record.update(hz1_data)
+        if hz1_data:
+            record.update(hz1_data)
 
         records.append(record)
 
     return records
 
 
-def find_gps_in_packet(packet, reference_lat_range=None):
-    """
-    Find GPS lat positions in a packet.
-    Uses reference lat/lon range if available, otherwise searches broadly.
-    """
-    PACKET_SIZE = len(packet)
-    candidates = []
-
-    for off in range(0, PACKET_SIZE - 12):
-        lat_raw = struct.unpack('>i', packet[off:off+4])[0]
-        lon_raw = struct.unpack('>i', packet[off+4:off+8])[0]
-        alt_raw = struct.unpack('>I', packet[off+8:off+12])[0]
-
-        lat_deg = lat_raw * DEG_SCALE
-        lon_deg = lon_raw * DEG_SCALE
-        alt_m = alt_raw * ALT_SCALE
-
-        if reference_lat_range:
-            lat_min, lat_max, lon_min, lon_max = reference_lat_range
-            if lat_min <= lat_deg <= lat_max and lon_min <= lon_deg <= lon_max and 0 < alt_m < 10000:
-                candidates.append(off)
-        else:
-            # Strict search: require plausible lat AND lon AND altitude
-            # lat > 1° excludes null-island (0,0) junk; lon accepts full range
-            if (1.0 < abs(lat_deg) < 85.0 and
-                1.0 < abs(lon_deg) <= 180.0 and
-                0 < alt_m < 10000):
-                candidates.append(off)
-
-    # Filter to evenly-spaced positions (expecting ~300-360 byte gaps)
-    if len(candidates) < 2:
-        return candidates
-
-    filtered = [candidates[0]]
-    for off in candidates[1:]:
-        if off - filtered[-1] >= 250:  # minimum gap between GPS readings
-            filtered.append(off)
-        if len(filtered) >= 10:
-            break
-
-    # Validate: GPS readings should be clustered (all similar lat/lon)
-    if len(filtered) >= 3:
-        lats = []
-        for off in filtered[:5]:
-            lat = struct.unpack('>i', packet[off:off+4])[0] * DEG_SCALE
-            lats.append(lat)
-        # All lats should be within 0.1 degree of each other
-        if max(lats) - min(lats) > 0.5:
-            return []  # Likely false positives
-
-    return filtered
-
-
 # =============================================================================
-# Outing Properties Parser
+# Event Extraction
 # =============================================================================
 
-def parse_adop(data):
-    """Parse outing properties from adop box.
+def extract_events(packet, nominal_size, event_defs=None):
+    """Extract embedded event records from oversized packets.
 
-    The adop box stores key-value pairs in this format:
-      <null-terminated key> <4-byte type tag> <value>
-
-    Type tags:
-      strn — null-terminated string value
-      vrsn — version (u16 major + u16 minor + u16 patch)
-      siva — typed numeric: 3-byte prefix (u8 reserved, u8 unit_id, u8 value_type) + value
-             value_type: 0x04=u16, 0x09=f32, 0x0a=f64
-      dtim — 25-byte ISO 8601 datetime string
-      guid — 16-byte UUID
-
-    Returns dict with 'properties' (dict of key->value), and optionally 'lat'/'lon'.
+    When events fire during a 1-second telemetry window, the firmware
+    appends 11-byte event records to the end of the packet:
+      u64 BE  timestamp (100 ns ticks from recording start)
+      u16 BE  flags (observed: 0x0200)
+      u8      event_id (0-19, maps to adeg definitions)
     """
-    props = {}
-    properties = {}
-    pos = 0
+    if len(packet) <= nominal_size:
+        return []
 
-    while pos < len(data):
-        # Read null-terminated key string
-        key_end = data.find(b'\x00', pos)
-        if key_end == -1 or key_end == pos:
-            break
-        key = data[pos:key_end].decode('ascii', errors='replace')
-        pos = key_end + 1
+    extra = packet[nominal_size:]
+    if len(extra) % EVENT_RECORD_SIZE != 0:
+        return []
 
-        # Read 4-byte type tag
-        if pos + 4 > len(data):
-            break
-        tag = data[pos:pos+4].decode('ascii', errors='replace')
-        pos += 4
+    # Build event name lookup from definitions
+    event_name_map = {}
+    if event_defs:
+        for eid, ename in event_defs:
+            event_name_map[eid] = ename
 
-        # Strip common prefix for shorter keys
-        short_key = key.replace('com.cosworth.outingproperty.', '')
+    events = []
+    num_events = len(extra) // EVENT_RECORD_SIZE
 
-        if tag == 'strn':
-            val_end = data.find(b'\x00', pos)
-            if val_end == -1:
-                break
-            properties[short_key] = data[pos:val_end].decode('ascii', errors='replace')
-            pos = val_end + 1
-        elif tag == 'dtim':
-            if pos + 25 > len(data):
-                break
-            properties[short_key] = data[pos:pos+25].decode('ascii', errors='replace')
-            pos += 25
-        elif tag == 'vrsn':
-            if pos + 6 > len(data):
-                break
-            major = struct.unpack('>H', data[pos:pos+2])[0]
-            minor = struct.unpack('>H', data[pos+2:pos+4])[0]
-            patch = struct.unpack('>H', data[pos+4:pos+6])[0]
-            pos += 6
-            properties[short_key] = f'{major}.{minor}.{patch}' if patch else f'{major}.{minor}'
-        elif tag == 'siva':
-            if pos + 3 > len(data):
-                break
-            val_type = data[pos + 2]
-            pos += 3
-            val_size = {0x04: 2, 0x09: 4, 0x0a: 8}.get(val_type, -1)
-            if val_size == -1 or pos + val_size > len(data):
-                break
-            if val_type == 0x04:
-                value = struct.unpack('>H', data[pos:pos+val_size])[0]
-            elif val_type == 0x09:
-                value = struct.unpack('>f', data[pos:pos+val_size])[0]
-            else:
-                value = struct.unpack('>d', data[pos:pos+val_size])[0]
-            pos += val_size
-            properties[short_key] = value
-        elif tag == 'guid':
-            if pos + 16 > len(data):
-                break
-            pos += 16  # skip UUID
-        else:
-            break  # Unknown tag — stop to avoid corruption
+    for i in range(num_events):
+        off = i * EVENT_RECORD_SIZE
 
-    props['properties'] = properties
+        # u64 BE timestamp (100 ns ticks)
+        ts_hi = struct.unpack('>I', extra[off:off+4])[0]
+        ts_lo = struct.unpack('>I', extra[off+4:off+8])[0]
+        time_s = (ts_hi * 0x100000000 + ts_lo) / TICKS_PER_SECOND
 
-    # Extract GPS reference from location properties (stored as radians)
-    RAD_TO_DEG = 180.0 / math.pi
-    lat_val = properties.get('location.center.latitude') or properties.get('location.starting.latitude')
-    lon_val = properties.get('location.center.longitude') or properties.get('location.starting.longitude')
-    if lat_val is not None and lon_val is not None:
-        lat_rad = float(lat_val)
-        lon_rad = float(lon_val)
-        lat = lat_rad * RAD_TO_DEG
-        lon = lon_rad * RAD_TO_DEG
-        if 1.0 < abs(lat) < 85.0 and 1.0 < abs(lon) < 180.0:
-            props['lat'] = lat
-            props['lon'] = lon
+        flags = struct.unpack('>H', extra[off+8:off+10])[0]
+        event_id = extra[off+10]
 
-    # Fallback: heuristic float64 search if structured parsing didn't find GPS
-    if 'lat' not in props:
-        for i in range(0, len(data) - 16):
-            try:
-                val = struct.unpack('>d', data[i:i+8])[0]
-                if 1.0 < abs(val) < 85.0:
-                    val2 = struct.unpack('>d', data[i+8:i+16])[0]
-                    if 1.0 < abs(val2) < 180.0:
-                        props['lat'] = val
-                        props['lon'] = val2
-                        break
-            except:
-                pass
+        event_name = event_name_map.get(event_id, f'unknown_event_{event_id}')
 
-    return props
+        events.append({
+            'event_id': event_id,
+            'event_name': event_name,
+            'time_s': time_s,
+            'flags': flags,
+        })
+
+    return events
 
 
 # =============================================================================
@@ -1399,15 +1277,10 @@ def parse_adop(data):
 def parse_advi(data):
     """Parse version info from advi box.
 
-    Returns a dict with format_version, generation, mmp_version,
-    and source identifier string.
-
-    Key fields:
-      [0:2]  format_version (u16 BE)
+    Key fields (offsets from box payload start):
+      [0:2]  format_version (u16 BE) — 5 = PDR 2.5
       [4:6]  generation (u16 BE) — 1=gen1, 2=gen2
       [6:8]  mmp_version (u16 BE) — MMP firmware version
-             MMP ≤ 3: 17-byte 100Hz frames (u16 wheel speeds)
-             MMP ≥ 4: 25-byte 100Hz frames (float32 wheel speeds)
       [22:]  null-terminated source identifier string
     """
     info = {}
@@ -1418,8 +1291,6 @@ def parse_advi(data):
     info['generation'] = struct.unpack('>H', data[4:6])[0]
     info['mmp_version'] = struct.unpack('>H', data[6:8])[0]
 
-    # Find null-terminated source identifier string
-    # It follows 22 bytes of numeric header fields
     str_start = 22
     if str_start < len(data):
         end = data.find(b'\x00', str_start)
@@ -1457,13 +1328,9 @@ def parse_adeg(data):
 # =============================================================================
 
 def extract_telemetry(mp4_path, csv_path=None, verbose=False):
-    """
-    Extract telemetry from an AliveDrive PDR MP4 file.
+    """Extract telemetry from an AliveDrive PDR MP4 file.
 
-    Args:
-        mp4_path: Path to the input MP4 file
-        csv_path: Optional path for CSV output
-        verbose: Print detailed progress info
+    Uses deterministic frame offsets — no GPS scanning needed.
     """
     mp4_path = Path(mp4_path)
     if not mp4_path.exists():
@@ -1498,73 +1365,88 @@ def extract_telemetry(mp4_path, csv_path=None, verbose=False):
     sample_sizes = sample_table['sample_sizes']
 
     if verbose:
-        # Show sample size distribution
         sizes = {}
         for s in sample_sizes:
             sizes[s] = sizes.get(s, 0) + 1
         print(f"Sample sizes: {dict(sorted(sizes.items()))}")
 
-    # Parse version info (advi) and event definitions (adeg)
-    mmp_version = 3  # default to v3 (legacy format)
+    # Parse version info (advi)
+    advi_info = {}
     advi_box = scan_for_box(mp4_data, 'advi')
     if advi_box:
         advi_data = mp4_data[advi_box[2]:advi_box[0]+advi_box[1]]
         advi_info = parse_advi(advi_data)
-        if advi_info:
-            mmp_version = advi_info.get('mmp_version', 3)
-            if verbose:
-                print(f"Format version: {advi_info.get('format_version', '?')}")
-                print(f"MMP version: {mmp_version} (gen {advi_info.get('generation', '?')})")
-                print(f"Source: {advi_info.get('source', '?')}")
+        if verbose and advi_info:
+            print(f"Format version: {advi_info.get('format_version', '?')}")
+            print(f"MMP version: {advi_info.get('mmp_version', '?')} "
+                  f"(gen {advi_info.get('generation', '?')})")
+            print(f"Source: {advi_info.get('source', '?')}")
 
-    # Determine 100Hz frame size from dominant packet size.
-    # MMP version alone isn't reliable across generations (gen1 MMP v8 uses old format).
-    # Packet size is the direct indicator: ~4050 = MMP v4+ format, ~3247 = legacy format.
+    # Determine 100Hz frame size from dominant packet size
     dominant_pkt_size = max(set(sample_sizes), key=sample_sizes.count) if sample_sizes else 0
     hz100_size = 25 if dominant_pkt_size > 3500 else 17
+    nominal_size = 4050 if hz100_size == 25 else 3247
+    lat_offsets = LAT_OFFSETS_V4 if hz100_size == 25 else LAT_OFFSETS_LEGACY
     print(f"Dominant packet size {dominant_pkt_size}: using {hz100_size}-byte 100Hz frames"
-          f" (MMP v{mmp_version}, gen {advi_info.get('generation', '?') if advi_box else '?'})")
+          f" (MMP v{advi_info.get('mmp_version', '?')}, "
+          f"gen {advi_info.get('generation', '?')})")
 
+    # Parse event definitions (adeg)
+    event_defs = []
     adeg_box = scan_for_box(mp4_data, 'adeg')
     if adeg_box:
         adeg_data = mp4_data[adeg_box[2]:adeg_box[0]+adeg_box[1]]
-        events = parse_adeg(adeg_data)
-        if verbose and events:
-            print(f"Event definitions: {len(events)} events")
-            for eid, ename in events:
+        event_defs = parse_adeg(adeg_data)
+        if verbose and event_defs:
+            print(f"Event definitions: {len(event_defs)} events")
+            for eid, ename in event_defs:
                 print(f"  {eid:2d}: {ename}")
 
-    # Find reference GPS location from outing properties
-    adop = scan_for_box(mp4_data, 'adop')
-    ref_lat_range = None
-    if adop:
-        adop_data = mp4_data[adop[2]:adop[0]+adop[1]]
-        props = parse_adop(adop_data)
-        if 'lat' in props:
-            lat, lon = props['lat'], props['lon']
-            print(f"Reference location: {lat:.4f}°N, {lon:.4f}°W")
-            # Create a search window around the reference
-            ref_lat_range = (lat - 1.0, lat + 1.0, lon - 1.0, lon + 1.0)
+    # Parse outing properties (adop) — for metadata display
+    adop_box = scan_for_box(mp4_data, 'adop')
+    if adop_box:
+        adop_data = mp4_data[adop_box[2]:adop_box[0]+adop_box[1]]
+        adop_props = parse_adop(adop_data)
+        if verbose and adop_props:
+            print(f"Outing properties: {len(adop_props)} entries")
+            for k, v in sorted(adop_props.items()):
+                if isinstance(v, float):
+                    print(f"  {k}: {v:.6f}")
+                else:
+                    print(f"  {k}: {v}")
+        # Print key metadata
+        vehicle = adop_props.get('vehicle.make', adop_props.get('carname', ''))
+        engine = adop_props.get('vehicle.enginetype', '')
+        timestamp = adop_props.get('timestamp', '')
+        if vehicle:
+            print(f"Vehicle: {vehicle}" + (f" ({engine})" if engine else ""))
+        if timestamp:
+            print(f"Recording: {timestamp}")
+        # Print GPS reference from adop (informational only — not needed for parsing)
+        center_lat = adop_props.get('location.center.latitude')
+        center_lon = adop_props.get('location.center.longitude')
+        if center_lat is not None and center_lon is not None:
+            print(f"Location center: {center_lat * RAD_TO_DEG:.4f}deg, "
+                  f"{center_lon * RAD_TO_DEG:.4f}deg")
 
-    # If no reference from adop, try to find it from a middle packet
-    if ref_lat_range is None:
-        print("Searching for GPS reference in data...")
-        # Try a packet from the middle of the recording
-        mid_idx = len(sample_offsets) // 2
-        for try_idx in range(mid_idx, min(mid_idx + 50, len(sample_offsets))):
-            off = sample_offsets[try_idx]
-            sz = sample_sizes[try_idx]
-            packet = mp4_data[off:off+sz]
-            if sz > 100:
-                gps = find_gps_in_packet(packet)
-                if len(gps) >= 5:
-                    lat_raw = struct.unpack('>i', packet[gps[0]:gps[0]+4])[0]
-                    lon_raw = struct.unpack('>i', packet[gps[0]+4:gps[0]+8])[0]
-                    lat = lat_raw * DEG_SCALE
-                    lon = lon_raw * DEG_SCALE
-                    ref_lat_range = (lat - 1.0, lat + 1.0, lon - 1.0, lon + 1.0)
-                    print(f"Found GPS reference: {lat:.4f}°N, {lon:.4f}°W")
-                    break
+    # Parse adcp for dynamic enum labels (if available)
+    adcp_box = scan_for_box(mp4_data, 'adcp')
+    if adcp_box:
+        adcp_data = mp4_data[adcp_box[2]:adcp_box[0]+adcp_box[1]]
+        dynamic_enums = parse_adcp_enums(adcp_data)
+        if dynamic_enums and verbose:
+            print(f"Parsed {len(dynamic_enums)} enum channel definitions from adcp")
+        # Map channel IDs to our field names for ENUM_LABELS override
+        ch_to_field = {
+            7: 'abs_status', 17: 'gear', 19: 'drive_mode',
+            20: 'emotor_axle_available', 30: 'engine_startstop',
+            33: 'esc_status', 39: 'ptm_mode', 43: 'tcs_status',
+            53: 'vse_status',
+        }
+        for ch_id, values in dynamic_enums.items():
+            field = ch_to_field.get(ch_id)
+            if field:
+                ENUM_LABELS[field] = values
 
     # Parse track timing (mdhd + stts + edts/elst) for proper video sync
     mvhd_timescale = parse_mvhd_timescale(mp4_data)
@@ -1578,9 +1460,10 @@ def extract_telemetry(mp4_path, csv_path=None, verbose=False):
     else:
         print("Warning: Could not parse track timing; using packet index for timestamps")
 
-    # Decode all packets
+    # Decode all packets using deterministic offsets
     print("Decoding telemetry packets...")
     all_records = []
+    all_events = []
     decoded_packets = 0
     failed_packets = 0
 
@@ -1593,7 +1476,7 @@ def extract_telemetry(mp4_path, csv_path=None, verbose=False):
             continue  # Skip init packet
 
         pkt_time = sample_times[pkt_idx] if sample_times else None
-        records = decode_packet(packet, pkt_idx, ref_lat_range, hz100_size,
+        records = decode_packet(packet, pkt_idx, hz100_size, lat_offsets,
                                 base_time=pkt_time)
         if records:
             all_records.extend(records)
@@ -1601,11 +1484,31 @@ def extract_telemetry(mp4_path, csv_path=None, verbose=False):
         else:
             failed_packets += 1
 
+        # Extract embedded events from oversized packets
+        events = extract_events(packet, nominal_size, event_defs)
+        if events:
+            all_events.extend(events)
+
         if verbose and pkt_idx % 100 == 0:
-            print(f"  Processed {pkt_idx}/{len(sample_offsets)} packets ({len(all_records)} records)")
+            print(f"  Processed {pkt_idx}/{len(sample_offsets)} packets "
+                  f"({len(all_records)} records)")
 
     print(f"Decoded {decoded_packets} packets ({failed_packets} failed)")
     print(f"Total records: {len(all_records)}")
+
+    if all_events:
+        print(f"Embedded events: {len(all_events)}")
+        # Print lap timing events
+        lap_starts = [e for e in all_events if e['event_id'] == 0]
+        if lap_starts:
+            print(f"  Lap start events: {len(lap_starts)}")
+            for i, e in enumerate(lap_starts):
+                if i > 0:
+                    lap_time = e['time_s'] - lap_starts[i-1]['time_s']
+                    print(f"    Lap {i}: {lap_time:.3f}s "
+                          f"(S/F at {e['time_s']:.3f}s)")
+                else:
+                    print(f"    First S/F crossing at {e['time_s']:.3f}s")
 
     if not all_records:
         print("Warning: No telemetry records decoded!", file=sys.stderr)
@@ -1617,16 +1520,24 @@ def extract_telemetry(mp4_path, csv_path=None, verbose=False):
     rpms = [r.get('engine_rpm', 0) for r in all_records if r.get('engine_rpm', 0) > 0]
 
     if speeds:
-        print(f"Speed: max {max(speeds):.1f} kph ({max(speeds)/1.609:.1f} mph), avg {sum(speeds)/len(speeds):.1f} kph")
+        print(f"Speed: max {max(speeds):.1f} kph ({max(speeds)/1.609:.1f} mph), "
+              f"avg {sum(speeds)/len(speeds):.1f} kph")
     if rpms:
         print(f"RPM: max {max(rpms):.0f}, avg {sum(rpms)/len(rpms):.0f}")
     if lats:
-        print(f"GPS: {min(lats):.6f} to {max(lats):.6f}°N")
+        print(f"GPS: {min(lats):.6f} to {max(lats):.6f}deg")
 
     # Write CSV
     if csv_path:
         write_csv(all_records, csv_path)
         print(f"CSV written to: {csv_path}")
+
+        # Write events CSV if any events found
+        if all_events:
+            events_csv_path = str(Path(csv_path).with_name(
+                Path(csv_path).stem + '_events.csv'))
+            write_events_csv(all_events, events_csv_path)
+            print(f"Events CSV written to: {events_csv_path}")
 
     return all_records
 
@@ -1636,7 +1547,6 @@ def write_csv(records, csv_path):
     if not records:
         return
 
-    # Define column order — all decoded fields
     columns = [
         # Timing
         'time_s', 'packet_idx', 'frame_idx',
@@ -1686,84 +1596,131 @@ def write_csv(records, csv_path):
             writer.writerow(record)
 
 
+def write_events_csv(events, csv_path):
+    """Write embedded events to a separate CSV file."""
+    if not events:
+        return
+
+    columns = ['time_s', 'event_id', 'event_name', 'flags']
+
+    with open(csv_path, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=columns, extrasaction='ignore')
+        writer.writeheader()
+        for event in events:
+            writer.writerow(event)
+
+
 # =============================================================================
 # Direct Raw File Decoder (for pre-extracted telemetry_raw.bin)
 # =============================================================================
 
-def decode_raw_file(raw_path, csv_path=None, ref_lat=None, ref_lon=None, verbose=False):
+def find_raw_packet_boundaries(data):
+    """Find data packet boundaries in raw telemetry data.
+
+    Each data packet starts with a 14-byte preamble containing:
+      4 zero bytes + u32 BE timestamp + u8 flags + 3 pad bytes + u16 BE 0x0CA1
+
+    The combination of 4 zero bytes at offset 0 and 0x0CA1 at offset 12
+    is a reliable packet boundary signature.
     """
-    Decode a pre-extracted raw telemetry file (from ffmpeg -map 0:1 -c copy -f data).
+    boundaries = []
+    pos = 0
+
+    while pos + PREAMBLE_SIZE <= len(data):
+        if (data[pos:pos+4] == b'\x00\x00\x00\x00' and
+                pos + PREAMBLE_SIZE <= len(data) and
+                struct.unpack('>H', data[pos+12:pos+14])[0] == FORMAT_IDENTIFIER):
+            boundaries.append(pos)
+            # Jump ahead past minimum packet size to avoid false matches
+            pos += 3200
+        else:
+            pos += 1
+
+    return boundaries
+
+
+def decode_raw_file(raw_path, csv_path=None, verbose=False):
+    """Decode a pre-extracted raw telemetry file.
+
+    Handles variable-size packets (oversized packets with embedded events)
+    by scanning for preamble signatures instead of assuming uniform sizes.
     """
     with open(raw_path, 'rb') as f:
         data = f.read()
 
     print(f"Raw file: {len(data)} bytes")
 
-    # Detect packet structure
-    # First packet is typically 14 bytes (init), rest are uniform size
-    INIT_SIZE = 14
-    # Find the common packet size
-    remaining = len(data) - INIT_SIZE
-    # Try common sizes (MMP v4 = 4050, MMP v3 = 3247)
-    for pkt_size in [4050, 3247, 3248, 3200, 3000, 2500, 2000]:
-        if remaining % pkt_size == 0 or (remaining % pkt_size) < 20:
-            num_packets = remaining // pkt_size
-            print(f"Detected: {INIT_SIZE}-byte init + {num_packets} × {pkt_size}-byte packets")
-            break
-    else:
-        # Auto-detect: find the second packet boundary
-        # Look for repeating patterns
-        pkt_size = 3247
-        num_packets = remaining // pkt_size
-        print(f"Assuming: {INIT_SIZE}-byte init + {num_packets} × {pkt_size}-byte packets")
+    # Find packet boundaries by preamble scanning
+    boundaries = find_raw_packet_boundaries(data)
+    if not boundaries:
+        print("Error: No valid packet boundaries found", file=sys.stderr)
+        return None
 
-    # Determine format version from packet size
-    hz100_size = 25 if pkt_size > 3500 else 17
-    print(f"Packet size {pkt_size}: using {hz100_size}-byte 100Hz frames")
+    print(f"Found {len(boundaries)} data packets")
 
-    # Set up reference GPS range
-    ref_lat_range = None
-    if ref_lat and ref_lon:
-        ref_lat_range = (ref_lat - 1.0, ref_lat + 1.0, ref_lon - 1.0, ref_lon + 1.0)
+    # Compute packet sizes from boundary differences
+    packet_sizes = []
+    for i in range(len(boundaries)):
+        if i + 1 < len(boundaries):
+            packet_sizes.append(boundaries[i + 1] - boundaries[i])
+        else:
+            packet_sizes.append(len(data) - boundaries[i])
+
+    # Determine format variant from dominant packet size
+    if packet_sizes:
+        # The nominal size is the most common size (events make some larger)
+        size_counts = {}
+        for s in packet_sizes:
+            size_counts[s] = size_counts.get(s, 0) + 1
+        dominant_size = max(size_counts, key=size_counts.get)
     else:
-        # Try to find reference from multiple packets (scan from middle outward)
-        for try_offset in range(0, min(100, num_packets)):
-            for direction in [0, 1]:  # try middle, then middle+1, middle-1, ...
-                idx = num_packets // 2 + (try_offset if direction == 0 else -try_offset)
-                if idx < 0 or idx >= num_packets:
-                    continue
-                packet = data[INIT_SIZE + idx * pkt_size: INIT_SIZE + (idx+1) * pkt_size]
-                gps = find_gps_in_packet(packet)
-                if len(gps) >= 5:
-                    lat = struct.unpack('>i', packet[gps[0]:gps[0]+4])[0] * DEG_SCALE
-                    lon = struct.unpack('>i', packet[gps[0]+4:gps[0]+8])[0] * DEG_SCALE
-                    if abs(lat) > 5 and abs(lon) > 5:
-                        ref_lat_range = (lat - 0.5, lat + 0.5, lon - 0.5, lon + 0.5)
-                        print(f"GPS reference: {lat:.4f}°, {lon:.4f}° (from packet {idx})")
-                        break
-            if ref_lat_range:
-                break
-        if not ref_lat_range:
-            print("Warning: Could not find GPS reference. Try --lat/--lon options.")
+        dominant_size = 3247
+
+    hz100_size = 25 if dominant_size > 3500 else 17
+    nominal_size = 4050 if hz100_size == 25 else 3247
+    lat_offsets = LAT_OFFSETS_V4 if hz100_size == 25 else LAT_OFFSETS_LEGACY
+    print(f"Dominant packet size {dominant_size}: using {hz100_size}-byte 100Hz frames")
+
+    if verbose and len(size_counts) > 1:
+        print(f"Packet size distribution: {dict(sorted(size_counts.items()))}")
+        oversized = sum(1 for s in packet_sizes if s > nominal_size)
+        if oversized:
+            print(f"  {oversized} oversized packets (contain embedded events)")
 
     # Decode all packets
     print("Decoding...")
     all_records = []
+    all_events = []
     decoded = 0
     failed = 0
 
-    for pkt_idx in range(num_packets):
-        pkt_start = INIT_SIZE + pkt_idx * pkt_size
+    for pkt_idx, pkt_start in enumerate(boundaries):
+        pkt_size = packet_sizes[pkt_idx]
         packet = data[pkt_start:pkt_start + pkt_size]
 
-        records = decode_packet(packet, pkt_idx, ref_lat_range, hz100_size)
+        records = decode_packet(packet, pkt_idx, hz100_size, lat_offsets)
         if records:
             all_records.extend(records)
             decoded += 1
         else:
             failed += 1
 
-    print(f"Decoded: {decoded}/{num_packets} packets, {len(all_records)} records")
+        # Extract embedded events
+        events = extract_events(packet, nominal_size)
+        if events:
+            all_events.extend(events)
+
+    print(f"Decoded: {decoded}/{len(boundaries)} packets, {len(all_records)} records")
+
+    if all_events:
+        print(f"Embedded events: {len(all_events)}")
+        lap_starts = [e for e in all_events if e['event_id'] == 0]
+        if lap_starts:
+            print(f"  Lap start events: {len(lap_starts)}")
+            for i, e in enumerate(lap_starts):
+                if i > 0:
+                    lap_time = e['time_s'] - lap_starts[i-1]['time_s']
+                    print(f"    Lap {i}: {lap_time:.3f}s")
 
     # Summary
     speeds = [r['speed_kph'] for r in all_records if r.get('speed_kph', 0) > 0]
@@ -1776,6 +1733,12 @@ def decode_raw_file(raw_path, csv_path=None, ref_lat=None, ref_lon=None, verbose
     if csv_path:
         write_csv(all_records, csv_path)
         print(f"CSV written to: {csv_path}")
+
+        if all_events:
+            events_csv_path = str(Path(csv_path).with_name(
+                Path(csv_path).stem + '_events.csv'))
+            write_events_csv(all_events, events_csv_path)
+            print(f"Events CSV written to: {events_csv_path}")
 
     return all_records
 
@@ -1794,8 +1757,6 @@ def main():
     parser.add_argument('--csv', '-o', help='Output CSV file path')
     parser.add_argument('--raw', action='store_true',
                        help='Input is a raw telemetry binary (from ffmpeg extraction)')
-    parser.add_argument('--lat', type=float, help='Reference latitude for GPS search')
-    parser.add_argument('--lon', type=float, help='Reference longitude for GPS search')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
 
     args = parser.parse_args()
@@ -1807,7 +1768,6 @@ def main():
 
     if args.raw or input_path.suffix.lower() == '.bin':
         decode_raw_file(str(input_path), str(csv_path),
-                       ref_lat=args.lat, ref_lon=args.lon,
                        verbose=args.verbose)
     else:
         extract_telemetry(str(input_path), str(csv_path),

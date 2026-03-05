@@ -1509,3 +1509,83 @@ python protocol/alivedrive_parser.py telemetry_raw.bin --raw --csv output.csv
 
 A TypeScript implementation is also available in `src/main/parser/` as
 part of the OpenPDR Electron viewer application.
+
+---
+
+## 18. Open Questions
+
+The following aspects of the protocol remain undocumented or incompletely
+understood. None affect core telemetry extraction, but resolving them would
+complete the specification.
+
+### 18.1 Init Packet Internals
+
+The init packet (§4.2) is described as 14 bytes containing a format version and
+timing reference, but no byte-level layout has been reverse-engineered. The
+exact fields and their meanings are unknown.
+
+### 18.2 Preamble Flag and Format Identifier
+
+The `flags` byte at preamble offset 8 (observed: 0x01) and the format
+identifier at offset 12 (observed: 0x0CA1) are documented but not understood.
+It is unknown whether other flag values exist, what they would indicate, or
+whether 0x0CA1 is a constant magic number or varies across recordings.
+
+### 18.3 Rate Table Overhead Bytes
+
+§3.3 documents a discrepancy between the rate-table `width` values and the
+actual byte counts in the data stream. The overhead bytes are described as
+"quality/validity descriptors" but their exact structure and semantics are
+unknown. It is also unclear whether these bytes are ever written to the data
+stream under certain conditions or firmware versions.
+
+### 18.4 `advi` Fields 3–8
+
+Six fields in the `advi` box (offsets 16–28) have observed values (110, 30,
+384063, 1, 17, 80) but their meanings are completely unknown. They may encode
+hardware identifiers, firmware build numbers, or configuration parameters.
+
+### 18.5 `adop` Property Completeness
+
+The property list in §13.3 is labelled "known properties" and was compiled from
+a limited set of recordings (3 legacy, 1 MMP v4+) across 3 vehicle models.
+Additional keys may exist in recordings from other GM vehicles, firmware
+versions, or recording modes (e.g., drag strip, valet, etc.).
+
+### 18.6 Event Record Flags
+
+The 2-byte flags field at offset 8 of the 11-byte embedded event record (§15.3)
+is always observed as 0x0200. The meaning of this field is unknown — it could
+encode event sub-types, priority, or other metadata. No other values have been
+observed.
+
+### 18.7 First Packet Carry-Over Region
+
+The carry-over region (§4.5) contains the tail of the previous second's last
+sub-frame group. For the very first data packet (second 0), there is no
+preceding packet. It is unknown what populates this region — it may contain
+zeros, default/initial values, or a duplicate of the first sub-frame.
+
+### 18.8 Event Presence Detection
+
+Oversized packets contain appended 11-byte event records (§15.3), but there is
+no known in-band marker or length field indicating that events are present.
+Currently, events are detected by comparing `packet_size > nominal_size` and
+treating the excess bytes as event records. It is unknown whether any field in
+the preamble or elsewhere signals the presence or count of embedded events.
+
+### 18.9 Multiple Init Samples
+
+§4.1 notes that the sample table contains "1–2 init samples of 14 bytes." The
+conditions that produce two init samples instead of one are unknown. It may
+relate to recording restart, firmware version, or a timing edge case.
+
+### 18.10 Hybrid/EV Channel Validation
+
+All observations to date come from purely ICE vehicles (CT5-V Blackwing,
+Corvette Stingray, Corvette Z06). The hybrid/EV channels — e-motor power level,
+HV battery charge, e-motor temperatures, e-motor axle available, etc. — are
+documented as "read as zero" on ICE platforms. Their actual behaviour on
+hybrid/EV vehicles (e.g., Corvette E-Ray, Cadillac LYRIQ, Blazer EV) has not
+been validated. Scale factors and value ranges for these channels are taken
+from the `adcp` descriptors but have never been confirmed against real data.
