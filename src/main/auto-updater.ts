@@ -14,14 +14,14 @@ import type { IpcChannels, UpdateStatus, ReleaseNote } from '../shared/types'
 
 type Channel = keyof IpcChannels
 
-let mainWindow: BrowserWindow | null = null
+let getWindow: () => BrowserWindow | null = () => null
 
 function sendStatus(status: UpdateStatus): void {
-  mainWindow?.webContents.send('update-status' satisfies Channel, status)
+  getWindow()?.webContents.send('update-status' satisfies Channel, status)
 }
 
-export function initAutoUpdater(win: BrowserWindow): void {
-  mainWindow = win
+export function initAutoUpdater(windowGetter: () => BrowserWindow | null): void {
+  getWindow = windowGetter
 
   // Always register version handler (platform-independent)
   ipcMain.handle('get-app-version' satisfies Channel, () => {
@@ -88,6 +88,7 @@ export function initAutoUpdater(win: BrowserWindow): void {
   })
 
   // ── IPC handlers ──
+  // Fire-and-forget: results communicated via 'update-status' event
 
   ipcMain.handle('check-for-updates' satisfies Channel, () => {
     autoUpdater.checkForUpdates().catch((err) => {

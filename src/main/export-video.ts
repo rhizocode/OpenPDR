@@ -10,10 +10,7 @@
 
 import { spawn, type ChildProcess } from 'child_process'
 import { BrowserWindow, ipcMain } from 'electron'
-import { createRequire } from 'module'
-
-const _require = createRequire(import.meta.url)
-const ffmpegPath: string | null = _require('ffmpeg-static')
+import { ffmpegPath } from './ffmpeg-path'
 import type { TelemetryStore } from '../shared/telemetry-store'
 import type {
   OverlayConfig, OverlayLayout, RpmConfig, TrackLayout,
@@ -50,6 +47,7 @@ export async function exportVideo(
 ): Promise<void> {
   if (exportInProgress) throw new Error('Export already in progress')
   if (!ffmpegPath) throw new Error('ffmpeg-static binary not found')
+  const ffmpeg = ffmpegPath // narrowed to string — no assertion needed below
   if (endIdx <= startIdx) throw new Error('No frames to export')
 
   exportInProgress = true
@@ -104,7 +102,7 @@ export async function exportVideo(
 
     console.log(`[export-video] ffmpeg args: ${args.join(' ')}`)
 
-    const proc = spawn(ffmpegPath!, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const proc = spawn(ffmpeg, args, { stdio: ['pipe', 'pipe', 'pipe'] })
     activeProcess = proc
 
     // 3. Stream overlay frames from renderer → ffmpeg stdin
@@ -128,9 +126,8 @@ export async function exportVideo(
       onProgress('Encoding video', pct)
 
       // Write raw RGBA to ffmpeg stdin; wait for drain if buffer is full
-      const buf = Buffer.from(buffer)
       return new Promise<void>((resolve) => {
-        if (proc.stdin!.write(buf)) {
+        if (proc.stdin!.write(buffer)) {
           resolve()
         } else {
           proc.stdin!.once('drain', resolve)

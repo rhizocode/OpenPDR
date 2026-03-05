@@ -6,12 +6,7 @@
  */
 
 import { execFile } from 'child_process'
-import { createRequire } from 'module'
-
-// Resolve ffmpeg binary at runtime so the bundler doesn't inline
-// ffmpeg-static's __dirname-based path resolution (which breaks after bundling).
-const _require = createRequire(import.meta.url)
-const ffmpegPath: string | null = _require('ffmpeg-static')
+import { ffmpegPath } from './ffmpeg-path'
 
 export interface VideoMeta {
   width: number
@@ -33,7 +28,11 @@ export function probeVideo(filePath: string): Promise<VideoMeta> {
 
     // ffmpeg -i exits with code 1 when no output is specified, but still prints info
     execFile(ffmpegPath, ['-i', filePath], { timeout: 15000 }, (error, _stdout, stderr) => {
-      // ffmpeg always "errors" with -i and no output — that's expected
+      // System errors (ENOENT, timeout, etc.) — not just the expected exit code 1
+      if (error && !stderr) {
+        reject(new Error(`ffmpeg failed to run: ${error.message}`))
+        return
+      }
       const output = stderr || ''
 
       // Parse duration: "Duration: HH:MM:SS.ss"

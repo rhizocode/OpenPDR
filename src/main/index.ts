@@ -12,8 +12,7 @@ import { initAutoUpdater } from './auto-updater'
 
 type Channel = keyof IpcChannels
 
-const BUILD_ID = 'phase4-v1'
-console.log(`[OpenPDR main] build=${BUILD_ID}`)
+// Version logged after app is ready (via app.getVersion())
 
 let mainWindow: BrowserWindow | null = null
 let allowedVideoPaths = new Set<string>()
@@ -67,6 +66,7 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 app.whenReady().then(() => {
+  console.log(`[OpenPDR main] v${app.getVersion()}`)
   // Handle serving local files via pdr-file:// protocol
   // Manually handle Range requests so HTML5 video seeking works
   protocol.handle('pdr-file', async (request) => {
@@ -146,17 +146,15 @@ app.whenReady().then(() => {
           'Accept-Ranges': 'bytes',
         }
       })
-    } catch (err) {
-      return new Response(`File error: ${(err as Error).message}`, { status: 404 })
+    } catch {
+      return new Response('File not found', { status: 404 })
     }
   })
 
   createWindow()
 
   // Initialize auto-updater (skips on macOS — unsigned builds)
-  if (mainWindow) {
-    initAutoUpdater(mainWindow)
-  }
+  initAutoUpdater(() => mainWindow)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -192,7 +190,9 @@ ipcMain.handle('open-file-dialog' satisfies Channel, async () => {
 // IPC: Set allowed video path (used by drag-and-drop — dialog handler sets it automatically)
 // Restrict to .mp4 files to prevent renderer from authorizing arbitrary file reads
 ipcMain.handle('set-allowed-video-path' satisfies Channel, (_event, filePath: string) => {
-  if (typeof filePath !== 'string' || !filePath.toLowerCase().endsWith('.mp4')) return
+  if (typeof filePath !== 'string') return
+  const normalized = filePath.replace(/\\/g, '/')
+  if (!normalized.toLowerCase().endsWith('.mp4')) return
   addAllowedVideoPath(filePath)
 })
 

@@ -25,6 +25,7 @@ const GPX_FOOTER = `  </trkseg>
 
 function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;')
 }
 
 function formatIsoTime(baseMs: number, offsetSeconds: number): string {
