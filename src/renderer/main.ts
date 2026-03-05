@@ -130,6 +130,9 @@ const chartsPanel = document.getElementById('charts-panel') as HTMLElement
 const chartToolbar = document.getElementById('chart-toolbar') as HTMLElement
 const lapsPanel = document.getElementById('laps-panel') as HTMLElement
 const lapsResizeHandle = document.getElementById('laps-resize-handle') as HTMLElement
+const chartPanel = document.getElementById('chart-panel') as HTMLElement
+const resizeHandle = document.getElementById('resize-handle') as HTMLElement
+const contentRow = document.getElementById('chart-content-row') as HTMLElement
 
 function loadPanelState(): Record<string, boolean> {
   const saved = localStorage.getItem(PANEL_STORAGE_KEY)
@@ -155,12 +158,9 @@ function activatePanel(key: string, show: boolean): void {
 
 /** Collapse chart panel content+handle when no sub-panels are active */
 function updateChartPanelCollapse(): void {
-  const chartPanel = document.getElementById('chart-panel')!
   if (!chartPanel.classList.contains('active')) return
 
   const anyActive = Object.values(panelState).some(v => v)
-  const resizeHandle = document.getElementById('resize-handle')!
-  const contentRow = document.getElementById('chart-content-row')!
 
   resizeHandle.classList.toggle('active', anyActive)
   contentRow.style.display = anyActive ? '' : 'none'
