@@ -613,49 +613,73 @@ The timestamp at offset 4 increments by exactly 10,000,000 per packet
 (= 1.0 second at 100 ns resolution), confirming the one-second-per-packet
 timing model.
 
-After the 14-byte preamble, the remaining bytes before the first GPS latitude
-position (~41 bytes) contain leftover 100 Hz sub-frame data carried over from
-the previous second's timing boundary. This gives a total preamble region of
-~55 bytes before the first 10 Hz frame begins.
+After the 14-byte preamble, a **carry-over region** contains the tail of the
+previous second's last sub-frame group — specifically, the second 100 Hz frame
+and the 50 Hz frame that straddled the packet boundary:
+
+| Variant | Carry-over size | Contents |
+|---------|----------------|----------|
+| Legacy  | 41 bytes | 1 × 100 Hz (17B) + 1 × 50 Hz (24B) |
+| MMP v4+ | 49 bytes | 1 × 100 Hz (25B) + 1 × 50 Hz (24B) |
+
+An equal number of bytes from the current packet's frame 9 overflow into the
+next packet's carry-over region, keeping the total byte count per packet
+constant.
 
 ### 4.6 Byte Budget Verification
 
 **Legacy format** (3247 bytes):
 ```
-Preamble:      14 bytes (header + partial sub-frames)
+Preamble:      14 bytes
+Carry-over:    41 bytes (17 + 24, from previous packet's last group)
 10 Hz base:   10 × 28  = 280
 5 Hz data:     5 × 4   =  20
 2 Hz data:     2 × 1   =   2
 1 Hz data:     1 × 31  =  31
-100 Hz frames: 100 × 17 = 1700
-50 Hz frames:  50 × 24  = 1200
+100 Hz frames: 100 × 17 = 1700  (includes 1 in carry-over, 1 overflows to next)
+50 Hz frames:  50 × 24  = 1200  (includes 1 in carry-over, 1 overflows to next)
                          ------
 Total:                    3247
 ```
 
 **MMP v4+ format** (4050 bytes):
 ```
-Preamble:      14 bytes (header + partial sub-frames)
+Preamble:      14 bytes
+Carry-over:    49 bytes (25 + 24, from previous packet's last group)
 10 Hz base:   10 × 28  = 280
 5 Hz data:     5 × 4   =  20
 2 Hz data:     2 × 1   =   2
 1 Hz data:     1 × 34  =  34
-100 Hz frames: 100 × 25 = 2500
-50 Hz frames:  50 × 24  = 1200
+100 Hz frames: 100 × 25 = 2500  (includes 1 in carry-over, 1 overflows to next)
+50 Hz frames:  50 × 24  = 1200  (includes 1 in carry-over, 1 overflows to next)
                          ------
 Total:                    4050
 ```
 
-### 4.7 GPS Offset Within Packets
+### 4.7 Deterministic Frame Offsets
 
-The first GPS latitude position occurs at a consistent offset of approximately
-**57 bytes** from the packet start (14-byte header + ~41 bytes of carried-over
-sub-frame data + 2 bytes of speed). Subsequent GPS positions are spaced at
-regular intervals determined by the interleaving pattern (~290-320 bytes apart).
+The first GPS latitude position occurs at a **fixed offset** from the packet
+start, determined entirely by the format variant:
 
-To locate GPS data, scan for int32 BE values that decode to valid
-latitude/longitude/altitude triplets, then validate with spacing and
-clustering checks.
+| Variant | First GPS lat offset | Formula |
+|---------|---------------------|---------|
+| Legacy  | **byte 57** | 14 (preamble) + 41 (carry-over) + 2 (speed) |
+| MMP v4+ | **byte 65** | 14 (preamble) + 49 (carry-over) + 2 (speed) |
+
+All 10 GPS latitude offsets within a packet are deterministic. The spacing
+from frame *i* to frame *i+1* depends on which optional blocks frame *i*
+contains:
+
+| Frame type | Legacy spacing | MMP v4+ spacing |
+|-----------|---------------|-----------------|
+| Frame 0 (5 Hz + 2 Hz + 1 Hz + 5 groups) | 354 | 437 |
+| Even frames (5 Hz + 5 groups) | 322 | 402 |
+| Frame 5 (2 Hz + 5 groups) | 319 | 399 |
+| Other odd frames (5 groups only) | 318 | 398 |
+
+**Verified across 2,290 packets from 4 vehicles (3 legacy, 1 MMP v4+) with
+100% match to GPS-scanned offsets.** No GPS coordinate scanning is needed
+to parse the data — the parser can jump directly to each frame's position.
 
 ### 4.8 Video/Telemetry Synchronization
 

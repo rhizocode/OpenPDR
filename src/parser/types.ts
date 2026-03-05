@@ -89,14 +89,6 @@ export interface AdopProps {
   properties: Map<string, string>
 }
 
-/** GPS reference bounding box for search narrowing */
-export interface GpsRefRange {
-  latMin: number
-  latMax: number
-  lonMin: number
-  lonMax: number
-}
-
 /** An embedded event extracted from an oversized telemetry packet */
 export interface EmbeddedEvent {
   eventId: number          // 0–19, maps to adeg definitions

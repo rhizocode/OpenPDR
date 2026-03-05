@@ -14,18 +14,15 @@
  */
 
 import type { PdrFileSource } from '../shared/file-source'
-import { readInt32BE } from '../shared/binary-reader'
 import { readMoovBox, scanForBox, parseMvhdTimescale } from './mp4-boxes'
 import { findAdcoTrack, parseAdvi, parseAdop, parseAdeg } from './adco-track'
 import { parseSampleTable, getSampleOffsets, parseTrackTiming } from './sample-table'
-import { decodePacket, type CachedOffsets } from './telemetry-decoder'
-import { findGpsInPacket } from './gps-discovery'
-import { DEG_SCALE } from './constants'
+import { decodePacket } from './telemetry-decoder'
 import { extractEvents } from './event-extractor'
 import { createTelemetryStore, writeRow, trimStore } from '../shared/telemetry-store'
 import type { TelemetryStore } from '../shared/telemetry-store'
 import { detectLaps, detectLapsFromEvents } from './lap-detection'
-import type { ParseResult, SessionInfo, TelemetryRow, EmbeddedEvent, GpsRefRange, ProgressCallback } from './types'
+import type { ParseResult, SessionInfo, TelemetryRow, EmbeddedEvent, ProgressCallback } from './types'
 
 export type { TelemetryRow, ParseResult, ProgressCallback }
 export type { TelemetryStore }
@@ -92,7 +89,6 @@ export async function parsePdrFile(
   const hz100Size = dominantPktSize > 3500 ? 25 : 17
 
   const adopBox = scanForBox(moovBuf, 'adop')
-  let refLatRange: GpsRefRange | undefined
   let refLocation: { lat: number; lon: number } | undefined
   let sessionInfo: SessionInfo | undefined
 
@@ -101,12 +97,6 @@ export async function parsePdrFile(
     const props = parseAdop(adopData)
     if (props.lat !== undefined && props.lon !== undefined) {
       refLocation = { lat: props.lat, lon: props.lon }
-      refLatRange = {
-        latMin: props.lat - 1.0,
-        latMax: props.lat + 1.0,
-        lonMin: props.lon - 1.0,
-        lonMax: props.lon + 1.0,
-      }
     }
     // Build session info from decoded adop properties + advi fields
     const p = props.properties
@@ -132,43 +122,12 @@ export async function parsePdrFile(
     ? parseAdeg(moovBuf.subarray(adegBox[2], adegBox[0] + adegBox[1]))
     : []
 
-  // Step 4b: If no ref from adop, find it from a middle packet
-  if (!refLatRange && sampleOffsets.length > 0) {
-    const midIdx = Math.floor(sampleOffsets.length / 2)
-    const searchEnd = Math.min(midIdx + 50, sampleOffsets.length)
-
-    for (let tryIdx = midIdx; tryIdx < searchEnd; tryIdx++) {
-      const off = sampleOffsets[tryIdx]
-      const sz = sampleTable.sampleSizes[tryIdx]
-      if (sz <= 100) continue
-
-      const packetBuf = await source.read(off, sz)
-
-      const gps = findGpsInPacket(packetBuf)
-      if (gps.length >= 5) {
-        const latRaw = readInt32BE(packetBuf, gps[0])
-        const lonRaw = readInt32BE(packetBuf, gps[0] + 4)
-        const lat = latRaw * DEG_SCALE
-        const lon = lonRaw * DEG_SCALE
-        refLocation = { lat, lon }
-        refLatRange = {
-          latMin: lat - 1.0,
-          latMax: lat + 1.0,
-          lonMin: lon - 1.0,
-          lonMax: lon + 1.0,
-        }
-        break
-      }
-    }
-  }
-
   // Step 5: Decode all packets into columnar store + extract embedded events
   onProgress?.('Decoding telemetry...', 10)
   const estimatedRows = sampleTable.sampleCount * 10  // ~10 rows per packet at 10 Hz
   const store = createTelemetryStore(estimatedRows)
   const allEvents: EmbeddedEvent[] = []
 
-  let cachedOffsets: CachedOffsets | undefined
   for (let i = 0; i < sampleOffsets.length; i++) {
     const offset = sampleOffsets[i]
     const size = sampleTable.sampleSizes[i]
@@ -181,9 +140,8 @@ export async function parsePdrFile(
     // fall back to packet index (assumes 1 second per packet)
     const baseTime = trackTiming ? trackTiming.sampleTimes[i] : i
 
-    const result = decodePacket(packet, baseTime, refLatRange, hz100Size, cachedOffsets, i)
-    cachedOffsets = result.offsets
-    for (const row of result.rows) {
+    const rows = decodePacket(packet, baseTime, i, hz100Size)
+    for (const row of rows) {
       writeRow(store, store.length, row)
       store.length++
     }
@@ -203,6 +161,15 @@ export async function parsePdrFile(
 
   // Trim store to actual size (capacity was estimated)
   const trimmedStore = trimStore(store)
+
+  // If no refLocation from adop, derive it from the first decoded GPS position
+  if (!refLocation && trimmedStore.length > 0) {
+    const lat = trimmedStore.lat[0]
+    const lon = trimmedStore.lon[0]
+    if (Math.abs(lat) > 1 && Math.abs(lon) > 1) {
+      refLocation = { lat, lon }
+    }
+  }
 
   // Build metadata from typed arrays (no row objects needed)
   let maxSpeed = 0

@@ -4,7 +4,7 @@
  * decode_10hz_frame, decode_5hz_frame, decode_1hz_frame, decode_packet)
  */
 
-import type { TelemetryRow, GpsRefRange } from './types'
+import type { TelemetryRow } from './types'
 import { readUint16BE, readInt16BE, readUint32BE, readInt32BE, readFloatBE, dataViewFor } from '../shared/binary-reader'
 import {
   PROPORTION_SCALE, ENGINE_SPEED_SCALE, RAD_TO_RPM, TORQUE_SCALE, TORQUE_OFFSET,
@@ -14,13 +14,46 @@ import {
   FUEL_LEVEL_SCALE, ODOMETER_SCALE, TIRE_PRESSURE_SCALE, BRAKE_PEDAL_MAX,
   enumLabel,
 } from './constants'
-import { findGpsInPacket, verifyGpsOffsets } from './gps-discovery'
 
-/** Cached offsets from a previous successful decode, reusable across packets of the same MMP version. */
-export interface CachedOffsets {
-  gps: number[]
-  floats: number[]
+/** Preamble size at the start of each data packet. */
+const PREAMBLE_SIZE = 14
+
+/**
+ * Compute the 10 GPS-latitude byte offsets for a packet, deterministically.
+ *
+ * Each data packet starts with a 14-byte preamble, followed by a carry-over
+ * region containing the tail of the previous second's last sub-frame group
+ * (one 100 Hz frame + one 50 Hz frame = hz100Size + 24 bytes).  After the
+ * carry-over, the 10 Hz frames begin (speed first, then lat/lon/alt/…).
+ *
+ * Frame spacings are determined solely by the interleaving pattern:
+ *   spacing(i) = 28 + (4 if even) + (1 if i∈{0,5}) + (hz1Size if i==0) + 5·groupSize
+ */
+function computeLatOffsets(hz100Size: number): number[] {
+  const hz1Size = hz100Size === 25 ? 34 : 31
+  const groupSize = 2 * hz100Size + 24
+  const carryOver = hz100Size + 24        // second 100Hz + 50Hz from prev second
+
+  const offsets: number[] = new Array(10)
+  offsets[0] = PREAMBLE_SIZE + carryOver + 2  // +2 for speed (first field of 10Hz frame)
+
+  for (let i = 1; i < 10; i++) {
+    const prev = i - 1
+    // Spacing from lat[prev] to lat[i]:
+    //   26 (rest of 10Hz after lat) + optional sparse blocks + 5×groupSize + 2 (speed of next frame)
+    let spacing = 28 + 5 * groupSize
+    if (prev % 2 === 0) spacing += 4      // 5Hz block on even frames
+    if (prev === 0 || prev === 5) spacing += 1  // 2Hz block on frames 0 and 5
+    if (prev === 0) spacing += hz1Size     // 1Hz block on frame 0 only
+    offsets[i] = offsets[prev] + spacing
+  }
+  return offsets
 }
+
+/** Pre-computed lat offsets for legacy format (17-byte 100Hz frames). */
+const LAT_OFFSETS_LEGACY = computeLatOffsets(17)
+/** Pre-computed lat offsets for MMP v4+ format (25-byte 100Hz frames). */
+const LAT_OFFSETS_V4 = computeLatOffsets(25)
 
 // ── Internal sub-frame types ──
 
@@ -397,12 +430,10 @@ function avg50Hz(frames: Hz50Frame[]): { lat: number; lon: number; vert: number 
 export function decodePacket(
   packet: Uint8Array,
   baseTime: number,
-  refLatRange?: GpsRefRange,
+  packetIdx: number,
   hz100Size: number = 17,
-  cachedOffsets?: CachedOffsets,
-  packetIdx: number = 0
-): { rows: TelemetryRow[]; offsets: CachedOffsets | undefined } {
-  if (packet.length < 100) return { rows: [], offsets: cachedOffsets }
+): TelemetryRow[] {
+  if (packet.length < 100) return []
 
   // Single DataView for all reads from this packet
   const dv = dataViewFor(packet)
@@ -410,13 +441,8 @@ export function decodePacket(
   // Derive 1Hz frame size from 100Hz frame size
   const hz1Size = hz100Size === 25 ? 34 : 31
 
-  // Try cached offsets first, fall back to full scan
-  const gpsOffsets = (cachedOffsets && verifyGpsOffsets(packet, cachedOffsets.gps, refLatRange))
-    ?? findGpsInPacket(packet, refLatRange)
-  if (gpsOffsets.length < 5) return { rows: [], offsets: cachedOffsets }
-
-  // Cache GPS offsets for subsequent packets
-  const newOffsets: CachedOffsets = { gps: gpsOffsets, floats: [] }
+  // Deterministic lat offsets — no GPS scanning needed
+  const gpsOffsets = hz100Size === 25 ? LAT_OFFSETS_V4 : LAT_OFFSETS_LEGACY
 
   // Sub-frame group size: [100Hz][100Hz][50Hz]
   const groupSize = 2 * hz100Size + 24
@@ -585,5 +611,5 @@ export function decodePacket(
     records.push(row)
   }
 
-  return { rows: records, offsets: newOffsets }
+  return records
 }
