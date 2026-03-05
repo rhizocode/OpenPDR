@@ -196,7 +196,9 @@ export async function exportVideo(
 /** Cancel an in-progress video export. */
 export function cancelVideoExport(): void {
   if (activeProcess) {
-    activeProcess.kill('SIGTERM')
+    // On Windows, all signals result in TerminateProcess() (hard kill).
+    // On Unix, SIGKILL is more reliable for ffmpeg since it ignores SIGTERM in some states.
+    activeProcess.kill()
     activeProcess = null
   }
 }
