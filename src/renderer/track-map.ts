@@ -6,9 +6,8 @@
  * A position dot tracks the current video time.
  */
 
-import { lapData, currentRow, interpPrev, interpNext, interpAlpha, telemetryStore } from './state'
+import { lapData, currentRow, interpPrev, interpNext, interpAlpha } from './state'
 import { onTelemetryLoad, onFrameTick } from './state'
-import type { TelemetryStore } from '../shared/telemetry-store'
 import type { TrackLayout } from './types'
 
 let canvas: HTMLCanvasElement
@@ -122,35 +121,6 @@ function computePerpendicularAngle(
   return trackAngle + Math.PI / 2 // perpendicular
 }
 
-// ── GPS smoothing ─────────────────────────────────────────────────────────────
-
-const SMOOTH_W = 2 // ±2 samples (5-point window at 10Hz = 0.5s)
-
-/** Find row index closest to a telemetry time via binary search. */
-function findIdx(store: TelemetryStore, t: number): number {
-  const times = store.time
-  let lo = 0, hi = store.length - 1
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1
-    if (times[mid] < t) lo = mid + 1
-    else hi = mid
-  }
-  return lo
-}
-
-/** Return 5-point moving-average of lat/lon around the given index. */
-function smoothedGps(store: TelemetryStore, idx: number): { lat: number; lon: number } {
-  const lo = Math.max(0, idx - SMOOTH_W)
-  const hi = Math.min(store.length - 1, idx + SMOOTH_W)
-  let latSum = 0, lonSum = 0
-  for (let i = lo; i <= hi; i++) {
-    latSum += store.lat[i]
-    lonSum += store.lon[i]
-  }
-  const count = hi - lo + 1
-  return { lat: latSum / count, lon: lonSum / count }
-}
-
 // ── Drawing ───────────────────────────────────────────────────────────────────
 
 function drawEmpty(): void {
@@ -222,36 +192,30 @@ function blitTrack(): void {
   }
 }
 
-function drawPositionDot(): void {
-  if (!currentRow || !cachedLayout) return
-
-  // Interpolate GPS position between bracketing telemetry rows for smooth movement
-  let lat: number, lon: number, spd: number
+/** Interpolated GPS position for the current frame. */
+function currentGps(): { lat: number; lon: number; spd: number } | null {
+  if (!currentRow) return null
   if (interpPrev && interpNext && interpPrev !== interpNext) {
     const a = interpAlpha
-    lat = interpPrev.lat + (interpNext.lat - interpPrev.lat) * a
-    lon = interpPrev.lon + (interpNext.lon - interpPrev.lon) * a
-    spd = interpPrev.speed_kph + (interpNext.speed_kph - interpPrev.speed_kph) * a
-  } else {
-    lat = currentRow.lat
-    lon = currentRow.lon
-    spd = currentRow.speed_kph
+    return {
+      lat: interpPrev.lat + (interpNext.lat - interpPrev.lat) * a,
+      lon: interpPrev.lon + (interpNext.lon - interpPrev.lon) * a,
+      spd: interpPrev.speed_kph + (interpNext.speed_kph - interpPrev.speed_kph) * a,
+    }
   }
+  return { lat: currentRow.lat, lon: currentRow.lon, spd: currentRow.speed_kph }
+}
 
-  // Apply GPS smoothing (5-point MA) to reduce position noise jitter
-  const store = telemetryStore
-  if (store) {
-    const idx = findIdx(store, currentRow.time)
-    const sm = smoothedGps(store, idx)
-    lat = sm.lat
-    lon = sm.lon
-  }
+function drawPositionDot(gps?: { lat: number; lon: number; spd: number }): void {
+  if (!cachedLayout) return
+  const pos = gps ?? currentGps()
+  if (!pos) return
 
-  const px = gpsToCanvas(lat, lon)
+  const px = gpsToCanvas(pos.lat, pos.lon)
   if (!px) return
 
   // Colour by speed: green → yellow → red
-  spd = Math.max(0, spd)
+  const spd = Math.max(0, pos.spd)
   let r: number, g: number
   if (spd < 80) {
     r = Math.round((spd / 80) * 255)
@@ -318,36 +282,16 @@ export function initTrackMap(el: HTMLCanvasElement): void {
     if (cachedLayout && proj) {
       if (resized) renderTrackCache()
 
-      // Compute current GPS position to check if dot actually moved
-      let lat: number, lon: number
-      if (interpPrev && interpNext && interpPrev !== interpNext) {
-        const a = interpAlpha
-        lat = interpPrev.lat + (interpNext.lat - interpPrev.lat) * a
-        lon = interpPrev.lon + (interpNext.lon - interpPrev.lon) * a
-      } else if (currentRow) {
-        lat = currentRow.lat
-        lon = currentRow.lon
-      } else {
-        lat = NaN
-        lon = NaN
-      }
-
-      // Apply GPS smoothing to match drawPositionDot()
-      const store = telemetryStore
-      if (store && currentRow) {
-        const idx = findIdx(store, currentRow.time)
-        const sm = smoothedGps(store, idx)
-        lat = sm.lat
-        lon = sm.lon
-      }
-
       // Skip redraw when position unchanged and no resize
+      const gps = currentGps()
+      const lat = gps?.lat ?? NaN
+      const lon = gps?.lon ?? NaN
       if (lat === lastDotLat && lon === lastDotLon && !resized) return
       lastDotLat = lat
       lastDotLon = lon
 
       blitTrack()
-      drawPositionDot()
+      drawPositionDot(gps ?? undefined)
     }
   })
 
