@@ -142,6 +142,7 @@ export async function parsePdrFile(
 
     const rows = decodePacket(packet, baseTime, i, hz100Size)
     for (const row of rows) {
+      if (store.length >= store.time.length) break
       writeRow(store, store.length, row)
       store.length++
     }

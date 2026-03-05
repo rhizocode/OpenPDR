@@ -8,6 +8,10 @@ import { findBox } from './mp4-boxes'
 import { readUint32BE, readInt32BE, readBigUint64BE, dataViewFor } from '../shared/binary-reader'
 import type { SampleTable, TrackTiming, SttsEntry } from './types'
 
+/** Maximum allowed sample size (1 MB). Telemetry packets are ~3-4 KB;
+ *  anything larger is either corrupt or crafted to cause OOM. */
+const MAX_SAMPLE_SIZE = 1_048_576
+
 /**
  * Parse the sample table (stsz, stco/co64, stsc) from within a trak box.
  * All offsets are relative to moovBuf.
@@ -49,13 +53,14 @@ export function parseSampleTable(
 
   let sampleSizes: number[]
   if (defaultSize !== 0) {
-    sampleSizes = new Array(sampleCount).fill(defaultSize)
+    sampleSizes = new Array(sampleCount).fill(Math.min(defaultSize, MAX_SAMPLE_SIZE))
   } else {
     const maxSizes = Math.floor((stszEnd - (stszData + 12)) / 4)
     const safeCount = Math.min(sampleCount, maxSizes)
     sampleSizes = []
     for (let i = 0; i < safeCount; i++) {
-      sampleSizes.push(readUint32BE(moovBuf, stszData + 12 + i * 4, dv))
+      const sz = readUint32BE(moovBuf, stszData + 12 + i * 4, dv)
+      sampleSizes.push(Math.min(sz, MAX_SAMPLE_SIZE))
     }
   }
 
