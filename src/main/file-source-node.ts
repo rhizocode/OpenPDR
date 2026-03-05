@@ -5,7 +5,7 @@
  * PdrFileSource interface used by the parser.
  */
 
-import { open, stat } from 'fs/promises'
+import { open } from 'fs/promises'
 import type { FileHandle } from 'fs/promises'
 import type { PdrFileSource } from '../shared/file-source'
 
@@ -16,9 +16,14 @@ export class NodeFileSource implements PdrFileSource {
   ) {}
 
   static async open(filePath: string): Promise<NodeFileSource> {
-    const info = await stat(filePath)
     const fh = await open(filePath, 'r')
-    return new NodeFileSource(fh, info.size)
+    try {
+      const info = await fh.stat()
+      return new NodeFileSource(fh, info.size)
+    } catch (err) {
+      await fh.close()
+      throw err
+    }
   }
 
   async read(offset: number, length: number): Promise<Uint8Array> {
