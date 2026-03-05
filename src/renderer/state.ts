@@ -9,6 +9,7 @@
 import type { TelemetryRow, LapData, SessionInfo } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
 import { getRow, getRowInto, createEmptyRow } from '../shared/telemetry-store'
+import { createBus } from './event-bus'
 
 // ── State ──
 export let telemetryStore: TelemetryStore | null = null
@@ -89,21 +90,11 @@ export function setAvSyncOffset(seconds: number): void {
 export const video = document.getElementById('video') as HTMLVideoElement
 
 // ── Event bus ──
-type Callback = () => void
-type Unsubscribe = () => void
-const rowListeners: Callback[] = []
-const telemetryLoadListeners: Callback[] = []
-const frameTickListeners: Callback[] = []
-const editModeListeners: Callback[] = []
-const viewRangeListeners: Callback[] = []
-
-function subscribe(list: Callback[], fn: Callback): Unsubscribe {
-  list.push(fn)
-  return () => {
-    const idx = list.indexOf(fn)
-    if (idx >= 0) list.splice(idx, 1)
-  }
-}
+const rowBus = createBus()
+const telemetryLoadBus = createBus()
+const frameTickBus = createBus()
+const editModeBus = createBus()
+const viewRangeBus = createBus()
 
 // ── Edit mode ──
 let editMode = false
@@ -113,34 +104,19 @@ export function getEditMode(): boolean { return editMode }
 export function setEditMode(on: boolean): void {
   if (on === editMode) return
   editMode = on
-  for (const fn of editModeListeners) fn()
+  editModeBus.fire()
 }
 
-export function onEditModeChange(fn: Callback): Unsubscribe {
-  return subscribe(editModeListeners, fn)
-}
-
-export function onViewRangeChange(fn: Callback): Unsubscribe {
-  return subscribe(viewRangeListeners, fn)
-}
-
-export function onRowUpdate(fn: Callback): Unsubscribe {
-  return subscribe(rowListeners, fn)
-}
-
-export function onTelemetryLoad(fn: Callback): Unsubscribe {
-  return subscribe(telemetryLoadListeners, fn)
-}
+export function onEditModeChange(fn: () => void) { return editModeBus.on(fn) }
+export function onViewRangeChange(fn: () => void) { return viewRangeBus.on(fn) }
+export function onRowUpdate(fn: () => void) { return rowBus.on(fn) }
+export function onTelemetryLoad(fn: () => void) { return telemetryLoadBus.on(fn) }
 
 /** Subscribe to every animation frame (for playhead animation, etc.) */
-export function onFrameTick(fn: Callback): Unsubscribe {
-  return subscribe(frameTickListeners, fn)
-}
+export function onFrameTick(fn: () => void) { return frameTickBus.on(fn) }
 
 /** Fire frame tick — called by the animation loop every active frame */
-export function fireFrameTick(): void {
-  for (const fn of frameTickListeners) fn()
-}
+export function fireFrameTick(): void { frameTickBus.fire() }
 
 // Track the last row's time separately — findRowAtTime() reuses a singleton
 // scratch object, so by the time setCurrentRow is called the object has already
@@ -151,7 +127,7 @@ export function setCurrentRow(row: TelemetryRow | null): void {
   if (row && row.time === lastRowTime) return
   lastRowTime = row ? row.time : -1
   currentRow = row
-  for (const fn of rowListeners) fn()
+  rowBus.fire()
 }
 
 export function setTelemetry(store: TelemetryStore, dur: number): void {
@@ -159,13 +135,13 @@ export function setTelemetry(store: TelemetryStore, dur: number): void {
   duration = dur
   viewRange = { startTime: 0, endTime: dur }
   selectedLapIdx = null
-  for (const fn of telemetryLoadListeners) fn()
+  telemetryLoadBus.fire()
 }
 
 export function setViewRange(range: ViewRange, lapIdx: number | null): void {
   viewRange = range
   selectedLapIdx = lapIdx
-  for (const fn of viewRangeListeners) fn()
+  viewRangeBus.fire()
 }
 
 // ── Seeking: convert telemetry time ↔ video time ──

@@ -11,6 +11,7 @@ import { createEmptyRow, getRowInto } from '../shared/telemetry-store'
 import { avSyncOffset } from './state'
 import { buildDistanceArray, computeHeadingOffset, applyOffset, benchmarkSync, type SyncData } from './compare-sync'
 import { dbg } from './state'
+import { createBus } from './event-bus'
 import { detectEngine, engineToRpmConfig } from '../shared/engine-database'
 import { loadRpmConfig } from './rpm-gauge'
 
@@ -73,23 +74,13 @@ export let syncDataA: SyncData | null = null
 export let syncDataB: SyncData | null = null
 
 // ── Event bus ──
-type Callback = () => void
-type Unsubscribe = () => void
-const compareEnterListeners: Callback[] = []
-const compareExitListeners: Callback[] = []
-const compareLapChangeListeners: Callback[] = []
+const compareEnterBus = createBus()
+const compareExitBus = createBus()
+const compareLapChangeBus = createBus()
 
-function subscribe(list: Callback[], fn: Callback): Unsubscribe {
-  list.push(fn)
-  return () => {
-    const idx = list.indexOf(fn)
-    if (idx >= 0) list.splice(idx, 1)
-  }
-}
-
-export function onCompareEnter(fn: Callback): Unsubscribe { return subscribe(compareEnterListeners, fn) }
-export function onCompareExit(fn: Callback): Unsubscribe { return subscribe(compareExitListeners, fn) }
-export function onCompareLapChange(fn: Callback): Unsubscribe { return subscribe(compareLapChangeListeners, fn) }
+export function onCompareEnter(fn: () => void) { return compareEnterBus.on(fn) }
+export function onCompareExit(fn: () => void) { return compareExitBus.on(fn) }
+export function onCompareLapChange(fn: () => void) { return compareLapChangeBus.on(fn) }
 
 // ── Scratch rows for row lookups ──
 const _findRowA = createEmptyRow()
@@ -243,7 +234,7 @@ export function enterCompareMode(config: CompareConfig): void {
 
   rebuildSync()
 
-  for (const fn of compareEnterListeners) fn()
+  compareEnterBus.fire()
 }
 
 export function exitCompareMode(): void {
@@ -260,19 +251,19 @@ export function exitCompareMode(): void {
   interpPrevB = interpNextB = null
   trackPosition = 0
 
-  for (const fn of compareExitListeners) fn()
+  compareExitBus.fire()
 }
 
 export function setCompareLapA(idx: number): void {
   if (!lapDataA?.laps[idx]) return
   lapA = lapDataA.laps[idx]
   rebuildSync()
-  for (const fn of compareLapChangeListeners) fn()
+  compareLapChangeBus.fire()
 }
 
 export function setCompareLapB(idx: number): void {
   if (!lapDataB?.laps[idx]) return
   lapB = lapDataB.laps[idx]
   rebuildSync()
-  for (const fn of compareLapChangeListeners) fn()
+  compareLapChangeBus.fire()
 }
