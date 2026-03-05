@@ -165,7 +165,9 @@ ipcMain.handle('open-file-dialog' satisfies Channel, async () => {
 })
 
 // IPC: Set allowed video path (used by drag-and-drop — dialog handler sets it automatically)
+// Restrict to .mp4 files to prevent renderer from authorizing arbitrary file reads
 ipcMain.handle('set-allowed-video-path' satisfies Channel, (_event, filePath: string) => {
+  if (typeof filePath !== 'string' || !filePath.toLowerCase().endsWith('.mp4')) return
   allowedVideoPaths.add(filePath.replace(/\\/g, '/'))
 })
 
