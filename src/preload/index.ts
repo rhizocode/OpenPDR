@@ -10,8 +10,12 @@ contextBridge.exposeInMainWorld('pdr', {
   openFileDialog: (): Promise<string | null> =>
     ipcRenderer.invoke('open-file-dialog' satisfies Channel),
 
-  parsePdrFile: (filePath: string): Promise<ParseResult> =>
-    ipcRenderer.invoke('parse-pdr-file' satisfies Channel, filePath),
+  parsePdrFile: (filePath: string): Promise<ParseResult> => {
+    if (typeof filePath !== 'string' || !filePath.toLowerCase().endsWith('.mp4')) {
+      return Promise.reject(new Error('Invalid file path'))
+    }
+    return ipcRenderer.invoke('parse-pdr-file' satisfies Channel, filePath)
+  },
 
   onParseProgress: (callback: (phase: string, pct: number) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, phase: string, pct: number) => callback(phase, pct)

@@ -198,6 +198,9 @@ ipcMain.handle('reset-allowed-video-paths' satisfies Channel, () => {
 
 // IPC: Parse PDR file — extracts telemetry directly from MP4
 ipcMain.handle('parse-pdr-file' satisfies Channel, async (_event, filePath: string): Promise<ParseResult> => {
+  if (typeof filePath !== 'string' || !filePath.toLowerCase().endsWith('.mp4')) {
+    throw new Error('Invalid file path')
+  }
   const source = await NodeFileSource.open(filePath)
   const fileName = filePath.replace(/\\/g, '/').split('/').pop() ?? ''
   try {
