@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol } from 'electron'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { createReadStream } from 'fs'
 import { stat } from 'fs/promises'
 import { parsePdrFile } from '../parser'
@@ -79,6 +79,8 @@ app.whenReady().then(() => {
       if (/^\/[A-Za-z]:/.test(filePath)) {
         filePath = filePath.slice(1)
       }
+      // Normalize to collapse ".." traversal segments before allowlist check
+      filePath = resolve(filePath).replace(/\\/g, '/')
 
       if (!allowedVideoPaths.has(filePath)) {
         return new Response('Forbidden', { status: 403 })
