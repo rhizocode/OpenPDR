@@ -28,8 +28,8 @@ export class NodeFileSource implements PdrFileSource {
 
   async read(offset: number, length: number): Promise<Uint8Array> {
     const buf = new Uint8Array(length)
-    await this.fh.read(buf, 0, length, offset)
-    return buf
+    const { bytesRead } = await this.fh.read(buf, 0, length, offset)
+    return bytesRead < length ? buf.subarray(0, bytesRead) : buf
   }
 
   async close(): Promise<void> {
