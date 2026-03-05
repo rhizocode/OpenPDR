@@ -97,6 +97,7 @@ interface GaugeElements {
   rpmText: SVGTextElement
   rpmLabel: SVGTextElement
   cfgKey: string // for cache invalidation
+  lastDrawnRpm: number // skip redundant DOM updates when value unchanged
 }
 
 const gaugeMap = new WeakMap<SVGSVGElement, GaugeElements>()
@@ -211,6 +212,7 @@ function buildGauge(svg: SVGSVGElement, cfg: RpmConfig): GaugeElements {
     svg, bgArc, greenZone, redZone, tickGroup,
     activeGreen, activeRed, rpmText, rpmLabel,
     cfgKey: cfgKeyStr(cfg),
+    lastDrawnRpm: -1,
   }
   gaugeMap.set(svg, entry)
   return entry
@@ -302,6 +304,11 @@ export function drawRpmGauge(rpm: number, targetSvg?: SVGSVGElement, overrideCon
   if (!svg) return
   const cfg = overrideConfig ?? config
   const g = ensureGauge(svg, cfg)
+
+  // Skip redundant DOM updates when the displayed integer RPM hasn't changed
+  const rounded = Math.round(rpm)
+  if (rounded === g.lastDrawnRpm) return
+  g.lastDrawnRpm = rounded
 
   const { redline, maxRpm } = cfg
   const pct = Math.min(1, Math.max(0, rpm / maxRpm))
