@@ -27,7 +27,9 @@ contextBridge.exposeInMainWorld('pdr', {
   getVideoUrl: (filePath: string): string => {
     // Use pdr-file:// protocol (secure — no webSecurity: false needed)
     const normalized = filePath.replace(/\\/g, '/')
-    return `pdr-file:///${normalized}`
+    // Unix paths start with /, Windows paths start with C:/ — ensure exactly: pdr-file:// + / + path
+    const urlPath = normalized.startsWith('/') ? normalized : '/' + normalized
+    return `pdr-file://${urlPath}`
   },
 
   exportCsv: (scope: ExportScope): Promise<boolean> =>

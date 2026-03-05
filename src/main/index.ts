@@ -60,7 +60,12 @@ app.whenReady().then(() => {
   protocol.handle('pdr-file', async (request) => {
     try {
       const url = new URL(request.url)
-      const filePath = decodeURIComponent(url.pathname).replace(/^\//, '')
+      let filePath = decodeURIComponent(url.pathname)
+      // Windows: pathname is /C:/... — strip the leading slash to get a valid drive path
+      // Unix: pathname is /home/... — the leading slash is part of the absolute path
+      if (/^\/[A-Za-z]:/.test(filePath)) {
+        filePath = filePath.slice(1)
+      }
 
       if (!allowedVideoPaths.has(filePath)) {
         return new Response('Forbidden', { status: 403 })
