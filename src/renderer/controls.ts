@@ -31,6 +31,12 @@ export function initControls(): Controls {
   const scrubThumb = document.getElementById('scrub-thumb') as HTMLDivElement
   const playbackRate = document.getElementById('playback-rate') as HTMLSelectElement
 
+  // Pre-create compare-mode time spans (reused per frame instead of innerHTML)
+  const compareTimeA = document.createElement('span')
+  compareTimeA.className = 'compare-time compare-time-a'
+  const compareTimeB = document.createElement('span')
+  compareTimeB.className = 'compare-time compare-time-b'
+
   // ── Scrub bar update (called from animation loop) ──
   function updateScrubBar(t: number): void {
     const d = getViewDuration()
@@ -59,9 +65,14 @@ export function initControls(): Controls {
   function updateCompareTimeDisplay(telTimeA: number, telTimeB: number): void {
     const lapRelA = lapA ? Math.max(0, telTimeA - lapA.startTime) : 0
     const lapRelB = lapB ? Math.max(0, telTimeB - lapB.startTime) : 0
-    timeCurrent.innerHTML =
-      `<span class="compare-time compare-time-a">A ${formatTime(lapRelA)}</span>` +
-      ` <span class="compare-time compare-time-b">B ${formatTime(lapRelB)}</span>`
+    compareTimeA.textContent = `A ${formatTime(lapRelA)}`
+    compareTimeB.textContent = `B ${formatTime(lapRelB)}`
+    if (timeCurrent.firstChild !== compareTimeA) {
+      timeCurrent.textContent = ''
+      timeCurrent.appendChild(compareTimeA)
+      timeCurrent.appendChild(document.createTextNode(' '))
+      timeCurrent.appendChild(compareTimeB)
+    }
   }
 
   // ── Compare mode: seek by track position ──

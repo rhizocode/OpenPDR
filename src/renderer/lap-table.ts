@@ -287,18 +287,41 @@ function updateCompareSummary(): void {
 
   const rowA = document.createElement('div')
   rowA.className = 'lap-summary-row'
-  rowA.innerHTML = `<span class="lap-summary-label summary-label-a">A</span><span class="lap-summary-time">${formatLapTime(tA)}</span>`
+  const labelA = document.createElement('span')
+  labelA.className = 'lap-summary-label summary-label-a'
+  labelA.textContent = 'A'
+  const timeA = document.createElement('span')
+  timeA.className = 'lap-summary-time'
+  timeA.textContent = formatLapTime(tA)
+  rowA.appendChild(labelA)
+  rowA.appendChild(timeA)
 
   const rowB = document.createElement('div')
   rowB.className = 'lap-summary-row'
-  rowB.innerHTML = `<span class="lap-summary-label summary-label-b">B</span><span class="lap-summary-time">${formatLapTime(tB)}</span>`
+  const labelB = document.createElement('span')
+  labelB.className = 'lap-summary-label summary-label-b'
+  labelB.textContent = 'B'
+  const timeB = document.createElement('span')
+  timeB.className = 'lap-summary-time'
+  timeB.textContent = formatLapTime(tB)
+  rowB.appendChild(labelB)
+  rowB.appendChild(timeB)
 
   const rowDelta = document.createElement('div')
   rowDelta.className = 'lap-summary-row lap-summary-delta'
   const sign = delta < 0 ? '' : '+'
   const deltaColor = delta < 0 ? '#3cdc3c' : delta > 0 ? '#ff6060' : '#fff'
   const winner = delta < 0 ? 'A faster' : delta > 0 ? 'B faster' : 'Equal'
-  rowDelta.innerHTML = `<span class="lap-summary-label" style="color:${deltaColor}">\u0394</span><span class="lap-summary-time" style="color:${deltaColor}">${sign}${delta.toFixed(3)}s (${winner})</span>`
+  const deltaLabel = document.createElement('span')
+  deltaLabel.className = 'lap-summary-label'
+  deltaLabel.style.color = deltaColor
+  deltaLabel.textContent = '\u0394'
+  const deltaTime = document.createElement('span')
+  deltaTime.className = 'lap-summary-time'
+  deltaTime.style.color = deltaColor
+  deltaTime.textContent = `${sign}${delta.toFixed(3)}s (${winner})`
+  rowDelta.appendChild(deltaLabel)
+  rowDelta.appendChild(deltaTime)
 
   el.appendChild(rowA)
   el.appendChild(rowB)

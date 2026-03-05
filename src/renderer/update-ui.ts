@@ -74,15 +74,17 @@ function openModal(
 ): void {
   title.textContent = `Update to v${pendingVersion}`
 
-  // Render changelog
+  // Render changelog (use textContent to avoid XSS from release note HTML)
+  changelog.textContent = ''
   if (pendingNotes.length > 0) {
-    changelog.innerHTML = pendingNotes
-      .map((note) => {
-        const heading = document.createElement('h4')
-        heading.textContent = `v${note.version}`
-        return heading.outerHTML + note.note
-      })
-      .join('')
+    for (const note of pendingNotes) {
+      const heading = document.createElement('h4')
+      heading.textContent = `v${note.version}`
+      changelog.appendChild(heading)
+      const body = document.createElement('p')
+      body.textContent = note.note
+      changelog.appendChild(body)
+    }
   } else {
     changelog.textContent = 'A new version is available.'
   }
