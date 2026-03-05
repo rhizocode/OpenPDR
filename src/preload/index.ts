@@ -18,9 +18,11 @@ contextBridge.exposeInMainWorld('pdr', {
   },
 
   onParseProgress: (callback: (phase: string, pct: number) => void): (() => void) => {
+    const channel = 'parse-progress' satisfies Channel
+    ipcRenderer.removeAllListeners(channel)
     const handler = (_event: Electron.IpcRendererEvent, phase: string, pct: number) => callback(phase, pct)
-    ipcRenderer.on('parse-progress' satisfies Channel, handler)
-    return () => ipcRenderer.removeListener('parse-progress' satisfies Channel, handler)
+    ipcRenderer.on(channel, handler)
+    return () => ipcRenderer.removeListener(channel, handler)
   },
 
   setAllowedVideoPath: (filePath: string): Promise<void> =>
@@ -50,9 +52,11 @@ contextBridge.exposeInMainWorld('pdr', {
 
   // Bidirectional IPC for overlay frame rendering (main -> renderer -> main)
   onRenderOverlayFrames: (callback: (request: RenderOverlayRequest) => void): (() => void) => {
+    const channel = 'render-overlay-frames' satisfies Channel
+    ipcRenderer.removeAllListeners(channel)
     const handler = (_event: Electron.IpcRendererEvent, request: RenderOverlayRequest) => callback(request)
-    ipcRenderer.on('render-overlay-frames' satisfies Channel, handler)
-    return () => ipcRenderer.removeListener('render-overlay-frames' satisfies Channel, handler)
+    ipcRenderer.on(channel, handler)
+    return () => ipcRenderer.removeListener(channel, handler)
   },
 
   sendOverlayFrameData: (idx: number, buffer: Uint8Array): Promise<void> =>
@@ -67,9 +71,11 @@ contextBridge.exposeInMainWorld('pdr', {
   },
 
   onExportVideoProgress: (callback: (phase: string, pct: number) => void): (() => void) => {
+    const channel = 'export-video-progress' satisfies Channel
+    ipcRenderer.removeAllListeners(channel)
     const handler = (_event: Electron.IpcRendererEvent, phase: string, pct: number) => callback(phase, pct)
-    ipcRenderer.on('export-video-progress' satisfies Channel, handler)
-    return () => ipcRenderer.removeListener('export-video-progress' satisfies Channel, handler)
+    ipcRenderer.on(channel, handler)
+    return () => ipcRenderer.removeListener(channel, handler)
   },
 
   // Auto-update
@@ -83,9 +89,11 @@ contextBridge.exposeInMainWorld('pdr', {
     ipcRenderer.invoke('install-update' satisfies Channel),
 
   onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
+    const channel = 'update-status' satisfies Channel
+    ipcRenderer.removeAllListeners(channel)
     const handler = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status)
-    ipcRenderer.on('update-status' satisfies Channel, handler)
-    return () => ipcRenderer.removeListener('update-status' satisfies Channel, handler)
+    ipcRenderer.on(channel, handler)
+    return () => ipcRenderer.removeListener(channel, handler)
   },
 
   getAppVersion: (): Promise<string> =>
