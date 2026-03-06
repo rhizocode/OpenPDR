@@ -140,7 +140,12 @@ const pdrWeb: PdrApi = {
   },
 
   async resetAllowedVideoPaths(): Promise<void> {
-    clearStashedFiles()
+    // Only revoke video blob URLs; keep fileMap intact so the
+    // just-selected File reference survives (no security boundary in browser).
+    for (const url of videoBlobUrls.values()) {
+      URL.revokeObjectURL(url)
+    }
+    videoBlobUrls.clear()
   },
 
   getPathForFile(file: File): string {
