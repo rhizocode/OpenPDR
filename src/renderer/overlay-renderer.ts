@@ -187,12 +187,12 @@ function drawRpmGaugeOverlay(
   ctx.lineCap = 'butt'
   ctx.stroke()
 
-  // Green background zone (first 90% of arc, faded)
-  drawZoneArc(ctx, cx, cy, radius, 0, 0.9, '#00cc66', 0.2, lineWidth)
-  // Red background zone (last 10% of arc, more prominent)
-  drawZoneArc(ctx, cx, cy, radius, 0.9, 1, '#ff3333', 0.45, lineWidth)
-
   const redlinePct = redline / maxRpm
+
+  // Green background zone (up to redline, faded)
+  drawZoneArc(ctx, cx, cy, radius, 0, redlinePct, '#00cc66', 0.2, lineWidth)
+  // Red background zone (redline to max, more prominent)
+  drawZoneArc(ctx, cx, cy, radius, redlinePct, 1, '#ff3333', 0.45, lineWidth)
   const redlineAngle = RPM_START_ANGLE + redlinePct * RPM_SWEEP
 
   // Active fill: green arc from 0 up to min(rpm, redline)
@@ -219,9 +219,24 @@ function drawRpmGaugeOverlay(
   }
 
   // Tick marks — drawn AFTER active arcs so they stay visible on highlighted area
+  ctx.lineCap = 'round'
+
+  // Minor ticks at 500 RPM intervals
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)'
+  ctx.lineWidth = 1.5
+  for (let r = 500; r <= maxRpm; r += 1000) {
+    const angle = RPM_START_ANGLE + (r / maxRpm) * RPM_SWEEP
+    const inner = radius - 4, outer = radius + 4
+    ctx.beginPath()
+    ctx.moveTo(cx + inner * Math.cos(angle), cy + inner * Math.sin(angle))
+    ctx.lineTo(cx + outer * Math.cos(angle), cy + outer * Math.sin(angle))
+    ctx.stroke()
+  }
+
+  // Major ticks at 1000 RPM intervals with labels
   ctx.strokeStyle = 'rgba(0,0,0,0.6)'
   ctx.lineWidth = 2
-  ctx.lineCap = 'round'
+  const labelR = radius - 17
   for (let r = 0; r <= maxRpm; r += 1000) {
     const angle = RPM_START_ANGLE + (r / maxRpm) * RPM_SWEEP
     const inner = radius - 7, outer = radius + 7
@@ -229,18 +244,27 @@ function drawRpmGaugeOverlay(
     ctx.moveTo(cx + inner * Math.cos(angle), cy + inner * Math.sin(angle))
     ctx.lineTo(cx + outer * Math.cos(angle), cy + outer * Math.sin(angle))
     ctx.stroke()
+
+    // Numeric label (thousands digit, skip 0)
+    if (r > 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.6)'
+      ctx.font = '10px Consolas, monospace'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText((r / 1000).toString(), cx + labelR * Math.cos(angle), cy + labelR * Math.sin(angle))
+    }
   }
 
   // Numeric readout — positioned near the bottom of the arc bowl
   ctx.fillStyle = '#fff'
-  ctx.font = 'bold 42px Consolas, monospace'
+  ctx.font = 'bold 36px Consolas, monospace'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
-  ctx.fillText(Math.round(rpm).toString(), cx, cy - 16)
+  ctx.fillText(Math.round(rpm).toString(), cx, cy - 14)
 
   ctx.fillStyle = '#aaa'
   ctx.font = '16px Consolas, monospace'
-  ctx.fillText('RPM', cx, cy - 2)
+  ctx.fillText('RPM', cx, cy + 4)
 
   ctx.restore()
 }

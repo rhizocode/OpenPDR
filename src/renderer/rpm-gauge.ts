@@ -113,7 +113,7 @@ function buildGauge(svg: SVGSVGElement, cfg: RpmConfig): GaugeElements {
   setAttrs(svg, { viewBox: `0 0 ${W} ${H}`, width: W, height: H })
   svg.style.overflow = 'visible'
 
-  const { maxRpm } = cfg
+  const { redline, maxRpm } = cfg
 
   // Background arc (dim white)
   const bgArc = createSvgEl('path')
@@ -124,9 +124,9 @@ function buildGauge(svg: SVGSVGElement, cfg: RpmConfig): GaugeElements {
   })
   svg.appendChild(bgArc)
 
-  // Green background zone (first 90% of arc, faded)
+  // Green background zone (up to redline, faded)
   const greenZone = createSvgEl('path')
-  const redZoneStart = 0.9 // last 10% of arc is red zone
+  const redZoneStart = redline / maxRpm
   const greenEndDeg = START_DEG + redZoneStart * SWEEP_DEG
   setAttrs(greenZone, {
     d: arcPath(CX, CY, R, START_DEG, greenEndDeg),
@@ -160,16 +160,43 @@ function buildGauge(svg: SVGSVGElement, cfg: RpmConfig): GaugeElements {
   })
   svg.appendChild(activeRed)
 
-  // Tick marks at 1000 RPM intervals — drawn AFTER active arcs so they stay visible
+  // Tick marks — drawn AFTER active arcs so they stay visible
   const tickGroup = createSvgEl('g')
-  setAttrs(tickGroup, { stroke: 'rgba(0,0,0,0.6)', 'stroke-width': '2', 'stroke-linecap': 'round' })
+  setAttrs(tickGroup, { 'stroke-linecap': 'round' })
+
+  // Minor ticks at 500 RPM intervals
+  for (let r = 500; r <= maxRpm; r += 1000) {
+    const deg = rpmToDeg(r, maxRpm)
+    const [ix, iy] = polarToXY(CX, CY, TICK_INNER + 3, deg)
+    const [ox, oy] = polarToXY(CX, CY, TICK_OUTER - 3, deg)
+    const tick = createSvgEl('line')
+    setAttrs(tick, { x1: ix, y1: iy, x2: ox, y2: oy, stroke: 'rgba(0,0,0,0.4)', 'stroke-width': '1.5' })
+    tickGroup.appendChild(tick)
+  }
+
+  // Major ticks at 1000 RPM intervals
+  const LABEL_R = R - 17
   for (let r = 0; r <= maxRpm; r += 1000) {
     const deg = rpmToDeg(r, maxRpm)
     const [ix, iy] = polarToXY(CX, CY, TICK_INNER, deg)
     const [ox, oy] = polarToXY(CX, CY, TICK_OUTER, deg)
     const tick = createSvgEl('line')
-    setAttrs(tick, { x1: ix, y1: iy, x2: ox, y2: oy })
+    setAttrs(tick, { x1: ix, y1: iy, x2: ox, y2: oy, stroke: 'rgba(0,0,0,0.6)', 'stroke-width': '2' })
     tickGroup.appendChild(tick)
+
+    // Numeric label (thousands digit, skip 0)
+    if (r > 0) {
+      const [lx, ly] = polarToXY(CX, CY, LABEL_R, deg)
+      const label = createSvgEl('text')
+      setAttrs(label, {
+        x: lx, y: ly,
+        'text-anchor': 'middle', 'dominant-baseline': 'central',
+        fill: 'rgba(255,255,255,0.6)', 'font-family': 'Consolas, monospace',
+        'font-size': '10',
+      })
+      label.textContent = (r / 1000).toString()
+      tickGroup.appendChild(label)
+    }
   }
   svg.appendChild(tickGroup)
 
@@ -188,10 +215,10 @@ function buildGauge(svg: SVGSVGElement, cfg: RpmConfig): GaugeElements {
   // Visual center of the interior ≈ midpoint = ~93
   const rpmText = createSvgEl('text')
   setAttrs(rpmText, {
-    x: CX, y: CY - 10,
+    x: CX, y: CY - 8,
     'text-anchor': 'middle', 'dominant-baseline': 'central',
     fill: '#fff', 'font-family': 'Consolas, monospace',
-    'font-size': '42', 'font-weight': 'bold',
+    'font-size': '36', 'font-weight': 'bold',
     filter: 'url(#rpm-shadow)',
   })
   rpmText.textContent = '0'
@@ -200,7 +227,7 @@ function buildGauge(svg: SVGSVGElement, cfg: RpmConfig): GaugeElements {
   // "RPM" label
   const rpmLabel = createSvgEl('text')
   setAttrs(rpmLabel, {
-    x: CX, y: CY + 14,
+    x: CX, y: CY + 24,
     'text-anchor': 'middle', 'dominant-baseline': 'central',
     fill: '#aaa', 'font-family': 'Consolas, monospace',
     'font-size': '16',
