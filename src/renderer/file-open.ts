@@ -9,7 +9,7 @@ import { showChartPanel } from './resizer'
 import { clampAllToViewport } from './edit-mode'
 import { setCompareFilePath } from './compare-ui'
 
-const pdr = window.pdr
+const pdr = window.pdr ?? null
 
 // ── DOM refs ──
 const btnOpen = document.getElementById('btn-open') as HTMLButtonElement
@@ -29,6 +29,8 @@ function hideProgress(): void {
 }
 
 async function openFile(filePath?: string): Promise<void> {
+  if (!pdr) { dbg('pdr API not available (web build)'); return }
+
   if (!filePath) {
     dbg('Opening file dialog...')
     filePath = await pdr.openFileDialog() ?? undefined
@@ -138,6 +140,7 @@ export function initFileOpen(): void {
   videoContainer.addEventListener('drop', (e) => {
     e.preventDefault()
     videoContainer.classList.remove('drag-over')
+    if (!pdr) return
     const file = e.dataTransfer?.files[0]
     if (file && file.name.toLowerCase().endsWith('.mp4')) {
       const filePath = pdr.getPathForFile(file)

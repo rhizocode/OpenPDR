@@ -788,6 +788,7 @@ async function handleRenderRequest(request: RenderOverlayRequest): Promise<void>
 }
 
 export function initOverlayRenderer(): void {
+  if (!window.pdr?.onRenderOverlayFrames) return
   window.pdr.onRenderOverlayFrames((request) => {
     handleRenderRequest(request).catch((err) => {
       console.error('[overlay-renderer] Unhandled error:', err)

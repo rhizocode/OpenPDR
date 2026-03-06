@@ -37,7 +37,7 @@ import { createOverlayB, destroyOverlayB, applyOverlayConfigB, updateAnchorBBoun
 import { getOverlayConfig } from './hud'
 import { formatLapTime } from './defaults'
 
-const pdr = window.pdr
+const pdr = window.pdr ?? null
 
 // ── DOM refs ──
 const btnCompare = document.getElementById('btn-compare') as HTMLButtonElement
@@ -184,6 +184,7 @@ function enterSameFile(): void {
 
 // ── Entry flow: different file ──
 async function enterDifferentFile(): Promise<void> {
+  if (!pdr) return
   const storeA = telemetryStore
   const ldA = lapData
   if (!storeA || !ldA?.hasLapData || ldA.laps.length < 1) return

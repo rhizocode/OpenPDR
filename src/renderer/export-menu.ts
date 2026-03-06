@@ -70,7 +70,7 @@ function ensureExportProgressEl(): HTMLDivElement {
   document.getElementById('video-container')!.appendChild(el)
 
   el.querySelector('.ep-cancel')!.addEventListener('click', () => {
-    window.pdr.cancelVideoExport()
+    window.pdr?.cancelVideoExport()
     hideExportProgress()
   })
 
@@ -136,7 +136,9 @@ function onExportProgress(phase: string, pct: number): void {
 // ── Init (export progress listener only) ──
 
 export function initExportMenu(): void {
-  window.pdr.onExportVideoProgress(onExportProgress)
+  if (window.pdr?.onExportVideoProgress) {
+    window.pdr.onExportVideoProgress(onExportProgress)
+  }
 }
 
 // ── Panel building (called by gear-menu) ──
