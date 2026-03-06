@@ -44,8 +44,7 @@ const PEDAL_GAP = 3
 // Gear box
 const GEAR_BOX_SIZE = 48
 
-// ── GEAR_DISPLAY map ──
-import { GEAR_DISPLAY } from './defaults'
+import { resolveGearDisplay } from './defaults'
 
 // ── Track map projection (from track-map.ts) ──
 
@@ -790,7 +789,7 @@ async function handleRenderRequest(request: RenderOverlayRequest): Promise<void>
 
       // Carry-forward gear
       if (row.gear !== undefined) {
-        lastKnownGear = GEAR_DISPLAY[row.gear] ?? row.gear
+        lastKnownGear = resolveGearDisplay(row.gear)
       }
 
       renderOverlayFrame(

@@ -186,6 +186,7 @@ interface DeltaChannelData {
 const DELTA_SAMPLES = 200
 
 let channelData: ChannelData[] = []
+const offscreenCache = new Map<string, { offscreen: HTMLCanvasElement, ctx: CanvasRenderingContext2D }>()
 let compareChannelData: CompareChannelData[] = []
 let deltaChannelData: DeltaChannelData | null = null
 
@@ -499,6 +500,7 @@ function buildToolbar(): void {
 /** Pre-compute scaled arrays for channels with scale !== 1, plus dense gear. Called once on telemetry load. */
 function buildScaledCache(): void {
   scaledCache.clear()
+  offscreenCache.clear()
   const store = telemetryStore
   if (!store || store.length === 0) return
   for (const config of CHANNELS) {
@@ -568,11 +570,22 @@ function rebuildChannelData(): void {
   const enabled = CHANNELS.filter(c => enabledKeys.has(c.key))
   const times = store.time  // shared across all channels
 
+  // Prune offscreen cache entries for channels no longer enabled
+  const enabledSet = new Set(enabled.map(c => c.key))
+  for (const key of offscreenCache.keys()) {
+    if (!enabledSet.has(key)) offscreenCache.delete(key)
+  }
+
   channelData = enabled.map(config => {
     const values = scaledCache.get(config.key) ?? config.storeAccessor(store)
-    const offscreen = document.createElement('canvas')
-    const offCtx = offscreen.getContext('2d')!
-    return { config, values, times, offscreen, ctx: offCtx }
+    let cached = offscreenCache.get(config.key)
+    if (!cached) {
+      const offscreen = document.createElement('canvas')
+      const offCtx = offscreen.getContext('2d')!
+      cached = { offscreen, ctx: offCtx }
+      offscreenCache.set(config.key, cached)
+    }
+    return { config, values, times, offscreen: cached.offscreen, ctx: cached.ctx }
   })
 }
 

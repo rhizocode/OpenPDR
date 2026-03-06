@@ -17,7 +17,7 @@ import { initRpmBar, drawRpmBar } from './rpm-bar'
 import { initSteeringIndicator, drawSteering } from './steering'
 import { applyOverlayConfigB } from './compare-overlay-b'
 import { isCompareMode, rpmConfigA } from './compare-state'
-import { DEFAULT_OVERLAY, GEAR_DISPLAY, formatTimestamp } from './defaults'
+import { DEFAULT_OVERLAY, resolveGearDisplay, formatTimestamp } from './defaults'
 import { STORAGE_KEYS } from './storage-keys'
 
 const OVERLAY_STORAGE_KEY = STORAGE_KEYS.overlayConfig
@@ -140,7 +140,7 @@ function updateHud(row: TelemetryRow | null): void {
 
   // Gear (carry forward sparse value — cheap DOM text update + shift detection)
   if (row.gear !== undefined) {
-    const newDisplay = GEAR_DISPLAY[row.gear] ?? row.gear
+    const newDisplay = resolveGearDisplay(row.gear)
     if (newDisplay !== lastKnownGear && overlayConfig.gear) {
       const prevRank = gearRank(lastKnownGear)
       const newRank = gearRank(newDisplay)

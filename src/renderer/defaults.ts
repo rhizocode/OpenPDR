@@ -45,6 +45,12 @@ export const GEAR_DISPLAY: Record<string, string> = {
   seventh: '7', eighth: '8', ninth: '9', tenth: '10',
 }
 
+/** Resolve a raw gear label to its display character. */
+export function resolveGearDisplay(gear: string | undefined): string {
+  if (!gear) return '-'
+  return GEAR_DISPLAY[gear] ?? gear
+}
+
 // ── Formatting helpers ──
 
 /** Format seconds as M:SS.mmm */

@@ -119,6 +119,11 @@ function updateHighlight(): void {
   // Use the actual synced telemetry time (not the snapped row time) so that
   // video frame-snap rounding doesn't push us across a lap boundary.
   const t = getSyncedTime()
+
+  // Fast path: if time is still within the current lap, skip the linear scan
+  if (currentLapIdx >= 0 && t >= laps[currentLapIdx].startTime - 0.05
+      && t < laps[currentLapIdx].endTime) return
+
   let idx = -1
   for (let i = 0; i < laps.length; i++) {
     if (t >= laps[i].startTime - 0.05 && t < laps[i].endTime) {
