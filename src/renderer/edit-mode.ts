@@ -19,6 +19,7 @@ const OVERLAY_STORAGE_KEY = STORAGE_KEYS.overlayConfig
 const OVERLAY_LABELS: Record<OverlayKey, string> = {
   speed: 'Speed',
   rpmGauge: 'RPM Gauge',
+  rpmBar: 'RPM Bar',
   gear: 'Gear',
   gforce: 'G-Force',
   pedals: 'Pedals',

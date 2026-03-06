@@ -10,7 +10,7 @@ import type { OverlayConfig, OverlayLayout, RpmConfig } from './types'
 // ── Overlay visibility defaults ──
 
 export const DEFAULT_OVERLAY: OverlayConfig = {
-  speed: true, rpmGauge: true, gear: true, gforce: true,
+  speed: true, rpmGauge: true, rpmBar: false, gear: true, gforce: true,
   pedals: true, steering: true, gps: true, trackMap: true, session: true,
 }
 
@@ -19,6 +19,7 @@ export const DEFAULT_OVERLAY: OverlayConfig = {
 export const DEFAULT_LAYOUT: OverlayLayout = {
   speed:    { left: 1.5, top: 82, scale: 1 },
   rpmGauge: { left: 13,  top: 78, scale: 1 },
+  rpmBar:   { left: 1.5, top: 95, scale: 1 },
   gear:     { left: 27,  top: 82, scale: 1 },
   steering: { left: 33,  top: 76, scale: 1 },
   gforce:   { left: 82,  top: 68, scale: 1 },

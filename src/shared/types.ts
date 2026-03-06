@@ -163,6 +163,7 @@ export interface ExportScope {
 export interface OverlayConfig {
   speed: boolean
   rpmGauge: boolean
+  rpmBar: boolean
   gear: boolean
   gforce: boolean
   pedals: boolean

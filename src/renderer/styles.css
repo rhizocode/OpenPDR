@@ -291,6 +291,18 @@ html, body {
   height: 165px;
 }
 
+/* RPM bar */
+
+#hud-rpm-bar.active {
+  display: block;
+}
+
+#hud-rpm-bar svg {
+  display: block;
+  width: 400px;
+  height: 36px;
+}
+
 /* Gear */
 #hud-gear,
 #hud-gear-b {

@@ -13,6 +13,7 @@ import type { TelemetryRow, OverlayConfig, OverlayKey } from './types'
 import { onRowUpdate, onTelemetryLoad, onFrameTick, currentRow, interpPrev, interpNext, interpAlpha, sessionInfo } from './state'
 import { initGForceBall, drawGForce } from './gforce-ball'
 import { initRpmGauge, drawRpmGauge } from './rpm-gauge'
+import { initRpmBar, drawRpmBar } from './rpm-bar'
 import { initSteeringIndicator, drawSteering } from './steering'
 import { applyOverlayConfigB } from './compare-overlay-b'
 import { isCompareMode, rpmConfigA } from './compare-state'
@@ -196,6 +197,7 @@ function smoothAndDraw(): void {
   displayedGLon += (targetGLon - displayedGLon) * alpha
 
   if (overlayConfig.rpmGauge) drawRpmGauge(displayedRpm, undefined, isCompareMode() ? rpmConfigA : undefined)
+  if (overlayConfig.rpmBar) drawRpmBar(displayedRpm)
   if (overlayConfig.steering) drawSteering(displayedSteeringDeg)
   if (overlayConfig.gforce) drawGForce(displayedGLat, displayedGLon)
 }
@@ -265,6 +267,7 @@ function populateSessionOverlay(): void {
 export function initHud(): void {
   initGForceBall()
   initRpmGauge()
+  initRpmBar()
   initSteeringIndicator()
 
   // Row change: set targets + update DOM text

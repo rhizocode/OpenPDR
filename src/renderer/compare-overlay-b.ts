@@ -142,6 +142,7 @@ export function destroyOverlayB(): void {
 const OVERLAY_DISPLAY: Partial<Record<OverlayKey, string>> = {
   speed: 'flex',
   rpmGauge: 'block',
+  rpmBar: 'block',
   gear: 'flex',
   steering: 'block',
   gforce: 'block',
