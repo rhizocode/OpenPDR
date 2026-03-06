@@ -113,6 +113,36 @@ export async function exportVideo(
     // the IPC handler can return cleanly instead of throwing
     proc.stdin?.on('error', () => { cancelled = true })
 
+    // Attach close/error listeners immediately after spawn so that a
+    // cancel before the IPC loop starts still settles the promise.
+    let stderr = ''
+    const procDone = new Promise<void>((resolve, reject) => {
+      proc.stderr?.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString()
+        if (stderr.length > 10000) stderr = stderr.slice(-5000)
+      })
+
+      proc.on('close', (code) => {
+        activeProcess = null
+        if (code === 0) {
+          resolve()
+        } else {
+          reject(new Error(`ffmpeg exited with code ${code}:\n${stderr.slice(-500)}`))
+        }
+      })
+
+      proc.on('error', (err) => {
+        activeProcess = null
+        reject(new Error(`ffmpeg failed to start: ${err.message}`))
+      })
+    })
+
+    // If the process was already killed before listeners attached, reject now
+    if (proc.killed || proc.exitCode !== null) {
+      activeProcess = null
+      throw new Error('ffmpeg process exited before export could start')
+    }
+
     // Handle frame data: write raw RGBA to ffmpeg stdin with backpressure
     ipcMain.handle('overlay-frame-data' satisfies Channel, async (
       _event: Electron.IpcMainInvokeEvent,
@@ -135,55 +165,31 @@ export async function exportVideo(
       })
     })
 
-    let onDone: (() => void) | null = null
+    // When renderer signals all frames sent, close ffmpeg stdin
+    const onDone = (): void => {
+      if (proc.stdin && !proc.stdin.destroyed) {
+        proc.stdin.end()
+      }
+    }
+    ipcMain.on('overlay-frames-done' satisfies Channel, onDone)
+
     try {
-      await new Promise<void>((resolve, reject) => {
-        let stderr = ''
+      // Send render request to renderer — starts the frame stream
+      const request: RenderOverlayRequest = {
+        startIdx, endIdx,
+        width: meta.width,
+        height: meta.height,
+        fps: overlayFps,
+        totalFrames,
+        overlayConfig, overlayLayout, rpmConfig, trackLayout, sessionInfo,
+      }
+      mainWindow.webContents.send('render-overlay-frames' satisfies Channel, request)
 
-        // When renderer signals all frames sent, close ffmpeg stdin
-        onDone = () => {
-          if (proc.stdin && !proc.stdin.destroyed) {
-            proc.stdin.end()
-          }
-        }
-        ipcMain.on('overlay-frames-done' satisfies Channel, onDone)
-
-        proc.stderr?.on('data', (chunk: Buffer) => {
-          stderr += chunk.toString()
-          // Cap stderr to avoid unbounded growth
-          if (stderr.length > 10000) stderr = stderr.slice(-5000)
-        })
-
-        proc.on('close', (code) => {
-          activeProcess = null
-          if (code === 0) {
-            resolve()
-          } else {
-            reject(new Error(`ffmpeg exited with code ${code}:\n${stderr.slice(-500)}`))
-          }
-        })
-
-        proc.on('error', (err) => {
-          activeProcess = null
-          reject(new Error(`ffmpeg failed to start: ${err.message}`))
-        })
-
-        // Send render request to renderer — starts the frame stream
-        const request: RenderOverlayRequest = {
-          startIdx, endIdx,
-          width: meta.width,
-          height: meta.height,
-          fps: overlayFps,
-          totalFrames,
-          overlayConfig, overlayLayout, rpmConfig, trackLayout, sessionInfo,
-        }
-        mainWindow.webContents.send('render-overlay-frames' satisfies Channel, request)
-      })
-
+      await procDone
       onProgress('Complete', 100)
     } finally {
       ipcMain.removeHandler('overlay-frame-data' satisfies Channel)
-      if (onDone) ipcMain.removeListener('overlay-frames-done' satisfies Channel, onDone)
+      ipcMain.removeListener('overlay-frames-done' satisfies Channel, onDone)
     }
   } finally {
     exportInProgress = false
@@ -198,4 +204,7 @@ export function cancelVideoExport(): void {
     activeProcess.kill()
     activeProcess = null
   }
+  // Reset flag directly so future exports aren't blocked if the
+  // Promise never settles (e.g. cancel before close listener attached)
+  exportInProgress = false
 }
