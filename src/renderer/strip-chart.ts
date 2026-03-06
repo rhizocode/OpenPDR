@@ -21,7 +21,7 @@
 
 import type { TelemetryRow } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
-import { telemetryStore, video, avSyncOffset, onRowUpdate, onFrameTick, onTelemetryLoad, currentRow, setCurrentRow, findRowAtTime, lapData, seekToTelemetryTime, getSyncedTime, viewRange, getViewDuration, viewFraction, viewFractionToTime, selectedLapIdx, onViewRangeChange } from './state'
+import { telemetryStore, video, avSyncOffset, onRowUpdate, onFrameTick, onTelemetryLoad, currentRow, setCurrentRow, findRowAtTime, lapData, seekToTelemetryTime, getSyncedTime, viewRange, selectedLapIdx, onViewRangeChange, chartZoom, setChartZoom, onChartZoomChange, chartFraction, chartFractionToTime, getChartVisibleDuration, chartLoopMode } from './state'
 import {
   isCompareMode,
   storeA, storeB,
@@ -271,11 +271,36 @@ export function initChartPanel(): void {
   // On row change: rebuild frame cache (labels show new current values)
   onRowUpdate(() => { renderFrameCache(); invalidatePlayhead(); drawPlayhead() })
 
-  // On every animation frame: just blit cache + draw playhead (very cheap)
-  onFrameTick(() => drawPlayhead())
+  // On every animation frame: page-snap if needed, then draw playhead
+  onFrameTick(() => {
+    if (chartZoom && !video.paused && !isCompareMode()) {
+      const t = getSyncedTime()
+      if (t >= chartZoom.endTime) {
+        if (chartLoopMode) {
+          // Loop: seek back to start of zoom region
+          seekToTelemetryTime(chartZoom.startTime)
+          setCurrentRow(findRowAtTime(video.currentTime))
+        } else {
+          // Page-snap: advance window forward
+          const dur = chartZoom.endTime - chartZoom.startTime
+          let newStart = chartZoom.endTime
+          let newEnd = newStart + dur
+          if (newEnd > viewRange.endTime) {
+            newEnd = viewRange.endTime
+            newStart = Math.max(viewRange.startTime, newEnd - dur)
+          }
+          setChartZoom({ startTime: newStart, endTime: newEnd })
+        }
+      }
+    }
+    drawPlayhead()
+  })
 
   // On view range change: re-render charts with new time range
   onViewRangeChange(() => { if (!isCompareMode()) resizeAndRender() })
+
+  // On chart zoom change: re-render charts with new zoom window
+  onChartZoomChange(() => { if (!isCompareMode()) resizeAndRender() })
 
   // Compare mode lifecycle
   onCompareEnter(() => {
@@ -322,8 +347,8 @@ export function initChartPanel(): void {
       const telTime = trackPositionToTime(sd, xPct)
       va.currentTime = telTime - avSyncOffset
     } else {
-      if (getViewDuration() > 0) {
-        seekToTelemetryTime(viewFractionToTime(xPct))
+      if (getChartVisibleDuration() > 0) {
+        seekToTelemetryTime(chartFractionToTime(xPct))
         setCurrentRow(findRowAtTime(video.currentTime))
       }
     }
@@ -342,6 +367,56 @@ export function initChartPanel(): void {
 
   canvas.addEventListener('pointerup', () => {
     chartScrubActive = false
+  })
+
+  // ── Scroll wheel zoom ──
+  canvas.addEventListener('wheel', (e) => {
+    if (isCompareMode()) return
+    e.preventDefault()
+
+    const rect = canvas.getBoundingClientRect()
+    const xPct = (e.clientX - rect.left - LABEL_WIDTH) / (rect.width - LABEL_WIDTH)
+    if (xPct < 0 || xPct > 1) return
+
+    const z = chartZoom
+    const curStart = z ? z.startTime : viewRange.startTime
+    const curEnd = z ? z.endTime : viewRange.endTime
+    const curDur = curEnd - curStart
+
+    const ZOOM_FACTOR = 0.15
+    const direction = e.deltaY > 0 ? 1 : -1  // 1 = zoom out, -1 = zoom in
+    const scale = 1 + direction * ZOOM_FACTOR
+    const newDur = curDur * scale
+
+    // Fully zoomed out → clear zoom
+    const viewDur = viewRange.endTime - viewRange.startTime
+    if (newDur >= viewDur) {
+      setChartZoom(null)
+      return
+    }
+    if (newDur < 1.0) return  // minimum 1 second
+
+    // Anchor: cursor's time stays at the same screen fraction
+    const cursorTime = curStart + xPct * curDur
+    let newStart = cursorTime - xPct * newDur
+    let newEnd = cursorTime + (1 - xPct) * newDur
+
+    // Clamp to viewRange bounds
+    if (newStart < viewRange.startTime) {
+      newStart = viewRange.startTime
+      newEnd = newStart + newDur
+    }
+    if (newEnd > viewRange.endTime) {
+      newEnd = viewRange.endTime
+      newStart = newEnd - newDur
+    }
+
+    setChartZoom({ startTime: newStart, endTime: newEnd })
+  }, { passive: false })
+
+  // ── Double-click to reset zoom ──
+  canvas.addEventListener('dblclick', () => {
+    if (!isCompareMode()) setChartZoom(null)
   })
 }
 
@@ -618,11 +693,12 @@ function renderChannelOffscreen(cd: ChannelData, w: number, h: number): void {
   const { ctx: offCtx, values, times, config } = cd
   offCtx.clearRect(0, 0, w, h)
 
-  const vd = getViewDuration()
+  const vd = getChartVisibleDuration()
   if (values.length < 2 || vd <= 0) return
 
-  const vStart = viewRange.startTime
-  const vEnd = viewRange.endTime
+  const z = chartZoom
+  const vStart = z ? z.startTime : viewRange.startTime
+  const vEnd = z ? z.endTime : viewRange.endTime
 
   // Find sample index range within the view window
   const iStart = Math.max(0, lowerBound(times, values.length, vStart) - 1)
@@ -642,7 +718,7 @@ function renderChannelOffscreen(cd: ChannelData, w: number, h: number): void {
     // Enough room: draw every visible point
     let first = true
     for (let i = iStart; i <= iEnd; i++) {
-      const x = viewFraction(times[i]) * w
+      const x = chartFraction(times[i]) * w
       const y = Math.max(0, Math.min(h, h - margin - ((values[i] - config.min) / range) * drawH))
       if (first) { offCtx.moveTo(x, y); first = false }
       else offCtx.lineTo(x, y)
@@ -651,8 +727,8 @@ function renderChannelOffscreen(cd: ChannelData, w: number, h: number): void {
     // More samples than pixels: use min/max bucketing per pixel column
     let sampleIdx = iStart
     for (let px = 0; px < w; px++) {
-      const tStart = viewFractionToTime(px / w)
-      const tEnd = viewFractionToTime((px + 1) / w)
+      const tStart = chartFractionToTime(px / w)
+      const tEnd = chartFractionToTime((px + 1) / w)
       let bucketMin = Infinity
       let bucketMax = -Infinity
       let count = 0
@@ -965,13 +1041,13 @@ function renderStaticCache(): void {
   }
 
   // Lap markers — skip when viewing a single lap (entire view IS one lap)
-  if (lapData?.hasLapData && getViewDuration() > 0 && selectedLapIdx === null) {
+  if (lapData?.hasLapData && getChartVisibleDuration() > 0 && selectedLapIdx === null) {
     staticCacheCtx.strokeStyle = 'rgba(255,255,255,0.25)'
     staticCacheCtx.lineWidth = 1 * dpr
     staticCacheCtx.setLineDash([3 * dpr, 4 * dpr])
     const dataW = w - labelW
     for (const lap of lapData.laps) {
-      const frac = viewFraction(lap.startTime)
+      const frac = chartFraction(lap.startTime)
       if (frac < 0 || frac > 1) continue
       const x = labelW + frac * dataW
       staticCacheCtx.beginPath()
@@ -982,7 +1058,7 @@ function renderStaticCache(): void {
     // End of last lap
     const lastLap = lapData.laps[lapData.laps.length - 1]
     if (lastLap) {
-      const frac = viewFraction(lastLap.endTime)
+      const frac = chartFraction(lastLap.endTime)
       if (frac >= 0 && frac <= 1) {
         const x = labelW + frac * dataW
         staticCacheCtx.beginPath()
@@ -1148,9 +1224,9 @@ function drawPlayhead(): void {
       x = Math.round(labelW + trackPosition * (w - labelW))
     }
   } else {
-    if (channelData.length > 0 && getViewDuration() > 0) {
+    if (channelData.length > 0 && getChartVisibleDuration() > 0) {
       const labelW = LABEL_WIDTH * dpr
-      const xPct = viewFraction(getSyncedTime())
+      const xPct = chartFraction(getSyncedTime())
       x = Math.round(labelW + xPct * (w - labelW))
     }
   }

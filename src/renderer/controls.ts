@@ -5,7 +5,7 @@
  * Uses pointer events for future PWA/touch compatibility.
  */
 
-import { video, formatTime, toggleDebugPanel, viewRange, getViewDuration, viewFractionToTime, getSyncedTime, seekToTelemetryTime, avSyncOffset, onViewRangeChange } from './state'
+import { video, formatTime, toggleDebugPanel, viewRange, getViewDuration, viewFractionToTime, getSyncedTime, seekToTelemetryTime, avSyncOffset, onViewRangeChange, chartZoom, setChartZoom, onChartZoomChange, chartLoopMode, setChartLoopMode } from './state'
 import { isCompareMode, videoA as cmpVideoA, videoB as cmpVideoB, syncDataA, syncDataB, lapA, lapB, trackPosition } from './compare-state'
 import { trackPositionToTime, timeToTrackPosition } from './compare-sync'
 
@@ -122,6 +122,18 @@ export function initControls(): Controls {
         if (getSyncedTime() >= viewRange.endTime - 0.05) {
           seekToTelemetryTime(viewRange.startTime)
         }
+        // Snap zoom window to playhead if playhead is off-screen
+        if (chartZoom) {
+          const t = getSyncedTime()
+          if (t < chartZoom.startTime || t >= chartZoom.endTime) {
+            const dur = chartZoom.endTime - chartZoom.startTime
+            let newStart = t - dur * 0.1
+            let newEnd = newStart + dur
+            if (newStart < viewRange.startTime) { newStart = viewRange.startTime; newEnd = newStart + dur }
+            if (newEnd > viewRange.endTime) { newEnd = viewRange.endTime; newStart = Math.max(viewRange.startTime, newEnd - dur) }
+            setChartZoom({ startTime: newStart, endTime: newEnd })
+          }
+        }
       }
       v.play()
       if (isCompareMode() && cmpVideoB) {
@@ -136,6 +148,13 @@ export function initControls(): Controls {
       }
       btnPlay.innerHTML = '&#9654;'
     }
+  })
+
+  // ── Loop mode toggle ──
+  const btnLoop = document.getElementById('btn-loop') as HTMLButtonElement
+  btnLoop.addEventListener('click', () => {
+    setChartLoopMode(!chartLoopMode)
+    btnLoop.classList.toggle('active', chartLoopMode)
   })
 
   // ── Keyboard shortcuts ──
@@ -199,6 +218,71 @@ export function initControls(): Controls {
       timeTotal.textContent = formatTime(getViewDuration())
     }
   })
+
+  // ── Chart zoom indicator on scrub bar ──
+  const scrubZoomRegion = document.getElementById('scrub-zoom-region') as HTMLDivElement
+  const scrubZoomLeft = document.getElementById('scrub-zoom-left') as HTMLDivElement
+  const scrubZoomRight = document.getElementById('scrub-zoom-right') as HTMLDivElement
+
+  function updateZoomIndicator(): void {
+    if (!chartZoom || isCompareMode()) { scrubZoomRegion.style.display = 'none'; return }
+    const d = getViewDuration()
+    if (d <= 0) { scrubZoomRegion.style.display = 'none'; return }
+    const leftPct = ((chartZoom.startTime - viewRange.startTime) / d) * 100
+    const widthPct = ((chartZoom.endTime - chartZoom.startTime) / d) * 100
+    scrubZoomRegion.style.display = 'block'
+    scrubZoomRegion.style.left = `${leftPct}%`
+    scrubZoomRegion.style.width = `${widthPct}%`
+  }
+
+  onChartZoomChange(updateZoomIndicator)
+
+  // ── Draggable zoom bracket handles ──
+  let zoomDragSide: 'left' | 'right' | null = null
+
+  function pctToTime(e: PointerEvent): number {
+    const rect = scrubContainer.getBoundingClientRect()
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    return viewRange.startTime + pct * getViewDuration()
+  }
+
+  function startZoomDrag(side: 'left' | 'right', e: PointerEvent): void {
+    if (!chartZoom || isCompareMode()) return
+    e.preventDefault()
+    e.stopPropagation()
+    zoomDragSide = side
+    const handle = side === 'left' ? scrubZoomLeft : scrubZoomRight
+    handle.classList.add('dragging')
+    handle.setPointerCapture(e.pointerId)
+  }
+
+  function onZoomDragMove(e: PointerEvent): void {
+    if (!zoomDragSide || !chartZoom) return
+    e.stopPropagation()
+    const t = pctToTime(e)
+    const MIN_ZOOM = 1.0  // minimum 1 second
+    if (zoomDragSide === 'left') {
+      const newStart = Math.max(viewRange.startTime, Math.min(t, chartZoom.endTime - MIN_ZOOM))
+      setChartZoom({ startTime: newStart, endTime: chartZoom.endTime })
+    } else {
+      const newEnd = Math.min(viewRange.endTime, Math.max(t, chartZoom.startTime + MIN_ZOOM))
+      setChartZoom({ startTime: chartZoom.startTime, endTime: newEnd })
+    }
+  }
+
+  function onZoomDragEnd(): void {
+    if (!zoomDragSide) return
+    const handle = zoomDragSide === 'left' ? scrubZoomLeft : scrubZoomRight
+    handle.classList.remove('dragging')
+    zoomDragSide = null
+  }
+
+  scrubZoomLeft.addEventListener('pointerdown', (e) => startZoomDrag('left', e))
+  scrubZoomRight.addEventListener('pointerdown', (e) => startZoomDrag('right', e))
+  scrubZoomLeft.addEventListener('pointermove', onZoomDragMove)
+  scrubZoomRight.addEventListener('pointermove', onZoomDragMove)
+  scrubZoomLeft.addEventListener('pointerup', onZoomDragEnd)
+  scrubZoomRight.addEventListener('pointerup', onZoomDragEnd)
 
   return { updateScrubBar, updateTimeDisplay, updateCompareScrubBar, updateCompareTimeDisplay }
 }

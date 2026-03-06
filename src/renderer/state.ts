@@ -44,6 +44,38 @@ export function viewFractionToTime(frac: number): number {
   return viewRange.startTime + frac * getViewDuration()
 }
 
+// ── Chart zoom (strip chart sub-window within viewRange) ──
+export interface ChartZoom { startTime: number; endTime: number }
+export let chartZoom: ChartZoom | null = null
+export let chartLoopMode = false
+
+export function setChartLoopMode(on: boolean): void {
+  chartLoopMode = on
+}
+
+/** 0..1 fraction within chart's visible range (zoom window or full viewRange) */
+export function chartFraction(telTime: number): number {
+  const z = chartZoom
+  if (z) {
+    const d = z.endTime - z.startTime
+    return d <= 0 ? 0 : (telTime - z.startTime) / d
+  }
+  return viewFraction(telTime)
+}
+
+/** Inverse: fraction → absolute telemetry time within chart's visible range */
+export function chartFractionToTime(frac: number): number {
+  const z = chartZoom
+  if (z) return z.startTime + frac * (z.endTime - z.startTime)
+  return viewFractionToTime(frac)
+}
+
+/** Duration of chart's visible range */
+export function getChartVisibleDuration(): number {
+  const z = chartZoom
+  return z ? z.endTime - z.startTime : getViewDuration()
+}
+
 // ── Interpolation state ──
 // Exposed so modules (track-map, hud) can interpolate between bracketing rows.
 // Updated every animation frame by the animation loop in main.ts.
@@ -96,6 +128,7 @@ const telemetryLoadBus = createBus()
 const frameTickBus = createBus()
 const editModeBus = createBus()
 const viewRangeBus = createBus()
+const chartZoomBus = createBus()
 
 // ── Edit mode ──
 let editMode = false
@@ -110,6 +143,12 @@ export function setEditMode(on: boolean): void {
 
 export function onEditModeChange(fn: () => void) { return editModeBus.on(fn) }
 export function onViewRangeChange(fn: () => void) { return viewRangeBus.on(fn) }
+export function onChartZoomChange(fn: () => void) { return chartZoomBus.on(fn) }
+
+export function setChartZoom(zoom: ChartZoom | null): void {
+  chartZoom = zoom
+  chartZoomBus.fire()
+}
 export function onRowUpdate(fn: () => void) { return rowBus.on(fn) }
 export function onTelemetryLoad(fn: () => void) { return telemetryLoadBus.on(fn) }
 
@@ -136,12 +175,15 @@ export function setTelemetry(store: TelemetryStore, dur: number): void {
   duration = dur
   viewRange = { startTime: 0, endTime: dur }
   selectedLapIdx = null
+  chartZoom = null
   telemetryLoadBus.fire()
 }
 
 export function setViewRange(range: ViewRange, lapIdx: number | null): void {
   viewRange = range
   selectedLapIdx = lapIdx
+  chartZoom = null
+  chartZoomBus.fire()
   viewRangeBus.fire()
 }
 

@@ -120,9 +120,14 @@
     <!-- Transport controls + scrub bar -->
     <div id="controls">
       <button id="btn-play" title="Play/Pause">&#9654;</button>
+      <button id="btn-loop" title="Loop zoom region"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></button>
       <span id="time-current">0:00.0</span>
       <div id="scrub-container">
         <div id="scrub-track">
+          <div id="scrub-zoom-region">
+            <div id="scrub-zoom-left" class="scrub-zoom-handle"></div>
+            <div id="scrub-zoom-right" class="scrub-zoom-handle"></div>
+          </div>
           <div id="scrub-progress"></div>
           <div id="scrub-thumb"></div>
         </div>

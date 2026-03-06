@@ -6,8 +6,9 @@
  * A position dot tracks the current video time.
  */
 
-import { lapData, currentRow, interpPrev, interpNext, interpAlpha } from './state'
+import { lapData, currentRow, interpPrev, interpNext, interpAlpha, telemetryStore, chartZoom, onChartZoomChange } from './state'
 import { onTelemetryLoad, onFrameTick } from './state'
+import { findClosestTimeIndex } from '../shared/telemetry-store'
 import type { TrackLayout } from './types'
 
 let canvas: HTMLCanvasElement
@@ -23,6 +24,7 @@ let trackCacheCtx: CanvasRenderingContext2D | null = null
 // Last drawn dot position — skip redraw when unchanged
 let lastDotLat = NaN
 let lastDotLon = NaN
+let lastZoomRef: typeof chartZoom = null
 
 // ── Projection ────────────────────────────────────────────────────────────────
 
@@ -249,6 +251,35 @@ function drawPositionDot(gps?: { lat: number; lon: number; spd: number }): void 
   ctx.stroke()
 }
 
+// ── Zoom highlight ────────────────────────────────────────────────────────────
+
+/** Draw the track section within the chart zoom time window as a brighter overlay. */
+function drawZoomHighlight(): void {
+  if (!chartZoom || !telemetryStore || !proj) return
+  const store = telemetryStore
+  if (store.length === 0) return
+
+  const startIdx = findClosestTimeIndex(store.time, chartZoom.startTime, store.length)
+  const endIdx = findClosestTimeIndex(store.time, chartZoom.endTime, store.length)
+  if (endIdx <= startIdx) return
+
+  ctx.beginPath()
+  ctx.strokeStyle = 'rgba(255, 180, 0, 0.9)'
+  ctx.lineWidth = 7 * dpr
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+
+  let first = true
+  for (let i = startIdx; i <= endIdx; i++) {
+    if (store.lat[i] === 0 && store.lon[i] === 0) continue
+    const px = gpsToCanvasInto(store.lat[i], store.lon[i])
+    if (!px) continue
+    if (first) { ctx.moveTo(px.x, px.y); first = false }
+    else ctx.lineTo(px.x, px.y)
+  }
+  ctx.stroke()
+}
+
 // ── Resize handling ───────────────────────────────────────────────────────────
 
 function resizeCanvas(): boolean {
@@ -297,16 +328,27 @@ export function initTrackMap(el: HTMLCanvasElement): void {
     if (cachedLayout && proj) {
       if (resized) renderTrackCache()
 
-      // Skip redraw when position unchanged and no resize
+      // Skip redraw when position unchanged, no resize, and no zoom change
       const gps = currentGps()
       const lat = gps?.lat ?? NaN
       const lon = gps?.lon ?? NaN
-      if (lat === lastDotLat && lon === lastDotLon && !resized) return
+      const zoomChanged = lastZoomRef !== chartZoom
+      lastZoomRef = chartZoom
+      if (lat === lastDotLat && lon === lastDotLon && !resized && !zoomChanged) return
       lastDotLat = lat
       lastDotLon = lon
 
       blitTrack()
+      drawZoomHighlight()
       drawPositionDot(gps ?? undefined)
+    }
+  })
+
+  onChartZoomChange(() => {
+    if (cachedLayout && proj) {
+      blitTrack()
+      drawZoomHighlight()
+      drawPositionDot()
     }
   })
 
