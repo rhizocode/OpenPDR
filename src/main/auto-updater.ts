@@ -93,12 +93,14 @@ export function initAutoUpdater(windowGetter: () => BrowserWindow | null): void 
   ipcMain.handle('check-for-updates' satisfies Channel, () => {
     autoUpdater.checkForUpdates().catch((err) => {
       console.error('[auto-updater] Check failed:', err.message)
+      sendStatus({ state: 'error', error: err.message })
     })
   })
 
   ipcMain.handle('download-update' satisfies Channel, () => {
     autoUpdater.downloadUpdate().catch((err) => {
       console.error('[auto-updater] Download failed:', err.message)
+      sendStatus({ state: 'error', error: err.message })
     })
   })
 

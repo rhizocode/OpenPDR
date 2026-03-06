@@ -7,6 +7,13 @@ import type { PdrApi } from '../renderer/types'
 
 type Channel = keyof IpcChannels
 
+function validateExportScope(scope: ExportScope): boolean {
+  if (!scope || typeof scope !== 'object') return false
+  if (scope.type === 'full') return true
+  if (scope.type === 'lap' && typeof scope.lapNumber === 'number' && Number.isInteger(scope.lapNumber) && scope.lapNumber > 0) return true
+  return false
+}
+
 const api: PdrApi = {
   openFileDialog: (): Promise<string | null> =>
     ipcRenderer.invoke('open-file-dialog' satisfies Channel),
@@ -30,8 +37,12 @@ const api: PdrApi = {
     }
   })(),
 
-  setAllowedVideoPath: (filePath: string): Promise<void> =>
-    ipcRenderer.invoke('set-allowed-video-path' satisfies Channel, filePath),
+  setAllowedVideoPath: (filePath: string): Promise<void> => {
+    if (typeof filePath !== 'string' || !filePath.toLowerCase().endsWith('.mp4')) {
+      return Promise.reject(new Error('Invalid video path'))
+    }
+    return ipcRenderer.invoke('set-allowed-video-path' satisfies Channel, filePath)
+  },
 
   resetAllowedVideoPaths: (): Promise<void> =>
     ipcRenderer.invoke('reset-allowed-video-paths' satisfies Channel),
@@ -42,19 +53,27 @@ const api: PdrApi = {
     if (typeof filePath !== 'string') return ''
     // Use pdr-file:// protocol (secure — no webSecurity: false needed)
     const normalized = filePath.replace(/\\/g, '/')
-    // Unix paths start with /, Windows paths start with C:/ — ensure exactly: pdr-file:// + / + path
     const urlPath = normalized.startsWith('/') ? normalized : '/' + normalized
-    return `pdr-file://${urlPath}`
+    // Use URL constructor to properly percent-encode special characters (#, ?, %)
+    const u = new URL('pdr-file:///')
+    u.pathname = urlPath
+    return u.href
   },
 
-  exportCsv: (scope: ExportScope): Promise<boolean> =>
-    ipcRenderer.invoke('export-csv' satisfies Channel, scope),
+  exportCsv: (scope: ExportScope): Promise<boolean> => {
+    if (!validateExportScope(scope)) return Promise.reject(new Error('Invalid export scope'))
+    return ipcRenderer.invoke('export-csv' satisfies Channel, scope)
+  },
 
-  exportGpx: (scope: ExportScope): Promise<boolean> =>
-    ipcRenderer.invoke('export-gpx' satisfies Channel, scope),
+  exportGpx: (scope: ExportScope): Promise<boolean> => {
+    if (!validateExportScope(scope)) return Promise.reject(new Error('Invalid export scope'))
+    return ipcRenderer.invoke('export-gpx' satisfies Channel, scope)
+  },
 
-  exportVideo: (scope: ExportScope, options: VideoExportOptions): Promise<boolean> =>
-    ipcRenderer.invoke('export-video' satisfies Channel, scope, options),
+  exportVideo: (scope: ExportScope, options: VideoExportOptions): Promise<boolean> => {
+    if (!validateExportScope(scope)) return Promise.reject(new Error('Invalid export scope'))
+    return ipcRenderer.invoke('export-video' satisfies Channel, scope, options)
+  },
 
   // Bidirectional IPC for overlay frame rendering (main -> renderer -> main)
   onRenderOverlayFrames: (() => {
