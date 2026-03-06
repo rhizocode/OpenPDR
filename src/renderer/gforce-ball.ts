@@ -115,7 +115,7 @@ export function drawGForce(lat: number, lon: number, targetCanvas?: HTMLCanvasEl
   }
 
   drawCtx.clearRect(0, 0, w, h)
-  drawCtx.drawImage(bg!, 0, 0)
+  if (bg) drawCtx.drawImage(bg, 0, 0)
 
   // G-force dot
   const clamp = (v: number) => Math.max(-MAX_G, Math.min(MAX_G, v))

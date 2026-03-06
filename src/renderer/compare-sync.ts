@@ -100,7 +100,11 @@ export function buildDistanceArray(store: TelemetryStore, lap: LapInfo): SyncDat
   // Use speed integration (GPS Doppler-derived) instead of haversine chaining.
   // Speed is much cleaner than position — avoids cumulative noise inflation.
   // Fall back to haversine only if speed data is missing.
-  const useSpeed = store.speed_mps[startIdx + Math.floor(n / 2)] !== 0
+  let nonZero = 0
+  for (let i = 0; i < Math.min(n, 100); i += 10) {
+    if (store.speed_mps[startIdx + i] !== 0) nonZero++
+  }
+  const useSpeed = nonZero >= 5
 
   for (let i = 1; i < n; i++) {
     const gi = startIdx + i

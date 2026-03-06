@@ -27,7 +27,7 @@ export function probeVideo(filePath: string): Promise<VideoMeta> {
     }
 
     // ffmpeg -i exits with code 1 when no output is specified, but still prints info
-    execFile(ffmpegPath, ['-i', filePath], { timeout: 15000 }, (error, _stdout, stderr) => {
+    execFile(ffmpegPath, ['-i', filePath], { timeout: 15000, maxBuffer: 4 * 1024 * 1024 }, (error, _stdout, stderr) => {
       // System errors (ENOENT, timeout, etc.) — not just the expected exit code 1
       if (error && !stderr) {
         reject(new Error(`ffmpeg failed to run: ${error.message}`))
