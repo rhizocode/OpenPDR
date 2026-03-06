@@ -13,7 +13,6 @@ const pdr = window.pdr
 
 // ── DOM refs ──
 const btnOpen = document.getElementById('btn-open') as HTMLButtonElement
-const btnOpenPrompt = document.getElementById('btn-open-prompt') as HTMLButtonElement
 const fileNameEl = document.getElementById('file-name') as HTMLSpanElement
 const noFilePrompt = document.getElementById('no-file-prompt') as HTMLDivElement
 const parseProgress = document.getElementById('parse-progress') as HTMLDivElement
@@ -108,7 +107,6 @@ async function openFile(filePath?: string): Promise<void> {
 
 export function initFileOpen(): void {
   btnOpen.addEventListener('click', () => openFile())
-  btnOpenPrompt.addEventListener('click', () => openFile())
 
   // ── Video events ──
   video.addEventListener('loadedmetadata', () => {
