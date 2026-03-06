@@ -193,7 +193,7 @@ ipcMain.handle('set-allowed-video-path' satisfies Channel, (_event, filePath: st
   if (typeof filePath !== 'string') return
   const normalized = filePath.replace(/\\/g, '/')
   if (!normalized.toLowerCase().endsWith('.mp4')) return
-  addAllowedVideoPath(filePath)
+  addAllowedVideoPath(resolve(filePath))
 })
 
 // IPC: Reset allowed video paths (called when opening a new primary file)

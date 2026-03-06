@@ -16,7 +16,7 @@ export function exportCsvBlob(
   startIdx: number,
   endIdx: number
 ): Blob {
-  const parts: string[] = [CSV_HEADER]
+  const blobs: Blob[] = [new Blob([CSV_HEADER], { type: 'text/csv' })]
 
   for (let i = startIdx; i < endIdx; i += BATCH_SIZE) {
     const batchEnd = Math.min(i + BATCH_SIZE, endIdx)
@@ -24,8 +24,8 @@ export function exportCsvBlob(
     for (let j = i; j < batchEnd; j++) {
       lines.push(formatRow(store, j))
     }
-    parts.push(lines.join('\n') + '\n')
+    blobs.push(new Blob([lines.join('\n') + '\n']))
   }
 
-  return new Blob(parts, { type: 'text/csv' })
+  return new Blob(blobs, { type: 'text/csv' })
 }

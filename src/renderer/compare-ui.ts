@@ -92,7 +92,7 @@ function showDropdown(): void {
 
   // Close on outside click (delayed to avoid immediate close)
   requestAnimationFrame(() => {
-    document.addEventListener('pointerdown', outsideClickHandler, { once: true })
+    document.addEventListener('pointerdown', outsideClickHandler)
   })
 }
 
@@ -101,6 +101,7 @@ function hideDropdown(): void {
     dropdown.remove()
     dropdown = null
   }
+  document.removeEventListener('pointerdown', outsideClickHandler)
 }
 
 function outsideClickHandler(e: PointerEvent): void {

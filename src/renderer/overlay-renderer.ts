@@ -755,6 +755,7 @@ async function handleRenderRequest(request: RenderOverlayRequest): Promise<void>
   const rowB = createEmptyRow()
   const lerpedRow = createEmptyRow()
   let lastKnownGear = '-'
+  const frameBuffer = new Uint8Array(width * height * 4)
 
   try {
     for (let f = 0; f < totalFrames; f++) {
@@ -798,10 +799,11 @@ async function handleRenderRequest(request: RenderOverlayRequest): Promise<void>
         lastKnownGear, sessionInfo,
       )
 
-      // Extract raw RGBA pixels (instant — no PNG compression)
+      // Extract raw RGBA pixels and copy into pre-allocated buffer to reduce GC pressure
       const pixels = ctx.getImageData(0, 0, width, height)
+      frameBuffer.set(pixels.data)
       // invoke-based IPC: await provides backpressure + natural event-loop yield
-      await window.pdr.sendOverlayFrameData(f, new Uint8Array(pixels.data.buffer))
+      await window.pdr.sendOverlayFrameData(f, frameBuffer)
     }
   } catch (err) {
     console.error('[overlay-renderer] Error rendering frame:', err)

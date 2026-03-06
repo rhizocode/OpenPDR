@@ -278,7 +278,7 @@ export function buildEditPanel(panel: HTMLDivElement): void {
 
     // Re-enable all overlays
     const allOn: OverlayConfig = {
-      speed: true, rpmGauge: true, gear: true, gforce: true,
+      speed: true, rpmGauge: true, rpmBar: true, gear: true, gforce: true,
       pedals: true, steering: true, gps: true, trackMap: true, session: true,
     }
     setOverlayConfig(allOn)

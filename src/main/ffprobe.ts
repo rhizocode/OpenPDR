@@ -53,9 +53,11 @@ export function probeVideo(filePath: string): Promise<VideoMeta> {
       const width = parseInt(streamMatch[1])
       const height = parseInt(streamMatch[2])
 
-      // Parse fps: look for "NN.NN fps" or "NN fps"
-      const fpsMatch = output.match(/(\d+(?:\.\d+)?)\s+fps/)
-      const fps = fpsMatch ? parseFloat(fpsMatch[1]) : 30
+      // Parse fps: search only within the matched video stream line to avoid
+      // picking up encoding stats or other "fps" values from ffmpeg output
+      const streamLine = streamMatch[0]
+      const fpsMatch = streamLine.match(/(\d+(?:\.\d+)?)\s+fps/)
+      const fps = Math.max(1, fpsMatch ? parseFloat(fpsMatch[1]) : 30)
 
       resolve({ width, height, fps, duration })
     })

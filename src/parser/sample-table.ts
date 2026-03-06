@@ -77,7 +77,9 @@ export function parseSampleTable(
       const maxEntries = Math.floor((co64End - (coData + 8)) / 8)
       const safeCount = Math.min(coCount, maxEntries)
       for (let i = 0; i < safeCount; i++) {
-        chunkOffsets.push(Number(readBigUint64BE(moovBuf, coData + 8 + i * 8, dv)))
+        const off = Number(readBigUint64BE(moovBuf, coData + 8 + i * 8, dv))
+        if (!Number.isSafeInteger(off)) continue
+        chunkOffsets.push(off)
       }
     }
   } else if (stco) {
@@ -200,8 +202,11 @@ export function parseTrackTiming(
   const sttsData = stts[2]
   const entryCount = readUint32BE(moovBuf, sttsData + 4, dv)
   const sttsEntries: SttsEntry[] = []
+  const sttsEnd = stts[0] + stts[1]
+  const sttsMaxEntries = Math.floor((sttsEnd - (sttsData + 8)) / 8)
+  const sttsCount = Math.min(entryCount, sttsMaxEntries)
   let pos = sttsData + 8
-  for (let i = 0; i < entryCount; i++) {
+  for (let i = 0; i < sttsCount; i++) {
     sttsEntries.push({
       count: readUint32BE(moovBuf, pos, dv),
       delta: readUint32BE(moovBuf, pos + 4, dv),
@@ -218,8 +223,12 @@ export function parseTrackTiming(
       const elstData = elst[2]
       const elstVersion = moovBuf[elstData]
       const elstCount = readUint32BE(moovBuf, elstData + 4, dv)
+      const elstEnd = elst[0] + elst[1]
       let epos = elstData + 8
-      for (let i = 0; i < elstCount; i++) {
+      const elstEntrySize = moovBuf[elstData] === 0 ? 12 : 20
+      const elstMaxEntries = Math.floor((elstEnd - epos) / elstEntrySize)
+      const safeElstCount = Math.min(elstCount, elstMaxEntries)
+      for (let i = 0; i < safeElstCount; i++) {
         let segDuration: number
         let mediaTime: number
         if (elstVersion === 0) {

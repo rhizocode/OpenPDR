@@ -151,6 +151,9 @@ export async function exportVideo(
     ) => {
       if (cancelled || !proc.stdin || proc.stdin.destroyed) return
 
+      const expected = meta.width * meta.height * 4
+      if (buffer.length !== expected) return
+
       receivedCount++
       const pct = Math.min(99, Math.round((receivedCount / totalFrames) * 100))
       onProgress('Encoding video', pct)

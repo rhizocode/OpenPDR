@@ -725,10 +725,14 @@ function renderChannelOffscreen(cd: ChannelData, w: number, h: number): void {
     }
   } else {
     // More samples than pixels: use min/max bucketing per pixel column
+    // Pre-compute visible time range to avoid per-pixel function calls
+    const vStart = chartFractionToTime(0)
+    const vEnd = chartFractionToTime(1)
+    const tPerPx = (vEnd - vStart) / w
     let sampleIdx = iStart
     for (let px = 0; px < w; px++) {
-      const tStart = chartFractionToTime(px / w)
-      const tEnd = chartFractionToTime((px + 1) / w)
+      const tStart = vStart + px * tPerPx
+      const tEnd = tStart + tPerPx
       let bucketMin = Infinity
       let bucketMax = -Infinity
       let count = 0

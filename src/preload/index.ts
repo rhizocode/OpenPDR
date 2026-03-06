@@ -18,13 +18,17 @@ const api: PdrApi = {
     return ipcRenderer.invoke('parse-pdr-file' satisfies Channel, filePath)
   },
 
-  onParseProgress: (callback: (phase: string, pct: number) => void): (() => void) => {
-    const channel = 'parse-progress' satisfies Channel
-    ipcRenderer.removeAllListeners(channel)
-    const handler = (_event: Electron.IpcRendererEvent, phase: string, pct: number) => callback(phase, pct)
-    ipcRenderer.on(channel, handler)
-    return () => ipcRenderer.removeListener(channel, handler)
-  },
+  onParseProgress: (() => {
+    let prev: ((_event: Electron.IpcRendererEvent, phase: string, pct: number) => void) | null = null
+    return (callback: (phase: string, pct: number) => void): (() => void) => {
+      const channel = 'parse-progress' satisfies Channel
+      if (prev) ipcRenderer.removeListener(channel, prev)
+      const handler = (_event: Electron.IpcRendererEvent, phase: string, pct: number) => callback(phase, pct)
+      prev = handler
+      ipcRenderer.on(channel, handler)
+      return () => { ipcRenderer.removeListener(channel, handler); prev = null }
+    }
+  })(),
 
   setAllowedVideoPath: (filePath: string): Promise<void> =>
     ipcRenderer.invoke('set-allowed-video-path' satisfies Channel, filePath),
@@ -53,13 +57,17 @@ const api: PdrApi = {
     ipcRenderer.invoke('export-video' satisfies Channel, scope, options),
 
   // Bidirectional IPC for overlay frame rendering (main -> renderer -> main)
-  onRenderOverlayFrames: (callback: (request: RenderOverlayRequest) => void): (() => void) => {
-    const channel = 'render-overlay-frames' satisfies Channel
-    ipcRenderer.removeAllListeners(channel)
-    const handler = (_event: Electron.IpcRendererEvent, request: RenderOverlayRequest) => callback(request)
-    ipcRenderer.on(channel, handler)
-    return () => ipcRenderer.removeListener(channel, handler)
-  },
+  onRenderOverlayFrames: (() => {
+    let prev: ((_event: Electron.IpcRendererEvent, request: RenderOverlayRequest) => void) | null = null
+    return (callback: (request: RenderOverlayRequest) => void): (() => void) => {
+      const channel = 'render-overlay-frames' satisfies Channel
+      if (prev) ipcRenderer.removeListener(channel, prev)
+      const handler = (_event: Electron.IpcRendererEvent, request: RenderOverlayRequest) => callback(request)
+      prev = handler
+      ipcRenderer.on(channel, handler)
+      return () => { ipcRenderer.removeListener(channel, handler); prev = null }
+    }
+  })(),
 
   sendOverlayFrameData: (idx: number, buffer: Uint8Array): Promise<void> =>
     ipcRenderer.invoke('overlay-frame-data' satisfies Channel, idx, buffer),
@@ -72,13 +80,17 @@ const api: PdrApi = {
     ipcRenderer.send('export-video-cancel' satisfies Channel)
   },
 
-  onExportVideoProgress: (callback: (phase: string, pct: number) => void): (() => void) => {
-    const channel = 'export-video-progress' satisfies Channel
-    ipcRenderer.removeAllListeners(channel)
-    const handler = (_event: Electron.IpcRendererEvent, phase: string, pct: number) => callback(phase, pct)
-    ipcRenderer.on(channel, handler)
-    return () => ipcRenderer.removeListener(channel, handler)
-  },
+  onExportVideoProgress: (() => {
+    let prev: ((_event: Electron.IpcRendererEvent, phase: string, pct: number) => void) | null = null
+    return (callback: (phase: string, pct: number) => void): (() => void) => {
+      const channel = 'export-video-progress' satisfies Channel
+      if (prev) ipcRenderer.removeListener(channel, prev)
+      const handler = (_event: Electron.IpcRendererEvent, phase: string, pct: number) => callback(phase, pct)
+      prev = handler
+      ipcRenderer.on(channel, handler)
+      return () => { ipcRenderer.removeListener(channel, handler); prev = null }
+    }
+  })(),
 
   // Auto-update
   checkForUpdates: (): Promise<void> =>
@@ -90,13 +102,17 @@ const api: PdrApi = {
   installUpdate: (): Promise<void> =>
     ipcRenderer.invoke('install-update' satisfies Channel),
 
-  onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
-    const channel = 'update-status' satisfies Channel
-    ipcRenderer.removeAllListeners(channel)
-    const handler = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status)
-    ipcRenderer.on(channel, handler)
-    return () => ipcRenderer.removeListener(channel, handler)
-  },
+  onUpdateStatus: (() => {
+    let prev: ((_event: Electron.IpcRendererEvent, status: UpdateStatus) => void) | null = null
+    return (callback: (status: UpdateStatus) => void): (() => void) => {
+      const channel = 'update-status' satisfies Channel
+      if (prev) ipcRenderer.removeListener(channel, prev)
+      const handler = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status)
+      prev = handler
+      ipcRenderer.on(channel, handler)
+      return () => { ipcRenderer.removeListener(channel, handler); prev = null }
+    }
+  })(),
 
   getAppVersion: (): Promise<string> =>
     ipcRenderer.invoke('get-app-version' satisfies Channel),

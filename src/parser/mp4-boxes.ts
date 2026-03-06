@@ -86,12 +86,13 @@ export function scanForBox(buf: Uint8Array, boxType: string, startOffset = 0): B
     const idx = indexOf(buf, tag, pos)
     if (idx === -1 || idx < 4) return null
     const boxStart = idx - 4
-    const size = readUint32BE(buf, boxStart, dv)
-    if (size > 8 && size < 100000 && boxStart + size <= buf.length) {
-      const nextBox = boxStart + size
+    // Use readBoxHeader to handle both standard and extended (64-bit) box headers
+    const hdr = readBoxHeader(buf, boxStart, undefined, dv)
+    if (hdr && hdr.size > 8 && hdr.size < 100000 && boxStart + hdr.size <= buf.length) {
+      const nextBox = boxStart + hdr.size
       // Accept if box reaches buffer end, or a plausible successor box follows
       if (nextBox + 8 > buf.length || looksLikeBoxType(buf, nextBox + 4)) {
-        return [boxStart, size, idx + 4]
+        return [hdr.offset, hdr.size, hdr.dataStart]
       }
     }
     pos = idx + 4
@@ -143,7 +144,8 @@ export async function readMoovBox(source: PdrFileSource): Promise<Uint8Array> {
   let offset = 0
   const fileSize = source.size
 
-  while (offset < fileSize) {
+  let iterations = 0
+  while (offset < fileSize && iterations++ < 10000) {
     const headerBuf = await source.read(offset, 16)
     if (headerBuf.length < 8) break
 
@@ -158,6 +160,8 @@ export async function readMoovBox(source: PdrFileSource): Promise<Uint8Array> {
     }
 
     if (size < 8) break
+    // Overflow guard: if offset + size wraps or doesn't advance, stop
+    if (offset + size <= offset) break
 
     if (type === 'moov') {
       const MAX_MOOV_SIZE = 50_000_000 // 50 MB — generous upper bound

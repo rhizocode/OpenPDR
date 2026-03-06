@@ -147,11 +147,13 @@ export async function parsePdrFile(
     const baseTime = trackTiming ? trackTiming.sampleTimes[i] : i
 
     const rows = decodePacket(packet, baseTime, i, hz100Size)
+    let storeFull = false
     for (const row of rows) {
-      if (store.length >= store.time.length) break
+      if (store.length >= store.time.length) { storeFull = true; break }
       writeRow(store, store.length, row)
       store.length++
     }
+    if (storeFull) break
 
     // Extract embedded events from oversized packets
     const events = extractEvents(packet, dominantPktSize, eventDefs)

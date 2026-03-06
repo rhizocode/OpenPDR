@@ -392,11 +392,16 @@ video.addEventListener('seeked', startAnimationLoop)
 video.addEventListener('timeupdate', startAnimationLoop)
 
 // When entering compare mode, wire video A events to restart the animation loop
+let comparePlayHandler: (() => void) | null = null
+let compareSeekedHandler: (() => void) | null = null
+
 onCompareEnter(() => {
   const vA = getVideoA
   if (vA && vA !== video) {
-    vA.addEventListener('play', startAnimationLoop)
-    vA.addEventListener('seeked', startAnimationLoop)
+    comparePlayHandler = startAnimationLoop
+    compareSeekedHandler = startAnimationLoop
+    vA.addEventListener('play', comparePlayHandler)
+    vA.addEventListener('seeked', compareSeekedHandler)
   }
   // Re-measure anchor bounds: #video is now 50% wide; position B anchor too.
   // Use two rAF passes: first lets the flex layout settle, second measures.
@@ -413,6 +418,15 @@ onCompareEnter(() => {
 })
 
 onCompareExit(() => {
+  // Remove video A compare listeners to prevent leaks
+  const vA = getVideoA
+  if (vA && vA !== video) {
+    if (comparePlayHandler) vA.removeEventListener('play', comparePlayHandler)
+    if (compareSeekedHandler) vA.removeEventListener('seeked', compareSeekedHandler)
+  }
+  comparePlayHandler = null
+  compareSeekedHandler = null
+
   // Stop video B and reset its playback rate
   const vB = getVideoB
   if (vB) {

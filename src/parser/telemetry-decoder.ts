@@ -211,7 +211,7 @@ function decode100HzFrame(packet: Uint8Array, offset: number, hz100Size: number,
  * - Vehicle (ch 11-13): gravity-compensated vehicle-frame-aligned
  */
 function decode50HzFrame(packet: Uint8Array, offset: number, dv: DataView): Hz50Frame | null {
-  if (offset + 24 > packet.length) return null
+  if (offset < 0 || offset + 24 > packet.length) return null
 
   return {
     accel_device_x_g: readFloatBE(packet, offset, dv),
@@ -273,7 +273,7 @@ function decode10HzFrame(packet: Uint8Array, latOffset: number, dv: DataView): H
  * Decode 5Hz data (4 bytes): gear, startstop, ESC, TCS.
  */
 function decode5HzFrame(packet: Uint8Array, offset: number): Hz5Frame | null {
-  if (offset + 4 > packet.length) return null
+  if (offset < 0 || offset + 4 > packet.length) return null
 
   const gearRaw = packet[offset]
   const startstopRaw = packet[offset + 1]
@@ -302,7 +302,7 @@ function decode5HzFrame(packet: Uint8Array, offset: number): Hz5Frame | null {
  */
 function decode1HzFrame(packet: Uint8Array, latOffset: number, hz1Size: number, dv: DataView): Hz1Frame | null {
   const hz1Offset = latOffset + 26 + 4 + 1 // after group2 + group3 + group4
-  if (hz1Offset + hz1Size > packet.length) return null
+  if (hz1Offset < 0 || hz1Offset + hz1Size > packet.length) return null
 
   // Read directly from packet using absolute offsets (avoid subarray + new DataView)
   const b0 = hz1Offset
