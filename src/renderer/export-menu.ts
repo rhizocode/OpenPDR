@@ -9,11 +9,11 @@
 import type { ExportScope, VideoExportOptions } from './types'
 import { telemetryStore, lapData } from './state'
 import { DEFAULT_OVERLAY, DEFAULT_LAYOUT, DEFAULT_RPM_CONFIG } from './defaults'
+import { STORAGE_KEYS } from './storage-keys'
 
-// localStorage keys (match hud.ts, edit-mode.ts, rpm-gauge.ts)
-const OVERLAY_CONFIG_KEY = 'pdr-overlay-config'
-const OVERLAY_LAYOUT_KEY = 'pdr-overlay-layout'
-const RPM_CONFIG_KEY = 'pdr-rpm-config'
+const OVERLAY_CONFIG_KEY = STORAGE_KEYS.overlayConfig
+const OVERLAY_LAYOUT_KEY = STORAGE_KEYS.overlayLayout
+const RPM_CONFIG_KEY = STORAGE_KEYS.rpmConfig
 
 /** Read current overlay/layout/RPM config from localStorage */
 function getVideoExportOptions(): VideoExportOptions {

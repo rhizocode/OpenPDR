@@ -6,8 +6,9 @@
  */
 
 import { telemetryStore } from './state'
+import { STORAGE_KEYS } from './storage-keys'
 
-const STORAGE_KEY = 'pdr-chart-height'
+const STORAGE_KEY = STORAGE_KEYS.chartHeight
 const MIN_HEIGHT = 80
 const MAX_RATIO = 0.6
 

@@ -6,7 +6,7 @@
  * unchanged — it just calls window.pdr.* methods regardless of platform.
  */
 
-import type { PdrApi } from '../renderer/types'
+import type { PdrApi } from '../shared/types'
 import type { ParseResult, ExportScope } from '../shared/types'
 import { BrowserFileSource } from './file-source-browser'
 import { parsePdrFile } from '../parser/index'
@@ -21,7 +21,6 @@ const videoBlobUrls = new Map<string, string>()
 
 /** Most recent parse result (needed for exports). */
 let lastParseResult: ParseResult | null = null
-let lastFileName: string | null = null
 
 /** Trigger a browser download for a Blob. */
 function downloadBlob(blob: Blob, filename: string): void {
@@ -39,6 +38,15 @@ function stashFile(file: File): string {
   const key = file.name
   fileMap.set(key, file)
   return key
+}
+
+/** Clear all stashed files and revoke all video blob URLs. */
+function clearStashedFiles(): void {
+  fileMap.clear()
+  for (const url of videoBlobUrls.values()) {
+    URL.revokeObjectURL(url)
+  }
+  videoBlobUrls.clear()
 }
 
 /** Binary search: find the first index where time[i] >= target. */
@@ -86,7 +94,11 @@ const pdrWeb: PdrApi = {
       const input = document.createElement('input')
       input.type = 'file'
       input.accept = '.mp4'
+      let resolved = false
+
       input.onchange = () => {
+        if (resolved) return
+        resolved = true
         const file = input.files?.[0]
         if (!file) { resolve(null); return }
         resolve(stashFile(file))
@@ -95,7 +107,9 @@ const pdrWeb: PdrApi = {
       const onFocus = () => {
         window.removeEventListener('focus', onFocus)
         setTimeout(() => {
-          if (!input.files?.length) resolve(null)
+          if (resolved) return
+          resolved = true
+          resolve(null)
         }, 300)
       }
       window.addEventListener('focus', onFocus)
@@ -113,7 +127,6 @@ const pdrWeb: PdrApi = {
     })
 
     lastParseResult = result
-    lastFileName = file.name
     return result
   },
 
@@ -127,7 +140,7 @@ const pdrWeb: PdrApi = {
   },
 
   async resetAllowedVideoPaths(): Promise<void> {
-    // No-op in browser — no security boundary to manage
+    clearStashedFiles()
   },
 
   getPathForFile(file: File): string {
@@ -160,8 +173,11 @@ const pdrWeb: PdrApi = {
     const range = getExportRange(scope)
     if (!range) return false
 
-    // Estimate recording start: use current time minus duration as fallback
-    const baseDate = new Date(Date.now() - lastParseResult.metadata.duration * 1000)
+    // Use session timestamp when available; fall back to current time minus duration
+    const si = lastParseResult.metadata.sessionInfo
+    const baseDate = si?.timestamp
+      ? new Date(si.timestamp)
+      : new Date(Date.now() - lastParseResult.metadata.duration * 1000)
     const trackName = `${getBaseName()} ${range.label.replace(/_/g, ' ')}`
 
     const blob = exportGpxBlob(
@@ -197,9 +213,29 @@ const pdrWeb: PdrApi = {
   sendOverlayFramesDone(): void {
     // no-op
   },
+
+  async checkForUpdates(): Promise<void> {
+    // no-op in browser
+  },
+
+  async downloadUpdate(): Promise<void> {
+    // no-op in browser
+  },
+
+  async installUpdate(): Promise<void> {
+    // no-op in browser
+  },
+
+  onUpdateStatus(_callback): () => void {
+    return () => {} // no-op
+  },
+
+  async getAppVersion(): Promise<string> {
+    return '0.0.0-web'
+  },
 }
 
 /** Install the browser PdrApi on window.pdr before renderer modules initialize. */
 export function installWebPdr(): void {
-  ;(window as any).pdr = pdrWeb
+  ;(window as unknown as { pdr: PdrApi }).pdr = pdrWeb
 }

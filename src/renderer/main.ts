@@ -7,6 +7,7 @@
 
 import './types' // side-effect: augments Window with pdr
 import { formatLapTime } from './defaults'
+import { STORAGE_KEYS } from './storage-keys'
 import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg, lapData, duration, viewRange, setViewRange, selectedLapIdx, getSyncedTime, seekToTelemetryTime, onTelemetryLoad, onViewRangeChange, avSyncOffset, setInterpState } from './state'
 import { initHud } from './hud'
 import { initControls, getIsScrubbing } from './controls'
@@ -128,7 +129,7 @@ video.addEventListener('loadedmetadata', () => {
 })
 
 // ── Panel toggles ──
-const PANEL_STORAGE_KEY = 'pdr-panel-state'
+const PANEL_STORAGE_KEY = STORAGE_KEYS.panelState
 const chartsPanel = document.getElementById('charts-panel') as HTMLElement
 const chartToolbar = document.getElementById('chart-toolbar') as HTMLElement
 const lapsPanel = document.getElementById('laps-panel') as HTMLElement
@@ -171,7 +172,7 @@ function updateChartPanelCollapse(): void {
     chartPanel.style.height = 'auto'
     chartPanel.style.minHeight = '0'
   } else if (chartPanel.style.height === 'auto') {
-    const saved = localStorage.getItem('pdr-chart-height')
+    const saved = localStorage.getItem(STORAGE_KEYS.chartHeight)
     chartPanel.style.height = saved || '200px'
     chartPanel.style.minHeight = ''
   }
@@ -225,11 +226,11 @@ document.querySelectorAll<HTMLButtonElement>('.panel-toggle').forEach((btn) => {
     if (dragging) {
       dragging = false
       lapsResizeHandle.classList.remove('dragging')
-      localStorage.setItem('pdr-laps-panel-width', lapsPanel.style.width)
+      localStorage.setItem(STORAGE_KEYS.lapsPanelWidth, lapsPanel.style.width)
     }
   })
 
-  const savedWidth = localStorage.getItem('pdr-laps-panel-width')
+  const savedWidth = localStorage.getItem(STORAGE_KEYS.lapsPanelWidth)
   if (savedWidth) lapsPanel.style.width = savedWidth
 }
 

@@ -13,10 +13,10 @@ let pendingVersion = ''
 let pendingNotes: ReleaseNote[] = []
 
 export function initUpdateUI(): void {
-  // Guard: in web build, update API won't exist
-  if (!window.pdr?.onUpdateStatus) return
+  // Guard: skip if update DOM elements are absent (web build)
+  const btn = document.getElementById('btn-update') as HTMLButtonElement | null
+  if (!btn || !window.pdr?.onUpdateStatus) return
 
-  const btn = document.getElementById('btn-update') as HTMLButtonElement
   const modal = document.getElementById('update-modal') as HTMLDivElement
   const title = document.getElementById('update-modal-title') as HTMLHeadingElement
   const changelog = document.getElementById('update-modal-changelog') as HTMLDivElement

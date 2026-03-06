@@ -350,6 +350,31 @@ export function getRow(store: TelemetryStore, index: number): TelemetryRow {
 }
 
 /**
+ * Binary search: find the index of the row closest to time `t`.
+ * Returns 0 for empty stores. Clamps to [0, length-1].
+ */
+export function findClosestTimeIndex(times: Float64Array, t: number, length: number): number {
+  if (length === 0) return 0
+
+  let lo = 0
+  let hi = length - 1
+
+  if (t <= times[0]) return 0
+  if (t >= times[hi]) return hi
+
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1
+    if (times[mid] < t) lo = mid + 1
+    else if (times[mid] > t) hi = mid - 1
+    else return mid
+  }
+
+  if (lo >= length) return hi
+  if (hi < 0) return lo
+  return (t - times[hi]) <= (times[lo] - t) ? hi : lo
+}
+
+/**
  * Trim a store to its actual length by slicing all typed arrays.
  * Call after parsing is complete when length < capacity.
  */

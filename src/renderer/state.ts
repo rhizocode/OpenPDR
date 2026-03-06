@@ -8,8 +8,9 @@
 
 import type { TelemetryRow, LapData, SessionInfo } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
-import { getRow, getRowInto, createEmptyRow } from '../shared/telemetry-store'
+import { getRow, getRowInto, createEmptyRow, findClosestTimeIndex } from '../shared/telemetry-store'
 import { createBus } from './event-bus'
+import { STORAGE_KEYS } from './storage-keys'
 
 // ── State ──
 export let telemetryStore: TelemetryStore | null = null
@@ -69,7 +70,7 @@ export function setSessionInfo(info: SessionInfo | null): void {
 // The parser now uses MP4 timing metadata (stts/elst) for proper sync,
 // so this offset is purely for user-adjustable fine-tuning.
 // Positive = telemetry leads video.
-const AV_SYNC_KEY = 'pdr-av-sync-offset'
+const AV_SYNC_KEY = STORAGE_KEYS.avSync
 export let avSyncOffset = loadAvSyncOffset()
 
 function loadAvSyncOffset(): number {
@@ -178,28 +179,7 @@ export function findRowAtTime(videoTime: number): TelemetryRow | null {
 function findRowAtRawTime(t: number): TelemetryRow | null {
   const store = telemetryStore
   if (!store || store.length === 0) return null
-
-  const times = store.time
-  let lo = 0
-  let hi = store.length - 1
-
-  if (t <= times[0]) return getRowInto(store, 0, _findRow)
-  if (t >= times[hi]) return getRowInto(store, hi, _findRow)
-
-  while (lo <= hi) {
-    const mid = (lo + hi) >>> 1
-    if (times[mid] < t) {
-      lo = mid + 1
-    } else if (times[mid] > t) {
-      hi = mid - 1
-    } else {
-      return getRowInto(store, mid, _findRow)
-    }
-  }
-
-  if (lo >= store.length) return getRowInto(store, hi, _findRow)
-  if (hi < 0) return getRowInto(store, lo, _findRow)
-  const idx = (t - times[hi]) <= (times[lo] - t) ? hi : lo
+  const idx = findClosestTimeIndex(store.time, t, store.length)
   return getRowInto(store, idx, _findRow)
 }
 

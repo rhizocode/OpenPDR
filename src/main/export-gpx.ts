@@ -1,50 +1,13 @@
 /**
- * OpenPDR — GPX Export
+ * OpenPDR — GPX Export (Electron / Node.js)
  *
  * Streams GPS telemetry from a TelemetryStore to a GPX 1.1 XML file.
- * Skips points with no GPS fix (fix_quality === 0 or lat === 0).
+ * Format helpers are shared with the browser export via export-gpx-format.ts.
  */
 
 import { createWriteStream } from 'fs'
 import type { TelemetryStore } from '../shared/telemetry-store'
-
-const BATCH_SIZE = 2000
-
-const GPX_HEADER = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="OpenPDR Viewer"
-     xmlns="http://www.topografix.com/GPX/1/1"
-     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-     xmlns:openpdr="http://openpdr.org/gpx/1/0"
-     xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
-`
-
-const GPX_FOOTER = `  </trkseg>
-  </trk>
-</gpx>
-`
-
-function escapeXml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&apos;')
-}
-
-function formatIsoTime(baseMs: number, offsetSeconds: number): string {
-  return new Date(baseMs + offsetSeconds * 1000).toISOString()
-}
-
-function formatTrkpt(
-  lat: number, lon: number, ele: number,
-  timeIso: string, speedKph: number, headingDeg: number
-): string {
-  return `    <trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}">
-      <ele>${ele.toFixed(1)}</ele>
-      <time>${timeIso}</time>
-      <extensions>
-        <openpdr:speed_kph>${speedKph.toFixed(1)}</openpdr:speed_kph>
-        <openpdr:heading_deg>${headingDeg.toFixed(1)}</openpdr:heading_deg>
-      </extensions>
-    </trkpt>\n`
-}
+import { GPX_HEADER, GPX_FOOTER, GPX_BATCH_SIZE, escapeXml, formatIsoTime, formatTrkpt } from '../shared/export-gpx-format'
 
 /**
  * Export GPS trace [startIdx, endIdx) to a GPX 1.1 file.
@@ -77,7 +40,7 @@ export function exportGpx(
     function writeBatch(): void {
       let ok = true
       while (i < endIdx && ok) {
-        const batchEnd = Math.min(i + BATCH_SIZE, endIdx)
+        const batchEnd = Math.min(i + GPX_BATCH_SIZE, endIdx)
         const chunks: string[] = []
         for (; i < batchEnd; i++) {
           // Skip invalid GPS points

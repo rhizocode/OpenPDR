@@ -15,8 +15,9 @@ import type { RpmConfig } from './types'
 import { sessionInfo, onTelemetryLoad, dbg } from './state'
 import { detectEngine, engineToRpmConfig, type EngineSpec } from '../shared/engine-database'
 
-const STORAGE_KEY = 'pdr-rpm-config'
-const OVERRIDE_KEY = 'pdr-rpm-manual-override'
+import { STORAGE_KEYS } from './storage-keys'
+const STORAGE_KEY = STORAGE_KEYS.rpmConfig
+const OVERRIDE_KEY = STORAGE_KEYS.rpmOverride
 
 import { DEFAULT_RPM_CONFIG } from './defaults'
 

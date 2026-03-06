@@ -2,47 +2,11 @@
  * OpenPDR — Browser GPX Export
  *
  * Generates GPX 1.1 XML as a Blob for browser download.
- * Uses the same format as the Node.js version.
+ * Format helpers are shared with the Electron export via export-gpx-format.ts.
  */
 
 import type { TelemetryStore } from '../shared/telemetry-store'
-
-const BATCH_SIZE = 2000
-
-const GPX_HEADER = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="OpenPDR Viewer"
-     xmlns="http://www.topografix.com/GPX/1/1"
-     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-     xmlns:openpdr="http://openpdr.org/gpx/1/0"
-     xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
-`
-
-const GPX_FOOTER = `  </trkseg>
-  </trk>
-</gpx>
-`
-
-function escapeXml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function formatIsoTime(baseMs: number, offsetSeconds: number): string {
-  return new Date(baseMs + offsetSeconds * 1000).toISOString()
-}
-
-function formatTrkpt(
-  lat: number, lon: number, ele: number,
-  timeIso: string, speedKph: number, headingDeg: number
-): string {
-  return `    <trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}">
-      <ele>${ele.toFixed(1)}</ele>
-      <time>${timeIso}</time>
-      <extensions>
-        <openpdr:speed_kph>${speedKph.toFixed(1)}</openpdr:speed_kph>
-        <openpdr:heading_deg>${headingDeg.toFixed(1)}</openpdr:heading_deg>
-      </extensions>
-    </trkpt>\n`
-}
+import { GPX_HEADER, GPX_FOOTER, GPX_BATCH_SIZE, escapeXml, formatIsoTime, formatTrkpt } from '../shared/export-gpx-format'
 
 /**
  * Export GPS trace [startIdx, endIdx) to a GPX 1.1 Blob.
@@ -64,8 +28,8 @@ export function exportGpxBlob(
   parts.push(`  <name>${escapeXml(trackName)}</name>\n`)
   parts.push(`  <trkseg>\n`)
 
-  for (let i = startIdx; i < endIdx; i += BATCH_SIZE) {
-    const batchEnd = Math.min(i + BATCH_SIZE, endIdx)
+  for (let i = startIdx; i < endIdx; i += GPX_BATCH_SIZE) {
+    const batchEnd = Math.min(i + GPX_BATCH_SIZE, endIdx)
     for (let j = i; j < batchEnd; j++) {
       if (store.gps_fix_quality[j] === 0 || store.lat[j] === 0) continue
 

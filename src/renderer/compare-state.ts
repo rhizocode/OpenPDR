@@ -7,7 +7,7 @@
 
 import type { TelemetryRow, LapInfo, LapData, SessionInfo, RpmConfig } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
-import { createEmptyRow, getRowInto } from '../shared/telemetry-store'
+import { createEmptyRow, getRowInto, findClosestTimeIndex } from '../shared/telemetry-store'
 import { avSyncOffset } from './state'
 import { buildDistanceArray, computeHeadingOffset, applyOffset, benchmarkSync, type SyncData } from './compare-sync'
 import { dbg } from './state'
@@ -93,23 +93,7 @@ const _interpNextBRow = createEmptyRow()
 /** Find the row in a store closest to a given telemetry time. */
 export function findRowInStore(store: TelemetryStore, telTime: number, scratch: TelemetryRow): TelemetryRow | null {
   if (!store || store.length === 0) return null
-  const times = store.time
-  let lo = 0
-  let hi = store.length - 1
-
-  if (telTime <= times[0]) return getRowInto(store, 0, scratch)
-  if (telTime >= times[hi]) return getRowInto(store, hi, scratch)
-
-  while (lo <= hi) {
-    const mid = (lo + hi) >>> 1
-    if (times[mid] < telTime) lo = mid + 1
-    else if (times[mid] > telTime) hi = mid - 1
-    else return getRowInto(store, mid, scratch)
-  }
-
-  if (lo >= store.length) return getRowInto(store, hi, scratch)
-  if (hi < 0) return getRowInto(store, lo, scratch)
-  const idx = (telTime - times[hi]) <= (times[lo] - telTime) ? hi : lo
+  const idx = findClosestTimeIndex(store.time, telTime, store.length)
   return getRowInto(store, idx, scratch)
 }
 

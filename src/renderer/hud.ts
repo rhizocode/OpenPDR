@@ -17,8 +17,9 @@ import { initSteeringIndicator, drawSteering } from './steering'
 import { applyOverlayConfigB } from './compare-overlay-b'
 import { isCompareMode, rpmConfigA } from './compare-state'
 import { DEFAULT_OVERLAY, GEAR_DISPLAY, formatTimestamp } from './defaults'
+import { STORAGE_KEYS } from './storage-keys'
 
-const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
+const OVERLAY_STORAGE_KEY = STORAGE_KEYS.overlayConfig
 
 // ── DOM refs ──
 const hudSpeedValue = document.getElementById('hud-speed-value') as HTMLSpanElement

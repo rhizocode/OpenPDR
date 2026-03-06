@@ -230,6 +230,31 @@ export interface UpdateStatus {
   error?: string
 }
 
+// ── PdrApi interface (renderer ↔ preload/web bridge) ─────────────────────────
+
+export interface PdrApi {
+  openFileDialog(): Promise<string | null>
+  parsePdrFile(filePath: string): Promise<ParseResult>
+  onParseProgress(callback: (phase: string, pct: number) => void): () => void
+  setAllowedVideoPath(filePath: string): Promise<void>
+  resetAllowedVideoPaths(): Promise<void>
+  getPathForFile(file: File): string
+  getVideoUrl(filePath: string): string
+  exportCsv(scope: ExportScope): Promise<boolean>
+  exportGpx(scope: ExportScope): Promise<boolean>
+  exportVideo(scope: ExportScope, options: VideoExportOptions): Promise<boolean>
+  onRenderOverlayFrames(callback: (request: RenderOverlayRequest) => void): () => void
+  cancelVideoExport(): void
+  onExportVideoProgress(callback: (phase: string, pct: number) => void): () => void
+  sendOverlayFrameData(idx: number, buffer: Uint8Array): Promise<void>
+  sendOverlayFramesDone(): void
+  checkForUpdates(): Promise<void>
+  downloadUpdate(): Promise<void>
+  installUpdate(): Promise<void>
+  onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
+  getAppVersion(): Promise<string>
+}
+
 // ── Typed IPC channel map (3.3) ──────────────────────────────────────────────
 
 /** Type-safe mapping of IPC channel names to their argument and return types. */

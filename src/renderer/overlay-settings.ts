@@ -10,8 +10,9 @@ import type { OverlayConfig } from './types'
 import { applyOverlayConfig, getOverlayConfig, setOverlayConfig } from './hud'
 import { saveRpmConfig, getRpmConfig, loadRpmConfig, getDetectedEngine, isManualOverride, setManualOverride } from './rpm-gauge'
 import { avSyncOffset, setAvSyncOffset } from './state'
+import { STORAGE_KEYS } from './storage-keys'
 
-const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
+const OVERLAY_STORAGE_KEY = STORAGE_KEYS.overlayConfig
 
 export function initOverlaySettings(): void {
   loadRpmConfig()
@@ -117,7 +118,7 @@ export function buildAvSyncPanel(container: HTMLDivElement): void {
 
 /* ── Font size scaling ── */
 
-const FONT_SIZE_KEY = 'pdr-ui-font-size'
+const FONT_SIZE_KEY = STORAGE_KEYS.fontSize
 const DEFAULT_SIZE = 100          // percent
 const MIN_SIZE = 50
 const MAX_SIZE = 300

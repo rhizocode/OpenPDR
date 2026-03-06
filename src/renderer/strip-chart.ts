@@ -144,7 +144,8 @@ function sparseRowAccessor(
   }
 }
 
-const CHANNELS_STORAGE_KEY = 'pdr-chart-channels'
+import { STORAGE_KEYS } from './storage-keys'
+const CHANNELS_STORAGE_KEY = STORAGE_KEYS.chartChannels
 const DELTA_KEY = 'delta'           // toggle key for delta-time chart (compare mode only)
 const DELTA_COLOR = '#ffaa00'       // toolbar button color
 const LABEL_WIDTH = 80  // px reserved for axis labels on left

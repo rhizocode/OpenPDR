@@ -11,9 +11,10 @@ import { getEditMode, setEditMode, onEditModeChange } from './state'
 import { applyOverlayConfig, getOverlayConfig, setOverlayConfig } from './hud'
 import { syncPositionsToB } from './compare-overlay-b'
 import { DEFAULT_LAYOUT } from './defaults'
+import { STORAGE_KEYS } from './storage-keys'
 
-const LAYOUT_STORAGE_KEY = 'pdr-overlay-layout'
-const OVERLAY_STORAGE_KEY = 'pdr-overlay-config'
+const LAYOUT_STORAGE_KEY = STORAGE_KEYS.overlayLayout
+const OVERLAY_STORAGE_KEY = STORAGE_KEYS.overlayConfig
 
 const OVERLAY_LABELS: Record<OverlayKey, string> = {
   speed: 'Speed',
