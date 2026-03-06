@@ -119,7 +119,7 @@ export function findAllBoxes(
   while (pos < limit - 8) {
     const hdr = readBoxHeader(buf, pos, limit, view)
     if (!hdr || hdr.size < 8) break
-    const boxEnd = pos + hdr.size
+    const boxEnd = Math.min(pos + hdr.size, limit)
 
     if (hdr.type === boxType) {
       results.push([hdr.offset, hdr.size, hdr.dataStart])

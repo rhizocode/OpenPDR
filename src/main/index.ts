@@ -275,8 +275,13 @@ ipcMain.handle('export-csv' satisfies Channel, async (_event, scope: ExportScope
   })
 
   if (saveResult.canceled || !saveResult.filePath) return false
-  await exportCsv(parseResult.store, saveResult.filePath, range.startIdx, range.endIdx)
-  return true
+  try {
+    await exportCsv(parseResult.store, saveResult.filePath, range.startIdx, range.endIdx)
+    return true
+  } catch (err) {
+    console.error('[export-csv] Failed:', err)
+    return false
+  }
 })
 
 // IPC: Export GPX
@@ -303,8 +308,13 @@ ipcMain.handle('export-gpx' satisfies Channel, async (_event, scope: ExportScope
   const baseDate = new Date(fileInfo.mtimeMs - parseResult.metadata.duration * 1000)
   const trackName = `${getBaseName()} ${range.label.replace(/_/g, ' ')}`
 
-  await exportGpx(parseResult.store, saveResult.filePath, range.startIdx, range.endIdx, trackName, baseDate)
-  return true
+  try {
+    await exportGpx(parseResult.store, saveResult.filePath, range.startIdx, range.endIdx, trackName, baseDate)
+    return true
+  } catch (err) {
+    console.error('[export-gpx] Failed:', err)
+    return false
+  }
 })
 
 // IPC: Export Video with baked overlays

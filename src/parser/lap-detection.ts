@@ -148,16 +148,16 @@ export function detectLaps(store: TelemetryStore): LapData {
   if (validIdx.length < 100) return noLaps
 
   // Step B: find start/finish centroid via spatial density grid
-  const cellCounts = new Map<string, { count: number; lat: number; lon: number }>()
+  const cellCounts = new Map<number, { count: number; lat: number; lon: number }>()
   for (const i of validIdx) {
-    const cellLat = Math.round(store.lat[i] / CELL_SIZE) * CELL_SIZE
-    const cellLon = Math.round(store.lon[i] / CELL_SIZE) * CELL_SIZE
-    const key = `${cellLat.toFixed(6)},${cellLon.toFixed(6)}`
+    const cellLatI = Math.round(store.lat[i] / CELL_SIZE)
+    const cellLonI = Math.round(store.lon[i] / CELL_SIZE)
+    const key = cellLatI * 1000000 + cellLonI
     const existing = cellCounts.get(key)
     if (existing) {
       existing.count++
     } else {
-      cellCounts.set(key, { count: 1, lat: cellLat, lon: cellLon })
+      cellCounts.set(key, { count: 1, lat: cellLatI * CELL_SIZE, lon: cellLonI * CELL_SIZE })
     }
   }
 
@@ -175,34 +175,39 @@ export function detectLaps(store: TelemetryStore): LapData {
   // Need the car to have passed at least 3 times for a meaningful detection
   if (maxCount < 3) return noLaps
 
-  // Step C: state machine to detect lap crossings
+  // Step C: state machine to detect lap crossings (squared Euclidean distance)
+  const SF_ZONE_R2 = SF_ZONE_RADIUS * SF_ZONE_RADIUS
+  const MIN_AWAY_D2 = MIN_AWAY_DIST * MIN_AWAY_DIST
   const crossings: number[] = []
   let wasAway = false
-  let maxDistFromSf = 0
+  let firstEntry = true
+  let maxDist2FromSf = 0
   let inZone = false
 
   for (const i of validIdx) {
-    const dist = Math.abs(store.lat[i] - sfLat) + Math.abs(store.lon[i] - sfLon)
-    const nowInZone = dist < SF_ZONE_RADIUS
+    const dlat = store.lat[i] - sfLat
+    const dlon = store.lon[i] - sfLon
+    const dist2 = dlat * dlat + dlon * dlon
+    const nowInZone = dist2 < SF_ZONE_R2
 
     if (!inZone && nowInZone) {
-      // Entering zone
-      if (wasAway) {
-        // Valid crossing — record it
+      // Entering zone — record crossing if car traveled away, or on first entry
+      if (wasAway || firstEntry) {
         crossings.push(store.time[i])
         wasAway = false
-        maxDistFromSf = 0
+        maxDist2FromSf = 0
+        firstEntry = false
       }
       inZone = true
     } else if (inZone && !nowInZone) {
       // Leaving zone
       inZone = false
-      maxDistFromSf = 0
+      maxDist2FromSf = 0
     }
 
     if (!nowInZone) {
-      maxDistFromSf = Math.max(maxDistFromSf, dist)
-      if (maxDistFromSf > MIN_AWAY_DIST) {
+      maxDist2FromSf = Math.max(maxDist2FromSf, dist2)
+      if (maxDist2FromSf > MIN_AWAY_D2) {
         wasAway = true
       }
     }
