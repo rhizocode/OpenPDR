@@ -1,17 +1,19 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   ParseResult, IpcChannels, ExportScope, VideoExportOptions, RenderOverlayRequest,
-  UpdateStatus,
+  UpdateStatus, PdrApi,
 } from '../shared/types'
-import type { PdrApi } from '../renderer/types'
 
 type Channel = keyof IpcChannels
 
-function validateExportScope(scope: ExportScope): boolean {
-  if (!scope || typeof scope !== 'object') return false
-  if (scope.type === 'full') return true
-  if (scope.type === 'lap' && typeof scope.lapNumber === 'number' && Number.isInteger(scope.lapNumber) && scope.lapNumber > 0) return true
-  return false
+/** Returns null if valid, or a descriptive error string. */
+function validateExportScope(scope: ExportScope): string | null {
+  if (!scope || typeof scope !== 'object') return 'ExportScope must be a non-null object'
+  if (scope.type === 'full') return null
+  if (scope.type !== 'lap') return `ExportScope.type must be "full" or "lap", got "${String((scope as unknown as Record<string, unknown>).type)}"`
+  if (typeof scope.lapNumber !== 'number' || !Number.isInteger(scope.lapNumber) || scope.lapNumber <= 0)
+    return 'ExportScope.lapNumber must be a positive integer when type is "lap"'
+  return null
 }
 
 const api: PdrApi = {
@@ -33,7 +35,7 @@ const api: PdrApi = {
       const handler = (_event: Electron.IpcRendererEvent, phase: string, pct: number) => callback(phase, pct)
       prev = handler
       ipcRenderer.on(channel, handler)
-      return () => { ipcRenderer.removeListener(channel, handler); prev = null }
+      return () => { ipcRenderer.removeListener(channel, handler); if (prev === handler) prev = null }
     }
   })(),
 
@@ -61,17 +63,22 @@ const api: PdrApi = {
   },
 
   exportCsv: (scope: ExportScope): Promise<boolean> => {
-    if (!validateExportScope(scope)) return Promise.reject(new Error('Invalid export scope'))
+    const err = validateExportScope(scope)
+    if (err) return Promise.reject(new Error(err))
     return ipcRenderer.invoke('export-csv' satisfies Channel, scope)
   },
 
   exportGpx: (scope: ExportScope): Promise<boolean> => {
-    if (!validateExportScope(scope)) return Promise.reject(new Error('Invalid export scope'))
+    const err = validateExportScope(scope)
+    if (err) return Promise.reject(new Error(err))
     return ipcRenderer.invoke('export-gpx' satisfies Channel, scope)
   },
 
   exportVideo: (scope: ExportScope, options: VideoExportOptions): Promise<boolean> => {
-    if (!validateExportScope(scope)) return Promise.reject(new Error('Invalid export scope'))
+    const err = validateExportScope(scope)
+    if (err) return Promise.reject(new Error(err))
+    if (!options || typeof options !== 'object' || !options.overlayConfig)
+      return Promise.reject(new Error('Invalid export options: overlayConfig is required'))
     return ipcRenderer.invoke('export-video' satisfies Channel, scope, options)
   },
 
@@ -84,7 +91,7 @@ const api: PdrApi = {
       const handler = (_event: Electron.IpcRendererEvent, request: RenderOverlayRequest) => callback(request)
       prev = handler
       ipcRenderer.on(channel, handler)
-      return () => { ipcRenderer.removeListener(channel, handler); prev = null }
+      return () => { ipcRenderer.removeListener(channel, handler); if (prev === handler) prev = null }
     }
   })(),
 
@@ -107,7 +114,7 @@ const api: PdrApi = {
       const handler = (_event: Electron.IpcRendererEvent, phase: string, pct: number) => callback(phase, pct)
       prev = handler
       ipcRenderer.on(channel, handler)
-      return () => { ipcRenderer.removeListener(channel, handler); prev = null }
+      return () => { ipcRenderer.removeListener(channel, handler); if (prev === handler) prev = null }
     }
   })(),
 
@@ -129,7 +136,7 @@ const api: PdrApi = {
       const handler = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status)
       prev = handler
       ipcRenderer.on(channel, handler)
-      return () => { ipcRenderer.removeListener(channel, handler); prev = null }
+      return () => { ipcRenderer.removeListener(channel, handler); if (prev === handler) prev = null }
     }
   })(),
 
