@@ -56,6 +56,8 @@ interface ChartChannel {
   max: number
   precision: number  // decimal places for display (0 = whole numbers)
   defaultEnabled: boolean
+  /** When true, max is auto-scaled to the actual data max (rounded up nicely) */
+  autoScale?: boolean
 }
 
 // Unit conversion constants
@@ -66,18 +68,18 @@ const C_TO_F_SCALE = 1.8
 const C_TO_F_OFFSET = 32
 
 const CHANNELS: ChartChannel[] = [
-  { key: 'speed', label: 'Speed', color: '#3399ff', storeAccessor: s => s.speed_mph, scale: 1, rowAccessor: r => r.speed_mph, unit: 'mph', min: 0, max: 200, precision: 0, defaultEnabled: true },
-  { key: 'rpm', label: 'RPM', color: '#ff6b00', storeAccessor: s => s.rpm, scale: 1, rowAccessor: r => r.rpm, unit: 'rpm', min: 0, max: 7000, precision: 0, defaultEnabled: true },
+  { key: 'speed', label: 'Speed', color: '#3399ff', storeAccessor: s => s.speed_mph, scale: 1, rowAccessor: r => r.speed_mph, unit: 'mph', min: 0, max: 200, precision: 0, defaultEnabled: true, autoScale: true },
+  { key: 'rpm', label: 'RPM', color: '#ff6b00', storeAccessor: s => s.rpm, scale: 1, rowAccessor: r => r.rpm, unit: 'rpm', min: 0, max: 7000, precision: 0, defaultEnabled: true, autoScale: true },
   { key: 'throttle', label: 'Throttle', color: '#00cc66', storeAccessor: s => s.throttle, scale: 100, rowAccessor: r => r.throttle * 100, unit: '%', min: 0, max: 100, precision: 0, defaultEnabled: true },
   { key: 'brake', label: 'Brake', color: '#ff3333', storeAccessor: s => s.brake, scale: 100, transform: getBrakeDisplay, rowAccessor: r => getBrakeDisplay(r.brake) * 100, unit: '%', min: 0, max: 100, precision: 0, defaultEnabled: true },
-  { key: 'gear', label: 'Gear', color: '#88cc00', storeAccessor: () => new Float32Array(0), scale: 1, rowAccessor: r => { const g = r.gear_raw; return (g !== undefined && g >= 1 && g <= 10) ? g : 0 }, unit: '', min: 0, max: 10, precision: 0, defaultEnabled: false },
+  { key: 'gear', label: 'Gear', color: '#88cc00', storeAccessor: () => new Float32Array(0), scale: 1, rowAccessor: r => { const g = r.gear_raw; return (g !== undefined && g >= 1 && g <= 10) ? g : 0 }, unit: '', min: 0, max: 10, precision: 0, defaultEnabled: false, autoScale: true },
   { key: 'gforce_lat', label: 'G Lat', color: '#66ccff', storeAccessor: s => s.gforce_lat, scale: 1, rowAccessor: r => r.gforce_lat, unit: 'g', min: -1.5, max: 1.5, precision: 2, defaultEnabled: false },
   { key: 'gforce_lon', label: 'G Lon', color: '#cc66ff', storeAccessor: s => s.gforce_lon, scale: 1, rowAccessor: r => r.gforce_lon, unit: 'g', min: -1.5, max: 1.5, precision: 2, defaultEnabled: false },
   { key: 'steering', label: 'Steering', color: '#ffcc00', storeAccessor: s => s.steering_deg, scale: 1, rowAccessor: r => r.steering_deg, unit: '\u00B0', min: -400, max: 400, precision: 0, defaultEnabled: false },
   // ── Engine / drivetrain (dense) ──
-  { key: 'torque', label: 'Torque', color: '#e06030', storeAccessor: s => s.engine_torque_nm, scale: NM_TO_LBFT, rowAccessor: r => r.engine_torque_nm * NM_TO_LBFT, unit: 'lb-ft', min: -200, max: 800, precision: 0, defaultEnabled: false },
-  { key: 'power', label: 'Power', color: '#d040d0', storeAccessor: s => s.engine_power_kw, scale: KW_TO_HP, rowAccessor: r => r.engine_power_kw * KW_TO_HP, unit: 'hp', min: 0, max: 700, precision: 0, defaultEnabled: false },
-  { key: 'boost', label: 'Boost', color: '#40b0e0', storeAccessor: s => s.boost_pressure_kpa, scale: KPA_TO_PSI, rowAccessor: r => r.boost_pressure_kpa * KPA_TO_PSI, unit: 'psi', min: 0, max: 30, precision: 1, defaultEnabled: false },
+  { key: 'torque', label: 'Torque', color: '#e06030', storeAccessor: s => s.engine_torque_nm, scale: NM_TO_LBFT, rowAccessor: r => r.engine_torque_nm * NM_TO_LBFT, unit: 'lb-ft', min: -200, max: 800, precision: 0, defaultEnabled: false, autoScale: true },
+  { key: 'power', label: 'Power', color: '#d040d0', storeAccessor: s => s.engine_power_kw, scale: KW_TO_HP, rowAccessor: r => r.engine_power_kw * KW_TO_HP, unit: 'hp', min: 0, max: 700, precision: 0, defaultEnabled: false, autoScale: true },
+  { key: 'boost', label: 'Boost', color: '#40b0e0', storeAccessor: s => s.boost_pressure_kpa, scale: KPA_TO_PSI, rowAccessor: r => r.boost_pressure_kpa * KPA_TO_PSI, unit: 'psi', min: 0, max: 30, precision: 1, defaultEnabled: false, autoScale: true },
   // ── Temperatures & pressures (sparse — forward-filled via scaledCache) ──
   { key: 'coolant_temp', label: 'Coolant', color: '#ff5050', storeAccessor: () => new Float32Array(0), scale: 1, rowAccessor: sparseRowAccessor(r => r.engine_temp_coolant_c, C_TO_F_SCALE, C_TO_F_OFFSET), unit: '\u00B0F', min: 100, max: 280, precision: 0, defaultEnabled: false },
   { key: 'oil_temp', label: 'Oil Temp', color: '#e0a030', storeAccessor: () => new Float32Array(0), scale: 1, rowAccessor: sparseRowAccessor(r => r.engine_temp_oil_c, C_TO_F_SCALE, C_TO_F_OFFSET), unit: '\u00B0F', min: 100, max: 320, precision: 0, defaultEnabled: false },
@@ -204,6 +206,32 @@ let scaledCache = new Map<string, Float32Array>()
 /** Cached scaled arrays for storeA and storeB in compare mode. */
 let scaledCacheA = new Map<string, Float32Array>()
 let scaledCacheB = new Map<string, Float32Array>()
+
+/** Data-derived max values for autoScale channels, keyed by channel key. */
+let computedMax = new Map<string, number>()
+
+/** Round up to a "nice" scale value (next multiple of step). */
+function niceMax(value: number, step: number): number {
+  return Math.ceil(value / step) * step
+}
+
+/** Pick a nice rounding step based on magnitude. */
+function autoScaleStep(value: number): number {
+  if (value <= 0) return 1
+  const mag = Math.pow(10, Math.floor(Math.log10(value)))
+  if (value / mag <= 2) return mag / 5   // e.g. 150 → step 20
+  if (value / mag <= 5) return mag / 2   // e.g. 350 → step 50
+  return mag                              // e.g. 800 → step 100
+}
+
+/** Get effective max for a channel (auto-scaled or fallback to config.max). */
+function getMax(config: ChartChannel): number {
+  if (config.autoScale) {
+    const cm = computedMax.get(config.key)
+    if (cm !== undefined) return cm
+  }
+  return config.max
+}
 
 let enabledKeys: Set<string>
 let canvas: HTMLCanvasElement
@@ -529,6 +557,35 @@ function buildToolbar(): void {
   }
 }
 
+/** Scan data arrays and set computedMax for autoScale channels. Supports multiple stores for compare mode. */
+function computeAutoMax(cache: Map<string, Float32Array>, ...stores: TelemetryStore[]): void {
+  for (const config of CHANNELS) {
+    if (!config.autoScale) continue
+    let dataMax = -Infinity
+    // Check scaled cache first (has unit-converted values)
+    const cached = cache.get(config.key)
+    if (cached && cached.length > 0) {
+      for (let i = 0; i < cached.length; i++) {
+        if (cached[i] > dataMax) dataMax = cached[i]
+      }
+    } else {
+      // No scaled cache — read raw from store(s) and apply scale
+      for (const store of stores) {
+        const raw = config.storeAccessor(store)
+        const sc = config.scale
+        const tx = config.transform
+        for (let i = 0; i < raw.length; i++) {
+          const v = tx ? tx(raw[i]) * sc : raw[i] * sc
+          if (v > dataMax) dataMax = v
+        }
+      }
+    }
+    if (dataMax <= config.min) continue // no useful data
+    const step = autoScaleStep(dataMax)
+    computedMax.set(config.key, Math.max(niceMax(dataMax, step), config.min + step))
+  }
+}
+
 /** Pre-compute scaled arrays for channels with scale !== 1, plus dense gear. Called once on telemetry load. */
 function buildScaledCache(): void {
   scaledCache.clear()
@@ -558,6 +615,9 @@ function buildScaledCache(): void {
   scaledCache.set('intake_temp', buildDenseSparse(store.engine_temp_airintake_c, store.length, C_TO_F_SCALE, C_TO_F_OFFSET))
   scaledCache.set('trans_temp', buildDenseSparse(store.trans_oil_temp_c, store.length, C_TO_F_SCALE, C_TO_F_OFFSET))
   scaledCache.set('tire_temp_avg', buildDenseAvgTireTemp(store.tire_temp_fl_c, store.tire_temp_fr_c, store.tire_temp_rl_c, store.tire_temp_rr_c, store.length))
+  // Compute auto-scale max values from actual data
+  computedMax.clear()
+  computeAutoMax(scaledCache, store)
 }
 
 function buildScaledCacheCompare(): void {
@@ -607,6 +667,40 @@ function buildScaledCacheCompare(): void {
   scaledCacheB.set('intake_temp', buildDenseSparse(sb.engine_temp_airintake_c, sb.length, C_TO_F_SCALE, C_TO_F_OFFSET))
   scaledCacheB.set('trans_temp', buildDenseSparse(sb.trans_oil_temp_c, sb.length, C_TO_F_SCALE, C_TO_F_OFFSET))
   scaledCacheB.set('tire_temp_avg', buildDenseAvgTireTemp(sb.tire_temp_fl_c, sb.tire_temp_fr_c, sb.tire_temp_rl_c, sb.tire_temp_rr_c, sb.length))
+  // Compute auto-scale max from both files
+  computedMax.clear()
+  computeAutoMaxCompare(scaledCacheA, scaledCacheB, sa, sb)
+}
+
+/** Compute auto-scale max across two sets of caches (compare mode). */
+function computeAutoMaxCompare(cacheA: Map<string, Float32Array>, cacheB: Map<string, Float32Array>, sa: TelemetryStore, sb: TelemetryStore): void {
+  for (const config of CHANNELS) {
+    if (!config.autoScale) continue
+    let dataMax = -Infinity
+    for (const cache of [cacheA, cacheB]) {
+      const cached = cache.get(config.key)
+      if (cached && cached.length > 0) {
+        for (let i = 0; i < cached.length; i++) {
+          if (cached[i] > dataMax) dataMax = cached[i]
+        }
+      }
+    }
+    // If not in cache, scan raw stores
+    if (dataMax === -Infinity) {
+      for (const store of [sa, sb]) {
+        const raw = config.storeAccessor(store)
+        const sc = config.scale
+        const tx = config.transform
+        for (let i = 0; i < raw.length; i++) {
+          const v = tx ? tx(raw[i]) * sc : raw[i] * sc
+          if (v > dataMax) dataMax = v
+        }
+      }
+    }
+    if (dataMax <= config.min) continue
+    const step = autoScaleStep(dataMax)
+    computedMax.set(config.key, Math.max(niceMax(dataMax, step), config.min + step))
+  }
 }
 
 function rebuildChannelData(): void {
@@ -766,7 +860,7 @@ function renderChannelOffscreen(cd: ChannelData, w: number, h: number): void {
   const iStart = Math.max(0, lowerBound(times, values.length, vStart) - 1)
   const iEnd = Math.min(values.length - 1, upperBound(times, values.length, vEnd) + 1)
 
-  const range = config.max - config.min || 1
+  const range = getMax(config) - config.min || 1
   const margin = 4 * dpr
   const drawH = h - margin * 2
 
@@ -855,7 +949,7 @@ function renderCompareSingleTrace(
   const n = dist.length
   if (n < 2) return
 
-  const range = config.max - config.min || 1
+  const range = getMax(config) - config.min || 1
   const margin = 4 * dpr
   const drawH = h - margin * 2
 
@@ -886,7 +980,7 @@ function renderCompareChannelOffscreen(cd: CompareChannelData, w: number, h: num
 
   // Zero line for bipolar channels
   if (config.min < 0) {
-    const range = config.max - config.min || 1
+    const range = getMax(config) - config.min || 1
     const margin = 4 * dpr
     const drawH = h - margin * 2
     const zeroY = h - margin - ((0 - config.min) / range) * drawH
@@ -1021,7 +1115,7 @@ function renderStaticCache(): void {
       staticCacheCtx.font = font9
       staticCacheCtx.textAlign = 'left'
       staticCacheCtx.textBaseline = 'bottom'
-      staticCacheCtx.fillText(`${cd.config.min}–${cd.config.max}`, 4 * dpr, y + chartH - 2 * dpr, cmpTextMax)
+      staticCacheCtx.fillText(`${cd.config.min}–${getMax(cd.config)}`, 4 * dpr, y + chartH - 2 * dpr, cmpTextMax)
 
       if (i > 0) {
         staticCacheCtx.strokeStyle = '#333'
@@ -1096,7 +1190,7 @@ function renderStaticCache(): void {
     staticCacheCtx.font = font9
     staticCacheCtx.textAlign = 'left'
     staticCacheCtx.textBaseline = 'bottom'
-    staticCacheCtx.fillText(`${cd.config.min}–${cd.config.max}`, 4 * dpr, y + chartH - 2 * dpr, textMax)
+    staticCacheCtx.fillText(`${cd.config.min}–${getMax(cd.config)}`, 4 * dpr, y + chartH - 2 * dpr, textMax)
 
     // Separator line
     if (i > 0) {
