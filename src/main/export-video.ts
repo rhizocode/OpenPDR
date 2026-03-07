@@ -22,7 +22,8 @@ type Channel = keyof IpcChannels
 
 /** Active ffmpeg process (for cancellation) */
 let activeProcess: ChildProcess | null = null
-let exportInProgress = false
+let exportGeneration = 0
+let exportCancelled = false
 
 /**
  * Export video with baked telemetry overlays.
@@ -45,12 +46,13 @@ export async function exportVideo(
   onProgress: (phase: string, pct: number) => void,
   mainWindow: BrowserWindow,
 ): Promise<void> {
-  if (exportInProgress) throw new Error('Export already in progress')
+  if (exportGeneration > 0) throw new Error('Export already in progress')
   if (!ffmpegPath) throw new Error('ffmpeg-static binary not found')
   const ffmpeg = ffmpegPath // narrowed to string — no assertion needed below
   if (endIdx <= startIdx) throw new Error('No frames to export')
 
-  exportInProgress = true
+  const gen = ++exportGeneration
+  exportCancelled = false
   try {
     // 1. Probe source video
     onProgress('Analyze video', 0)
@@ -68,13 +70,16 @@ export async function exportVideo(
 
     const args: string[] = ['-y']  // overwrite output
 
+    // Source video (input 0)
+    args.push('-i', sourceVideoPath)
+
+    // Output-level seek (after -i) for frame-accurate trimming.
+    // Input-level -ss (before -i) only seeks to the nearest keyframe,
+    // which misaligns the overlay by up to one GOP length.
     if (!isFullExport) {
       args.push('-ss', startTime.toFixed(3))
       args.push('-to', endTime.toFixed(3))
     }
-
-    // Source video (input 0)
-    args.push('-i', sourceVideoPath)
 
     // Overlay: raw RGBA from stdin (input 1)
     args.push(
@@ -107,11 +112,11 @@ export async function exportVideo(
 
     // 3. Stream overlay frames from renderer → ffmpeg stdin
     let receivedCount = 0
-    let cancelled = false
+    let stdinBroken = false
 
     // Handle stdin errors (e.g. broken pipe on cancel) — suppress so
     // the IPC handler can return cleanly instead of throwing
-    proc.stdin?.on('error', () => { cancelled = true })
+    proc.stdin?.on('error', () => { stdinBroken = true })
 
     // Attach close/error listeners immediately after spawn so that a
     // cancel before the IPC loop starts still settles the promise.
@@ -124,7 +129,7 @@ export async function exportVideo(
 
       proc.on('close', (code) => {
         activeProcess = null
-        if (code === 0) {
+        if (exportCancelled || code === 0) {
           resolve()
         } else {
           reject(new Error(`ffmpeg exited with code ${code}:\n${stderr.slice(-500)}`))
@@ -149,7 +154,7 @@ export async function exportVideo(
       _idx: number,
       buffer: Uint8Array,
     ) => {
-      if (cancelled || !proc.stdin || proc.stdin.destroyed) return
+      if (stdinBroken || exportCancelled || !proc.stdin || proc.stdin.destroyed) return
 
       const expected = meta.width * meta.height * 4
       if (buffer.length !== expected) return
@@ -189,25 +194,26 @@ export async function exportVideo(
       mainWindow.webContents.send('render-overlay-frames' satisfies Channel, request)
 
       await procDone
-      onProgress('Complete', 100)
+      if (!exportCancelled) onProgress('Complete', 100)
     } finally {
       ipcMain.removeHandler('overlay-frame-data' satisfies Channel)
       ipcMain.removeListener('overlay-frames-done' satisfies Channel, onDone)
     }
   } finally {
-    exportInProgress = false
+    if (exportGeneration === gen) {
+      exportGeneration = 0
+      exportCancelled = false
+    }
   }
 }
 
 /** Cancel an in-progress video export. */
 export function cancelVideoExport(): void {
+  exportCancelled = true
   if (activeProcess) {
     // On Windows, all signals result in TerminateProcess() (hard kill).
     // On Unix, SIGKILL is more reliable for ffmpeg since it ignores SIGTERM in some states.
     activeProcess.kill()
     activeProcess = null
   }
-  // Reset flag directly so future exports aren't blocked if the
-  // Promise never settles (e.g. cancel before close listener attached)
-  exportInProgress = false
 }
