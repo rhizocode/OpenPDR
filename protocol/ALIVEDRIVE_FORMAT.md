@@ -401,7 +401,7 @@ Groups 1–4 are unchanged between format versions.
 >
 > | Data Type | Rate-Table Width | Actual Bytes | Overhead |
 > |-----------|-----------------|-------------|----------|
-> | u8 status/enum channels | 2 | 1 | 1 |
+> | u8 channels (except ch 15) | 2 | 1 | 1 |
 > | u8 emotor.powerlevel (ch 15) | 1 | 1 | 0 |
 > | u16 numeric channels | 4 | 2 | 2 |
 > | i16 signed (steering, gyro) | 3 | 2 | 1 |
@@ -503,29 +503,29 @@ to u32 (4 bytes, rateW=6), adding 3 bytes and shifting all subsequent channels.
 | 18 | HV.battery.usablecharge | 4 | 2 | 2 |
 | 19 | drive.performance.mode | 2 / **6** | 1 (u8) | **4 (u32)** |
 | 20 | emotor.axle.available | 2 | 1 | 1 |
-| 21 | emotor.temp.rotor | 2 | 1 |
-| 22 | emotor.temp.stator | 2 | 1 |
-| 23 | engine.temp.coolant | 2 | 1 |
-| 25 | engine.temp.airintake | 2 | 1 |
-| 27 | engine.temp.oil | 2 | 1 |
-| 28 | engine.powerlevel | 2 | 1 |
-| 32 | outside.air.temp | 2 | 1 |
-| 34 | fuel.level | 2 | 1 |
-| 35 | HV.battery.temp.avg | 2 | 1 |
-| 36 | HV.battery.temp.max | 2 | 1 |
-| 37 | HV.battery.temp.min | 2 | 1 |
-| 38 | odometer.distance | 6 | 4 |
-| 39 | PTM.mode | 2 | 1 |
-| 44 | trans.oil.temp | 2 | 1 |
-| 45 | tire.pressure.FL | 2 | 1 |
-| 46 | tire.pressure.FR | 2 | 1 |
-| 47 | tire.pressure.RL | 2 | 1 |
-| 48 | tire.pressure.RR | 2 | 1 |
-| 49 | tire.temp.FL | 2 | 1 |
-| 50 | tire.temp.FR | 2 | 1 |
-| 51 | tire.temp.RL | 2 | 1 |
-| 52 | tire.temp.RR | 2 | 1 |
-| 53 | VSE.status | 2 | 1 |
+| 21 | emotor.temp.rotor | 2 | 1 | 1 |
+| 22 | emotor.temp.stator | 2 | 1 | 1 |
+| 23 | engine.temp.coolant | 2 | 1 | 1 |
+| 25 | engine.temp.airintake | 2 | 1 | 1 |
+| 27 | engine.temp.oil | 2 | 1 | 1 |
+| 28 | engine.powerlevel | 2 | 1 | 1 |
+| 32 | outside.air.temp | 2 | 1 | 1 |
+| 34 | fuel.level | 2 | 1 | 1 |
+| 35 | HV.battery.temp.avg | 2 | 1 | 1 |
+| 36 | HV.battery.temp.max | 2 | 1 | 1 |
+| 37 | HV.battery.temp.min | 2 | 1 | 1 |
+| 38 | odometer.distance | 6 | 4 | 4 |
+| 39 | PTM.mode | 2 | 1 | 1 |
+| 44 | trans.oil.temp | 2 | 1 | 1 |
+| 45 | tire.pressure.FL | 2 | 1 | 1 |
+| 46 | tire.pressure.FR | 2 | 1 | 1 |
+| 47 | tire.pressure.RL | 2 | 1 | 1 |
+| 48 | tire.pressure.RR | 2 | 1 | 1 |
+| 49 | tire.temp.FL | 2 | 1 | 1 |
+| 50 | tire.temp.FR | 2 | 1 | 1 |
+| 51 | tire.temp.RL | 2 | 1 | 1 |
+| 52 | tire.temp.RR | 2 | 1 | 1 |
+| 53 | VSE.status | 2 | 1 | 1 |
 
 ---
 
@@ -630,29 +630,32 @@ constant.
 
 **Legacy format** (3247 bytes):
 ```
-Preamble:      14 bytes
-Carry-over:    41 bytes (17 + 24, from previous packet's last group)
-10 Hz base:   10 × 28  = 280
-5 Hz data:     5 × 4   =  20
-2 Hz data:     2 × 1   =   2
-1 Hz data:     1 × 31  =  31
-100 Hz frames: 100 × 17 = 1700  (includes 1 in carry-over, 1 overflows to next)
-50 Hz frames:  50 × 24  = 1200  (includes 1 in carry-over, 1 overflows to next)
-                         ------
+Preamble:       14 bytes
+10 Hz base:    10 × 28  =  280
+5 Hz data:      5 × 4   =   20
+2 Hz data:      2 × 1   =    2
+1 Hz data:      1 × 31  =   31
+100 Hz frames: 100 × 17 = 1700
+50 Hz frames:   50 × 24 = 1200
+                          -----
 Total:                    3247
 ```
 
+The 100 × 17 and 50 × 24 include all frames across the packet: 1 carried
+over from the previous packet's overflow region and 1 that overflows into
+the next packet's carry-over region. The carry-over is not listed separately
+because it is already accounted for in the 100 Hz and 50 Hz totals.
+
 **MMP v4+ format** (4050 bytes):
 ```
-Preamble:      14 bytes
-Carry-over:    49 bytes (25 + 24, from previous packet's last group)
-10 Hz base:   10 × 28  = 280
-5 Hz data:     5 × 4   =  20
-2 Hz data:     2 × 1   =   2
-1 Hz data:     1 × 34  =  34
-100 Hz frames: 100 × 25 = 2500  (includes 1 in carry-over, 1 overflows to next)
-50 Hz frames:  50 × 24  = 1200  (includes 1 in carry-over, 1 overflows to next)
-                         ------
+Preamble:       14 bytes
+10 Hz base:    10 × 28  =  280
+5 Hz data:      5 × 4   =   20
+2 Hz data:      2 × 1   =    2
+1 Hz data:      1 × 34  =   34
+100 Hz frames: 100 × 25 = 2500
+50 Hz frames:   50 × 24 = 1200
+                          -----
 Total:                    4050
 ```
 
@@ -806,7 +809,7 @@ speed_rad_s = raw_u16 × 0.0261799388
 speed_rpm   = speed_rad_s × 60 / (2π) ≈ raw_u16 × 0.25
 ```
 
-### 5.5 Steering / Heading Angle Encoding (100 Hz steering)
+### 5.5 Steering Angle Encoding (100 Hz)
 
 ```
 angle_rad = raw_i16 × 0.001090831
@@ -904,7 +907,7 @@ Throttle position, brake position, and fuel level use raw-to-proportion scales:
 ```
 throttle_pct = raw_u8 × 0.00392157    (= 1/255, so 0–255 maps to 0.0–1.0)
 brake_pct    = raw_u8 × 0.00392157
-fuel_pct     = raw_u8 × 0.003921      (≈ 1/255)
+fuel_pct     = raw_u8 × 0.003921      (≈ 1/255, rounded to fewer digits in adcp)
 ```
 
 ### 5.11 Power Encoding
@@ -1445,47 +1448,6 @@ timestamps (start-to-start timing).
 
 ---
 
-## 17. Open Questions
-
-1. ~~**Enum value mappings**~~: **Resolved.** All 9 enum channels have been
-   fully decoded from the `adcp` binary descriptors. See §2.4 for the
-   complete value-to-label tables covering gear (16 values including P/R/N
-   and 10-speed gears), drive mode (25 values covering multiple GM
-   platforms), PTM (8 modes), ABS/ESC/TCS/VSE status, engine start/stop
-   state, and e-motor axle availability.
-
-2. **10 Hz heading validation**: The heading field has been corrected from
-   u16 (2 bytes) to i32 (4 bytes) based on `adcp` evidence (rateW=5, same
-   as lat/lon/altitude). The new scale (1.745329252e-7 rad) should be
-   validated against known headings from GPS track data.
-
-3. ~~**`advi` and `adeg` box contents**~~: **Resolved.** `advi` (§14) contains
-   format version, hardware generation, MMP firmware version, and the source
-   identifier string `"com.cosworth.outing.source.pdr2_5"`. Generation (offset
-   12) and MMP version (offset 14) have been identified from cross-referencing
-   four sample files across gen 1 and gen 2 hardware. `adeg` (§15) defines 20
-   performance timing events (10 categories × start/end). Some numeric fields
-   in `advi` (offsets 16–28) remain semantically unidentified.
-
-4. ~~**Video/telemetry sync mechanism**~~: **Resolved.** Synchronisation is
-   handled entirely by standard MP4 timing boxes (`mdhd`, `stts`, `edts`/`elst`)
-   on the data track — no proprietary sync signal exists. Per-sample
-   presentation times must be computed from these boxes; naïve
-   `packet_index × 1.0 s` timing drifts ~2.2 s over 11 minutes. See §4.8
-   for the full algorithm and observed values.
-
-5. **`advi` fields at offsets 16–28**: Several numeric fields in the `advi`
-   box remain semantically unidentified. Cross-referencing additional sample
-   files from different vehicles or firmware versions may help decode these.
-
-6. **`stts` jitter source**: Data packet durations vary 944–1049 ms
-   (mean ≈ 1000 ms) rather than a constant 1000 ms. It is unknown whether
-   this reflects real sampling jitter in the PDR firmware or rounding
-   artefacts from the MP4 muxer. The jitter does not appear to correlate
-   with recording position or vehicle state.
-
----
-
 ## 18. Reference Implementation
 
 See [`alivedrive_parser.py`](alivedrive_parser.py) in this directory for a working Python parser that
@@ -1512,26 +1474,26 @@ part of the OpenPDR Electron viewer application.
 
 ---
 
-## 18. Open Questions
+## 19. Open Questions
 
 The following aspects of the protocol remain undocumented or incompletely
 understood. None affect core telemetry extraction, but resolving them would
 complete the specification.
 
-### 18.1 Init Packet Internals
+### 19.1 Init Packet Internals
 
 The init packet (§4.2) is described as 14 bytes containing a format version and
 timing reference, but no byte-level layout has been reverse-engineered. The
 exact fields and their meanings are unknown.
 
-### 18.2 Preamble Flag and Format Identifier
+### 19.2 Preamble Flag and Format Identifier
 
 The `flags` byte at preamble offset 8 (observed: 0x01) and the format
 identifier at offset 12 (observed: 0x0CA1) are documented but not understood.
 It is unknown whether other flag values exist, what they would indicate, or
 whether 0x0CA1 is a constant magic number or varies across recordings.
 
-### 18.3 Rate Table Overhead Bytes
+### 19.3 Rate Table Overhead Bytes
 
 §3.3 documents a discrepancy between the rate-table `width` values and the
 actual byte counts in the data stream. The overhead bytes are described as
@@ -1539,34 +1501,34 @@ actual byte counts in the data stream. The overhead bytes are described as
 unknown. It is also unclear whether these bytes are ever written to the data
 stream under certain conditions or firmware versions.
 
-### 18.4 `advi` Fields 3–8
+### 19.4 `advi` Fields 3–8
 
 Six fields in the `advi` box (offsets 16–28) have observed values (110, 30,
 384063, 1, 17, 80) but their meanings are completely unknown. They may encode
 hardware identifiers, firmware build numbers, or configuration parameters.
 
-### 18.5 `adop` Property Completeness
+### 19.5 `adop` Property Completeness
 
 The property list in §13.3 is labelled "known properties" and was compiled from
 a limited set of recordings (3 legacy, 1 MMP v4+) across 3 vehicle models.
 Additional keys may exist in recordings from other GM vehicles, firmware
 versions, or recording modes (e.g., drag strip, valet, etc.).
 
-### 18.6 Event Record Flags
+### 19.6 Event Record Flags
 
 The 2-byte flags field at offset 8 of the 11-byte embedded event record (§15.3)
 is always observed as 0x0200. The meaning of this field is unknown — it could
 encode event sub-types, priority, or other metadata. No other values have been
 observed.
 
-### 18.7 First Packet Carry-Over Region
+### 19.7 First Packet Carry-Over Region
 
 The carry-over region (§4.5) contains the tail of the previous second's last
 sub-frame group. For the very first data packet (second 0), there is no
 preceding packet. It is unknown what populates this region — it may contain
 zeros, default/initial values, or a duplicate of the first sub-frame.
 
-### 18.8 Event Presence Detection
+### 19.8 Event Presence Detection
 
 Oversized packets contain appended 11-byte event records (§15.3), but there is
 no known in-band marker or length field indicating that events are present.
@@ -1574,13 +1536,27 @@ Currently, events are detected by comparing `packet_size > nominal_size` and
 treating the excess bytes as event records. It is unknown whether any field in
 the preamble or elsewhere signals the presence or count of embedded events.
 
-### 18.9 Multiple Init Samples
+### 19.9 Multiple Init Samples
 
 §4.1 notes that the sample table contains "1–2 init samples of 14 bytes." The
 conditions that produce two init samples instead of one are unknown. It may
 relate to recording restart, firmware version, or a timing edge case.
 
-### 18.10 Hybrid/EV Channel Validation
+### 19.10 10 Hz Heading Validation
+
+The heading field has been corrected from u16 (2 bytes) to i32 (4 bytes)
+based on `adcp` evidence (rateW=5, same as lat/lon/altitude). The new scale
+(1.745329252e-7 rad) should be validated against known headings from GPS
+track data.
+
+### 19.11 `stts` Jitter Source
+
+Data packet durations vary 944–1049 ms (mean ≈ 1000 ms) rather than a
+constant 1000 ms. It is unknown whether this reflects real sampling jitter
+in the PDR firmware or rounding artefacts from the MP4 muxer. The jitter
+does not appear to correlate with recording position or vehicle state.
+
+### 19.12 Hybrid/EV Channel Validation
 
 All observations to date come from purely ICE vehicles (CT5-V Blackwing,
 Corvette Stingray, Corvette Z06). The hybrid/EV channels — e-motor power level,
