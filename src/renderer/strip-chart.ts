@@ -35,6 +35,7 @@ import {
 } from './compare-state'
 import { buildDeltaTime, trackPositionToTime } from './compare-sync'
 import { getBrakeDisplay, onBrakeModeChange } from './defaults'
+import { getFontScale, onFontScaleChange } from './overlay-settings'
 
 // ── Channel configuration ──
 
@@ -151,7 +152,12 @@ import { STORAGE_KEYS } from './storage-keys'
 const CHANNELS_STORAGE_KEY = STORAGE_KEYS.chartChannels
 const DELTA_KEY = 'delta'           // toggle key for delta-time chart (compare mode only)
 const DELTA_COLOR = '#ffaa00'       // toolbar button color
-const LABEL_WIDTH = 80  // px reserved for axis labels on left
+const BASE_LABEL_WIDTH = 80  // px reserved for axis labels on left (at 100% scale)
+
+/** Label width scaled by current font scale */
+function getLabelWidth(): number {
+  return Math.round(BASE_LABEL_WIDTH * getFontScale())
+}
 
 const COLOR_A = '#00e5ff'   // cyan
 const COLOR_B = '#ff40ff'   // magenta
@@ -207,14 +213,20 @@ let chartEmpty: HTMLDivElement
 let toolbar: HTMLDivElement
 let dpr = 1
 
-// Pre-computed font strings — rebuilt when dpr changes
-let fontBold11 = `bold ${11}px Consolas, monospace`
-let fontBold10 = `bold ${10}px Consolas, monospace`
-let font9 = `${9}px Consolas, monospace`
+// Pre-computed font strings — rebuilt when dpr or font scale changes
+// Base sizes (px at 100% scale)
+const BASE_FONT_BOLD = 13
+const BASE_FONT_MED  = 12
+const BASE_FONT_SM   = 11
+
+let fontBold11 = `bold ${BASE_FONT_BOLD}px Consolas, monospace`
+let fontBold10 = `bold ${BASE_FONT_MED}px Consolas, monospace`
+let font9 = `${BASE_FONT_SM}px Consolas, monospace`
 function updateFonts(): void {
-  fontBold11 = `bold ${11 * dpr}px Consolas, monospace`
-  fontBold10 = `bold ${10 * dpr}px Consolas, monospace`
-  font9 = `${9 * dpr}px Consolas, monospace`
+  const s = getFontScale()
+  fontBold11 = `bold ${Math.round(BASE_FONT_BOLD * dpr * s)}px Consolas, monospace`
+  fontBold10 = `bold ${Math.round(BASE_FONT_MED * dpr * s)}px Consolas, monospace`
+  font9 = `${Math.round(BASE_FONT_SM * dpr * s)}px Consolas, monospace`
 }
 let chartScrubActive = false
 
@@ -281,6 +293,11 @@ export function initChartPanel(): void {
       buildScaledCache()
       rebuildChannelData()
     }
+    resizeAndRender()
+  })
+
+  onFontScaleChange(() => {
+    updateFonts()
     resizeAndRender()
   })
 
@@ -352,7 +369,7 @@ export function initChartPanel(): void {
   // Click-to-seek + drag-to-scrub
   function seekToPointer(e: PointerEvent): void {
     const rect = canvas.getBoundingClientRect()
-    const xPct = (e.clientX - rect.left - LABEL_WIDTH) / (rect.width - LABEL_WIDTH)
+    const xPct = (e.clientX - rect.left - getLabelWidth()) / (rect.width - getLabelWidth())
     if (xPct < 0 || xPct > 1) return
 
     if (isCompareMode()) {
@@ -391,7 +408,7 @@ export function initChartPanel(): void {
     e.preventDefault()
 
     const rect = canvas.getBoundingClientRect()
-    const xPct = (e.clientX - rect.left - LABEL_WIDTH) / (rect.width - LABEL_WIDTH)
+    const xPct = (e.clientX - rect.left - getLabelWidth()) / (rect.width - getLabelWidth())
     if (xPct < 0 || xPct > 1) return
 
     const z = chartZoom
@@ -680,7 +697,7 @@ function resizeAndRender(): void {
     const totalCharts = compareChannelData.length + (deltaChannelData ? 1 : 0)
     const chartCount = totalCharts || 1
     const chartH = Math.floor((h * dpr) / chartCount)
-    const chartW = Math.floor((w - LABEL_WIDTH) * dpr)
+    const chartW = Math.floor((w - getLabelWidth()) * dpr)
 
     for (const cd of compareChannelData) {
       cd.offscreen.width = chartW
@@ -697,7 +714,7 @@ function resizeAndRender(): void {
     // Render each channel offscreen
     const chartCount = channelData.length || 1
     const chartH = Math.floor((h * dpr) / chartCount)
-    const chartW = Math.floor((w - LABEL_WIDTH) * dpr)
+    const chartW = Math.floor((w - getLabelWidth()) * dpr)
 
     for (const cd of channelData) {
       cd.offscreen.width = chartW
@@ -973,7 +990,7 @@ function renderStaticCache(): void {
   if (w === 0 || h === 0) return
 
   staticCacheCtx.clearRect(0, 0, w, h)
-  const labelW = LABEL_WIDTH * dpr
+  const labelW = getLabelWidth() * dpr
 
   if (isCompareMode()) {
     const totalCharts = compareChannelData.length + (deltaChannelData ? 1 : 0)
@@ -992,18 +1009,19 @@ function renderStaticCache(): void {
       staticCacheCtx.fillRect(0, y, labelW, chartH)
 
       // Channel label (top line) — in default color
+      const cmpTextMax = labelW - 8 * dpr
       staticCacheCtx.fillStyle = cd.config.color
       staticCacheCtx.font = fontBold11
       staticCacheCtx.textAlign = 'left'
       staticCacheCtx.textBaseline = 'top'
-      staticCacheCtx.fillText(cd.config.label, 4 * dpr, y + 3 * dpr)
+      staticCacheCtx.fillText(cd.config.label, 4 * dpr, y + 3 * dpr, cmpTextMax)
 
       // Min/max range labels
       staticCacheCtx.fillStyle = 'rgba(255,255,255,0.3)'
       staticCacheCtx.font = font9
       staticCacheCtx.textAlign = 'left'
       staticCacheCtx.textBaseline = 'bottom'
-      staticCacheCtx.fillText(`${cd.config.min}–${cd.config.max}`, 4 * dpr, y + chartH - 2 * dpr)
+      staticCacheCtx.fillText(`${cd.config.min}–${cd.config.max}`, 4 * dpr, y + chartH - 2 * dpr, cmpTextMax)
 
       if (i > 0) {
         staticCacheCtx.strokeStyle = '#333'
@@ -1025,16 +1043,17 @@ function renderStaticCache(): void {
       staticCacheCtx.fillStyle = 'rgba(26,26,26,0.85)'
       staticCacheCtx.fillRect(0, y, labelW, chartH)
 
+      const deltaTextMax = labelW - 8 * dpr
       staticCacheCtx.fillStyle = 'rgba(255,255,255,0.7)'
       staticCacheCtx.font = fontBold11
       staticCacheCtx.textAlign = 'left'
       staticCacheCtx.textBaseline = 'top'
-      staticCacheCtx.fillText('\u0394 Time', 4 * dpr, y + 3 * dpr)
+      staticCacheCtx.fillText('\u0394 Time', 4 * dpr, y + 3 * dpr, deltaTextMax)
 
       staticCacheCtx.fillStyle = 'rgba(255,255,255,0.3)'
       staticCacheCtx.font = font9
       staticCacheCtx.textBaseline = 'bottom'
-      staticCacheCtx.fillText('sec', 4 * dpr, y + chartH - 2 * dpr)
+      staticCacheCtx.fillText('sec', 4 * dpr, y + chartH - 2 * dpr, deltaTextMax)
 
       staticCacheCtx.strokeStyle = '#333'
       staticCacheCtx.lineWidth = 1 * dpr
@@ -1065,18 +1084,19 @@ function renderStaticCache(): void {
     staticCacheCtx.fillRect(0, y, labelW, chartH)
 
     // Channel label (top line)
+    const textMax = labelW - 8 * dpr
     staticCacheCtx.fillStyle = cd.config.color
     staticCacheCtx.font = fontBold11
     staticCacheCtx.textAlign = 'left'
     staticCacheCtx.textBaseline = 'top'
-    staticCacheCtx.fillText(cd.config.label, 4 * dpr, y + 3 * dpr)
+    staticCacheCtx.fillText(cd.config.label, 4 * dpr, y + 3 * dpr, textMax)
 
     // Min/max range labels (smaller, dimmer)
     staticCacheCtx.fillStyle = 'rgba(255,255,255,0.3)'
     staticCacheCtx.font = font9
     staticCacheCtx.textAlign = 'left'
     staticCacheCtx.textBaseline = 'bottom'
-    staticCacheCtx.fillText(`${cd.config.min}–${cd.config.max}`, 4 * dpr, y + chartH - 2 * dpr)
+    staticCacheCtx.fillText(`${cd.config.min}–${cd.config.max}`, 4 * dpr, y + chartH - 2 * dpr, textMax)
 
     // Separator line
     if (i > 0) {
@@ -1174,6 +1194,7 @@ function renderFrameCache(force?: boolean): void {
   }
 
   const chartH = h / chartCount
+  const fValMax = getLabelWidth() * dpr - 8 * dpr
   for (let i = 0; i < chartCount; i++) {
     const cd = channelData[i]
     const y = i * chartH
@@ -1182,7 +1203,8 @@ function renderFrameCache(force?: boolean): void {
     frameCacheCtx.font = fontBold11
     frameCacheCtx.textAlign = 'left'
     frameCacheCtx.textBaseline = 'top'
-    frameCacheCtx.fillText(`${val.toFixed(cd.config.precision)} ${cd.config.unit}`, 4 * dpr, y + 17 * dpr)
+    const valY = Math.round(17 * dpr * getFontScale())
+    frameCacheCtx.fillText(`${val.toFixed(cd.config.precision)} ${cd.config.unit}`, 4 * dpr, y + valY, fValMax)
   }
 }
 
@@ -1207,13 +1229,15 @@ function renderFrameCacheCompare(_w: number, h: number): void {
     frameCacheCtx.textBaseline = 'top'
 
     // "A: value"  "B: value" stacked
+    const s = getFontScale()
+    const cmpValMax = getLabelWidth() * dpr - 8 * dpr
     if (valA !== null) {
       frameCacheCtx.fillStyle = COLOR_A
-      frameCacheCtx.fillText(`A: ${valA.toFixed(cd.config.precision)}`, 4 * dpr, y + 16 * dpr)
+      frameCacheCtx.fillText(`A: ${valA.toFixed(cd.config.precision)}`, 4 * dpr, y + Math.round(16 * dpr * s), cmpValMax)
     }
     if (valB !== null) {
       frameCacheCtx.fillStyle = COLOR_B
-      frameCacheCtx.fillText(`B: ${valB.toFixed(cd.config.precision)}`, 4 * dpr, y + 28 * dpr)
+      frameCacheCtx.fillText(`B: ${valB.toFixed(cd.config.precision)}`, 4 * dpr, y + Math.round(28 * dpr * s), cmpValMax)
     }
   }
 
@@ -1234,17 +1258,20 @@ function renderFrameCacheCompare(_w: number, h: number): void {
       frameCacheCtx.textAlign = 'left'
       frameCacheCtx.textBaseline = 'top'
 
+      const ds = getFontScale()
+      const deltaValY = Math.round(16 * dpr * ds)
+      const deltaValMax = getLabelWidth() * dpr - 8 * dpr
       if (dVal < 0) {
         // A is faster
         frameCacheCtx.fillStyle = '#3cdc3c'
-        frameCacheCtx.fillText(`A +${Math.abs(dVal).toFixed(3)}s`, 4 * dpr, y + 16 * dpr)
+        frameCacheCtx.fillText(`A +${Math.abs(dVal).toFixed(3)}s`, 4 * dpr, y + deltaValY, deltaValMax)
       } else if (dVal > 0) {
         // B is faster
         frameCacheCtx.fillStyle = '#ff3c3c'
-        frameCacheCtx.fillText(`B +${dVal.toFixed(3)}s`, 4 * dpr, y + 16 * dpr)
+        frameCacheCtx.fillText(`B +${dVal.toFixed(3)}s`, 4 * dpr, y + deltaValY, deltaValMax)
       } else {
         frameCacheCtx.fillStyle = '#fff'
-        frameCacheCtx.fillText('0.000s', 4 * dpr, y + 16 * dpr)
+        frameCacheCtx.fillText('0.000s', 4 * dpr, y + deltaValY, deltaValMax)
       }
     }
   }
@@ -1269,12 +1296,12 @@ function drawPlayhead(): void {
   if (isCompareMode()) {
     const totalCharts = compareChannelData.length + (deltaChannelData ? 1 : 0)
     if (totalCharts > 0) {
-      const labelW = LABEL_WIDTH * dpr
+      const labelW = getLabelWidth() * dpr
       x = Math.round(labelW + trackPosition * (w - labelW))
     }
   } else {
     if (channelData.length > 0 && getChartVisibleDuration() > 0) {
-      const labelW = LABEL_WIDTH * dpr
+      const labelW = getLabelWidth() * dpr
       const xPct = chartFraction(getSyncedTime())
       x = Math.round(labelW + xPct * (w - labelW))
     }

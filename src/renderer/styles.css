@@ -23,6 +23,7 @@ html, body {
   height: 100%;
   overflow: hidden;
   font-family: 'Segoe UI', -apple-system, sans-serif;
+  font-size: 16px;
   background: var(--bg-primary);
   color: var(--text-primary);
 }
@@ -52,7 +53,7 @@ html, body {
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 0.75em;
   font-weight: 600;
 }
 
@@ -74,7 +75,7 @@ html, body {
   background: var(--bg-tertiary) !important;
   color: var(--text-primary) !important;
   border: 1px solid #444 !important;
-  font-size: 13px !important;
+  font-size: 0.75em !important;
   padding: 0 10px !important;
   height: 26px;
   line-height: 26px;
@@ -106,7 +107,7 @@ html, body {
 }
 
 #file-name {
-  font-size: 13px;
+  font-size: 0.75em;
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -119,7 +120,7 @@ html, body {
   color: var(--text-primary);
   border: 1px solid #444;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 0.75em;
   font-family: Consolas, monospace;
   cursor: pointer;
   max-width: 260px;
@@ -132,7 +133,7 @@ html, body {
 
 #fps-counter {
   display: none;
-  font-size: 11px;
+  font-size: 0.75em;
   font-family: Consolas, monospace;
   color: var(--green);
   min-width: 52px;
@@ -548,7 +549,7 @@ html, body {
 
 .chart-channel-btn {
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: 0.75em;
   font-family: 'Consolas', monospace;
   border: 1px solid #444;
   border-radius: 3px;
@@ -611,7 +612,7 @@ html, body {
   left: 50%;
   transform: translate(-50%, -50%);
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 1.0em;
 }
 
 #chart-empty.hidden {
@@ -621,7 +622,7 @@ html, body {
 /* ── Panel toggle buttons ── */
 .panel-toggle {
   padding: 2px 10px;
-  font-size: 11px;
+  font-size: 0.75em;
   font-family: 'Consolas', monospace;
   border: 1px solid #444;
   border-radius: 3px;
@@ -708,7 +709,7 @@ html, body {
 }
 
 .lap-heading {
-  font-size: 11px;
+  font-size: 0.75em;
   font-family: 'Consolas', monospace;
   color: var(--text-secondary);
   padding-bottom: 6px;
@@ -724,7 +725,7 @@ html, body {
   border-radius: 3px;
   cursor: pointer;
   font-family: 'Consolas', monospace;
-  font-size: 12px;
+  font-size: 0.75em;
   color: var(--text-secondary);
   transition: background 0.1s;
 }
@@ -763,7 +764,7 @@ html, body {
 }
 
 .lap-delta {
-  font-size: 10px;
+  font-size: 0.75em;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
   min-width: 52px;
@@ -832,7 +833,7 @@ html, body {
   align-items: center;
   gap: 6px;
   padding: 3px 6px;
-  font-size: 11px;
+  font-size: 0.75em;
   font-family: 'Consolas', monospace;
 }
 
@@ -858,7 +859,7 @@ html, body {
 }
 
 .lap-empty {
-  font-size: 12px;
+  font-size: 0.75em;
   font-family: 'Consolas', monospace;
   color: var(--text-secondary);
   padding: 16px 8px;
@@ -887,7 +888,7 @@ html, body {
   border: 1px solid #444;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 1.0em;
 }
 
 #btn-play:hover {
@@ -905,7 +906,7 @@ html, body {
   border: 1px solid #444;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 1.0em;
   padding: 0;
   opacity: 0.5;
   transition: opacity 0.15s;
@@ -921,7 +922,7 @@ html, body {
 }
 
 #time-current, #time-total {
-  font-size: 13px;
+  font-size: 0.75em;
   font-family: 'Consolas', monospace;
   color: var(--text-secondary);
   min-width: 55px;
@@ -1020,7 +1021,7 @@ html, body {
   color: var(--text-primary);
   border: 1px solid #444;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 0.75em;
   cursor: pointer;
 }
 
@@ -1080,7 +1081,7 @@ html, body {
   border-radius: 6px;
   padding: 4px 0;
   z-index: 1000;
-  font-size: 13px;
+  font-size: 0.7em;
   min-width: 240px;
   max-width: calc(100vw - 24px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
@@ -1097,7 +1098,6 @@ html, body {
   padding: 7px 14px;
   cursor: pointer;
   color: var(--text-primary);
-  font-size: 13px;
   font-weight: 600;
   user-select: none;
 }
@@ -1111,7 +1111,6 @@ html, body {
 }
 
 .gear-chevron {
-  font-size: 10px;
   width: 12px;
   text-align: center;
   color: var(--text-secondary);
@@ -1128,7 +1127,6 @@ html, body {
 
 .export-empty {
   color: var(--text-secondary);
-  font-size: 12px;
   padding: 4px 0;
 }
 
@@ -1164,7 +1162,6 @@ html, body {
   border: 1px solid #444;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 12px;
   width: 100%;
 }
 
@@ -1173,7 +1170,6 @@ html, body {
 }
 
 .export-section-title {
-  font-size: 11px;
   text-transform: uppercase;
   color: var(--text-secondary);
   padding: 4px 14px 2px;
@@ -1199,7 +1195,6 @@ html, body {
 }
 
 .settings-section-title {
-  font-size: 11px;
   text-transform: uppercase;
   color: var(--text-secondary);
   margin-bottom: 6px;
@@ -1232,13 +1227,11 @@ html, body {
   color: var(--text-primary);
   border: 1px solid #444;
   border-radius: 3px;
-  font-size: 12px;
   font-family: 'Consolas', monospace;
 }
 
 /* Settings hint text */
 .settings-hint {
-  font-size: 11px;
   color: #888;
   padding: 2px 0 4px;
   line-height: 1.3;
@@ -1253,7 +1246,6 @@ html, body {
   color: var(--text-primary);
   border: 1px solid #444;
   border-radius: 3px;
-  font-size: 12px;
   font-family: 'Consolas', monospace;
 }
 
@@ -1270,7 +1262,6 @@ html, body {
   color: var(--text-primary);
   border: 1px solid #444;
   border-radius: 3px;
-  font-size: 16px;
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -1289,7 +1280,6 @@ html, body {
 
 .font-size-display {
   font-family: 'Consolas', monospace;
-  font-size: 12px;
   min-width: 36px;
   text-align: center;
 }
@@ -1307,7 +1297,7 @@ html, body {
   border: 1px solid #444;
   border-radius: 6px;
   font-family: 'Consolas', monospace;
-  font-size: 11px;
+  font-size: 0.75em;
   color: #0f0;
   white-space: pre-wrap;
   word-break: break-all;
@@ -1336,7 +1326,7 @@ html, body {
   background: rgba(0, 0, 0, 0.85);
   border: 1px solid var(--accent);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 1.0em;
   color: var(--text-primary);
   z-index: 100;
   display: none;
@@ -1367,7 +1357,7 @@ html, body {
 }
 
 .ep-title {
-  font-size: 15px;
+  font-size: 1.0em;
   font-weight: 600;
   text-align: center;
   color: var(--text-primary);
@@ -1380,7 +1370,7 @@ html, body {
 }
 
 .ep-step {
-  font-size: 13px;
+  font-size: 0.75em;
   color: var(--text-secondary);
   padding: 2px 0;
 }
@@ -1418,7 +1408,7 @@ html, body {
 .ep-info {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 0.75em;
   color: var(--text-secondary);
 }
 
@@ -1430,7 +1420,7 @@ html, body {
   border: 1px solid var(--text-secondary);
   border-radius: 4px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 0.75em;
   cursor: pointer;
 }
 
@@ -1444,7 +1434,7 @@ html, body {
   background: var(--bg-tertiary) !important;
   color: var(--text-primary) !important;
   border: 1px solid #444 !important;
-  font-size: 13px !important;
+  font-size: 0.75em !important;
   padding: 0 10px !important;
   height: 26px;
   line-height: 26px;
@@ -1475,7 +1465,7 @@ html, body {
   border-radius: 6px;
   padding: 6px 0;
   z-index: 1000;
-  font-size: 13px;
+  font-size: 0.75em;
   min-width: 220px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
@@ -1508,7 +1498,7 @@ html, body {
   color: var(--text-primary);
   border: 1px solid #444;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 0.75em;
   font-family: Consolas, monospace;
   cursor: pointer;
   max-width: 260px;
@@ -1573,7 +1563,7 @@ html, body {
 /* Compare time display */
 .compare-time {
   font-family: Consolas, monospace;
-  font-size: 13px;
+  font-size: 0.75em;
 }
 
 .compare-time-a {
@@ -1589,7 +1579,7 @@ html, body {
   background: var(--bg-tertiary) !important;
   color: var(--green) !important;
   border: 1px solid var(--green) !important;
-  font-size: 13px !important;
+  font-size: 0.75em !important;
   padding: 0 10px !important;
   height: 26px;
   line-height: 26px;
@@ -1635,7 +1625,7 @@ html, body {
 .modal-content h3 {
   margin: 0;
   padding: 16px 20px 12px;
-  font-size: 16px;
+  font-size: 1.0em;
   color: var(--text-primary);
   border-bottom: 1px solid #333;
   flex-shrink: 0;
@@ -1645,14 +1635,14 @@ html, body {
   flex: 1;
   overflow-y: auto;
   padding: 12px 20px;
-  font-size: 13px;
+  font-size: 0.75em;
   color: var(--text-secondary);
   line-height: 1.5;
 }
 
 #update-modal-changelog h4 {
   margin: 16px 0 6px;
-  font-size: 14px;
+  font-size: 1.0em;
   color: var(--green);
 }
 
@@ -1691,7 +1681,7 @@ html, body {
   padding: 6px 18px;
   border-radius: 4px;
   border: none;
-  font-size: 13px;
+  font-size: 0.75em;
   cursor: pointer;
 }
 
@@ -1732,7 +1722,7 @@ html, body {
 
 .update-progress-text {
   font-family: Consolas, monospace;
-  font-size: 12px;
+  font-size: 0.75em;
   color: var(--text-secondary);
   text-align: center;
   margin-top: 6px;

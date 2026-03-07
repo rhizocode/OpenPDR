@@ -133,17 +133,26 @@ const UI_SELECTORS = [
 ]
 
 let fontStyleEl: HTMLStyleElement | null = null
+let currentFontScale = DEFAULT_SIZE
+const fontScaleListeners: Array<() => void> = []
+
+/** Current font scale as a multiplier (1.0 = 100%) */
+export function getFontScale(): number { return currentFontScale / 100 }
+
+/** Register a callback fired when font scale changes */
+export function onFontScaleChange(cb: () => void): void { fontScaleListeners.push(cb) }
 
 function applyFontScale(pct: number): void {
+  currentFontScale = pct
   if (!fontStyleEl) {
     fontStyleEl = document.createElement('style')
     fontStyleEl.id = 'ui-font-scale'
     document.head.appendChild(fontStyleEl)
   }
-  const z = pct / 100
   fontStyleEl.textContent = UI_SELECTORS
-    .map(s => `${s} { zoom: ${z}; }`)
+    .map(s => `${s} { font-size: ${pct}%; }`)
     .join('\n')
+  for (const cb of fontScaleListeners) cb()
 }
 
 export function initFontScale(): void {
@@ -166,7 +175,7 @@ export function buildFontSizePanel(container: HTMLDivElement): void {
   row.className = 'settings-row font-size-row'
 
   const label = document.createElement('label')
-  label.textContent = 'UI Scale'
+  label.textContent = 'Font Scale'
 
   const minus = document.createElement('button')
   minus.className = 'font-size-btn'

@@ -27,7 +27,7 @@ export function initGearMenu(): void {
     { id: 'rpm-zones',    label: 'RPM Zones',     build: buildRpmPanel },
     { id: 'brake-display',label: 'Brake Display',  build: buildBrakeDisplayPanel },
     { id: 'av-sync',      label: 'A/V Sync',      build: buildAvSyncPanel },
-    { id: 'font-size',    label: 'Font Size',      build: buildFontSizePanel },
+    { id: 'font-size',    label: 'Font Scale',      build: buildFontSizePanel },
     { id: 'about',        label: 'About',           build: buildAboutPanel },
   ]
 
@@ -97,7 +97,7 @@ function buildAboutPanel(container: HTMLDivElement): void {
   versionLabel.textContent = 'Version'
   const versionValue = document.createElement('span')
   versionValue.style.fontFamily = 'Consolas, monospace'
-  versionValue.style.fontSize = '13px'
+  versionValue.style.fontSize = '0.75em'
 
   if (window.pdr?.getAppVersion) {
     versionValue.textContent = '...'
