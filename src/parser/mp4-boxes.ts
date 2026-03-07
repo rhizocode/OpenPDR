@@ -187,8 +187,10 @@ export function parseMvhdTimescale(moovBuf: Uint8Array): number {
   const mvhd = findBox(moovBuf, 'mvhd', moovHdr.dataStart, moovBuf.length)
   if (!mvhd) return 1000
   const d = mvhd[2]
+  const mvhdEnd = mvhd[0] + mvhd[1]
   const version = moovBuf[d]
   // timescale is at offset 12 (v0) or 20 (v1) from data start
   const tsOffset = version === 0 ? 12 : 20
+  if (d + tsOffset + 4 > mvhdEnd) return 1000
   return readUint32BE(moovBuf, d + tsOffset)
 }

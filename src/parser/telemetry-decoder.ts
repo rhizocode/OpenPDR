@@ -230,7 +230,7 @@ function decode50HzFrame(packet: Uint8Array, offset: number, dv: DataView): Hz50
  * Speed is 2 bytes BEFORE latOffset.
  */
 function decode10HzFrame(packet: Uint8Array, latOffset: number, dv: DataView): Hz10Frame | null {
-  if (latOffset + 26 > packet.length) return null
+  if (latOffset < 2 || latOffset + 26 > packet.length) return null
 
   const latRaw = readInt32BE(packet, latOffset, dv)
   const lonRaw = readInt32BE(packet, latOffset + 4, dv)
@@ -245,10 +245,7 @@ function decode10HzFrame(packet: Uint8Array, latOffset: number, dv: DataView): H
   const engineRaw = readUint16BE(packet, latOffset + 24, dv)
 
   // Speed is 2 bytes BEFORE lat
-  let speedRaw = 0
-  if (latOffset >= 2) {
-    speedRaw = readUint16BE(packet, latOffset - 2, dv)
-  }
+  const speedRaw = readUint16BE(packet, latOffset - 2, dv)
 
   return {
     latitude_deg: latRaw * DEG_SCALE,
@@ -374,11 +371,6 @@ function validate100Hz(f: Hz100Frame): boolean {
 
 // ── Helper: average an array of sub-frames ──
 
-/** Pass-through: brake display scaling is now handled by the renderer. */
-function remapBrake(raw: number): number {
-  return raw
-}
-
 function avg100Hz(frames: Hz100Frame[]): {
   brake: number; brakeRaw: number; rpm: number; torque: number; steering: number
   wsFl: number; wsFr: number; wsRl: number; wsRr: number; gyro: number
@@ -400,7 +392,7 @@ function avg100Hz(frames: Hz100Frame[]): {
   }
   const brakeRaw = brake / n
   return {
-    brake: remapBrake(brakeRaw), brakeRaw, rpm: rpm / n, torque: torque / n, steering: steering / n,
+    brake: brakeRaw, brakeRaw, rpm: rpm / n, torque: torque / n, steering: steering / n,
     wsFl: wsFl / n, wsFr: wsFr / n, wsRl: wsRl / n, wsRr: wsRr / n, gyro: gyro / n,
   }
 }

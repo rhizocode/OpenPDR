@@ -148,11 +148,11 @@ export function detectLaps(store: TelemetryStore): LapData {
   if (validIdx.length < 100) return noLaps
 
   // Step B: find start/finish centroid via spatial density grid
-  const cellCounts = new Map<number, { count: number; lat: number; lon: number }>()
+  const cellCounts = new Map<string, { count: number; lat: number; lon: number }>()
   for (const i of validIdx) {
     const cellLatI = Math.round(store.lat[i] / CELL_SIZE)
     const cellLonI = Math.round(store.lon[i] / CELL_SIZE)
-    const key = cellLatI * 1000000 + cellLonI
+    const key = `${cellLatI},${cellLonI}`
     const existing = cellCounts.get(key)
     if (existing) {
       existing.count++

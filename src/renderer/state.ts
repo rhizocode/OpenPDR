@@ -277,8 +277,9 @@ export function updateInterpolation(videoTime: number): void {
 
 // ── Format time as M:SS.d ──
 export function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds - m * 60
+  const rounded = Math.round(seconds * 10) / 10
+  const m = Math.floor(rounded / 60)
+  const s = rounded - m * 60
   const sStr = s < 10 ? '0' + s.toFixed(1) : s.toFixed(1)
   return `${m}:${sStr}`
 }
