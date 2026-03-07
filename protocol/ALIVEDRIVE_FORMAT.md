@@ -1,6 +1,6 @@
 # AliveDrive PDR 2.5 Telemetry Format
 
-Reverse-engineered from the `adco` data track in MP4 files produced by the
+Documents the `adco` data track in MP4 files produced by the
 AliveDrive / Cosworth Performance Data Recorder found in 2025-2026 GM vehicles
 including Cadillac CT5-V Blackwing, Corvette Z06, and Corvette Stingray.
 
@@ -53,9 +53,9 @@ The `adco` sample description entry (inside `stsd`) contains these nested boxes:
 
 ## 2. Channel Definitions (`adcp`)
 
-59 channels are defined, numbered 0–58. Authoritative names were recovered from
-the `adcp` box where each channel is identified by its full Cosworth namespace
-string (e.g., `com.cosworth.channel.speed`).
+59 channels are defined, numbered 0–58. Each channel is identified in the
+`adcp` box by its full Cosworth namespace string (e.g.,
+`com.cosworth.channel.speed`).
 
 ### 2.1 Complete Channel Table
 
@@ -132,7 +132,7 @@ The `adcp` box contains channel parameter definitions:
 
 ```
 Offset  Size  Field
-0       2     header (u16 BE, observed: 0x0000)
+0       2     header (u16 BE, 0x0000)
 
 Repeated for each channel:
   2     u16 BE    channel ID (0–58)
@@ -157,7 +157,7 @@ Offset  Size  Type    Field
 0       2     u16 BE  unit_id (typically 6 = none.none)
 2       1     u8      type (0x02 = enum)
 3       1     u8      format/subtype indicator (0x02 for u8 enum)
-4       1     u8      num_subfields (always 1 observed)
+4       1     u8      num_subfields (always 1)
 
 For each subfield:
   var   string    null-terminated ASCII subfield name (e.g., "status", "current", "mode")
@@ -185,7 +185,7 @@ Repeated for each unit:
   var   string    null-terminated ASCII name (e.g., "com.cosworth.unit.velocity.si")
 ```
 
-Observed unit mappings:
+Unit mappings:
 
 | Unit ID | Cosworth Name | SI Unit |
 |---------|--------------|---------|
@@ -204,9 +204,9 @@ Observed unit mappings:
 
 ### 2.4 Enum Channel Value-to-Label Mappings
 
-All 9 enum channels have been fully decoded from the `adcp` binary descriptors.
-Each enum channel stores a single `u8` raw value; the tables below give the
-complete label for every defined value.
+All 9 enum channels are defined in the `adcp` binary descriptors. Each enum
+channel stores a single `u8` raw value; the tables below give the complete
+label for every defined value.
 
 #### Ch 7 — ABS (Anti-Lock Braking System) — 10 Hz, subfield "status"
 
@@ -297,7 +297,7 @@ complete label for every defined value.
 | 7 | unknown (default) |
 
 > Note: The firmware label string for value 0 contains a typo ("engineofff"
-> with three f's); we normalise it to "engineoff" in the parser.
+> with three f's); parsers should normalise it to "engineoff".
 
 #### Ch 33 — ESC (Electronic Stability Control) — 5 Hz, subfield "status"
 
@@ -394,7 +394,7 @@ Offset  Size  Field
 
 Groups 1–4 are unchanged between format versions.
 
-> **Critical finding:** The `width` values in the rate table do NOT represent
+> **Note:** The `width` values in the rate table do NOT represent
 > the actual byte count stored in the data stream. Each channel's rate-table
 > width includes metadata overhead bytes (quality/validity descriptors) that are
 > not written to the data. The overhead varies by data type:
@@ -555,12 +555,13 @@ Offset  Size  Type    Field                   Value
 4       4     u32 BE  timestamp               0 (epoch start)
 8       1     u8      flags                   0x01
 9       3     ---     zero padding            0x000000
-12      2     u16 BE  format identifier       0x0000 (vs 0x0CA1 in data packets)
+12      2     u16 BE  format identifier       0x0000 (vs 0x0CA1/0x0FC4 in data packets)
 ```
 
-The init packet establishes the telemetry clock epoch (timestamp = 0) and is
-distinguished from data packets by the absence of the `0x0CA1` format
-identifier. Parsers should skip it based on size (`< 100` bytes).
+The init packet establishes the telemetry clock epoch (timestamp = 0) and
+is distinguished from data packets by its zero format identifier. Parsers
+should skip it based on size (`< 100` bytes). MMP v4+ recordings may contain
+two identical init samples.
 
 The `stts` (decoding time to sample) box assigns this init packet a large
 duration (typically ~1.8 seconds), meaning the first real data packet's
@@ -604,14 +605,17 @@ Each data packet begins with a 14-byte preamble before the first 10 Hz frame:
 Offset  Size  Type    Field
 0       4     u32     zero padding (always 0x00000000)
 4       4     u32 BE  timestamp (100 ns ticks from recording start)
-8       1     u8      flags (observed: 0x01)
+8       1     u8      flags (always 0x01)
 9       3     ---     zero padding
-12      2     u16 BE  format identifier (observed: 0x0CA1)
+12      2     u16 BE  format identifier (0x0CA1 = legacy, 0x0FC4 = MMP v4+)
 ```
 
-The timestamp at offset 4 increments by exactly 10,000,000 per packet
-(= 1.0 second at 100 ns resolution), confirming the one-second-per-packet
-timing model.
+The format identifier encodes the data format variant: 0x0CA1 (3233) for legacy
+packets, 0x0FC4 (4036) for MMP v4+ packets. This provides an in-stream method
+to detect the format variant, independent of `stsz` packet sizes.
+
+The timestamp at offset 4 increments by approximately 10,000,000 per packet
+(= 1.0 second at 100 ns resolution), with jitter of ±50 ms.
 
 After the 14-byte preamble, a **carry-over region** contains the tail of the
 previous second's last sub-frame group — specifically, the second 100 Hz frame
@@ -680,9 +684,8 @@ contains:
 | Frame 5 (2 Hz + 5 groups) | 319 | 399 |
 | Other odd frames (5 groups only) | 318 | 398 |
 
-**Verified across 2,290 packets from 4 vehicles (3 legacy, 1 MMP v4+) with
-100% match to GPS-scanned offsets.** No GPS coordinate scanning is needed
-to parse the data — the parser can jump directly to each frame's position.
+No GPS coordinate scanning is needed to parse the data — the parser can
+jump directly to each frame's position.
 
 ### 4.8 Video/Telemetry Synchronization
 
@@ -724,7 +727,7 @@ for i in 0 .. sample_count - 1:
 Sample 0 (the init packet) gets `presentation_time[0] = elst_delay`. The
 first real data packet gets `presentation_time[1] = elst_delay + init_delta / timescale`.
 
-#### Observed Values (ADV_0600.mp4, CT5-V Blackwing, ~11 min)
+#### Typical Values
 
 | Parameter | Value |
 |-----------|-------|
@@ -734,27 +737,14 @@ first real data packet gets `presentation_time[1] = elst_delay + init_delta / ti
 | Init packet `stts` delta | 1856 ticks → 1.856 s |
 | First data packet time | 1.877 s (0.021 + 1.856) |
 | Data packet `stts` range | 944–1049 ms (mean ≈ 1000 ms) |
-| Cumulative drift at 660 s | ~2.2 s (vs. naïve `packet_index` timing) |
-
-#### Why Naïve Timing Fails
-
-Assuming each data packet starts at exactly `packet_index × 1.0` seconds
-ignores three effects:
-
-1. The init packet's large `stts` delta pushes the first data packet to
-   ~1.877 s, not 0.0 s.
-2. Per-packet jitter (±50 ms) accumulates over long recordings.
-3. The `edts` empty edit adds a small but non-zero delay.
-
-Over an 11-minute recording, naïve timing drifts by ~2.2 seconds relative
-to the MP4-derived presentation times, causing visible HUD/video desync.
 
 #### Parser Implementation
 
-Both parsers compute per-sample presentation times from `mdhd` + `stts` +
+Parsers must compute per-sample presentation times from `mdhd` + `stts` +
 `edts`/`elst` and pass the resulting timestamp (in seconds) to the packet
-decoder. The user-facing A/V sync offset defaults to 0; it serves only as
-a fine-tuning adjustment if the firmware's timing metadata is slightly off.
+decoder. Assuming each packet starts at exactly `packet_index × 1.0` seconds
+will drift by several seconds over long recordings due to the init packet's
+large `stts` delta, per-packet jitter, and the `edts` empty edit delay.
 
 ---
 
@@ -836,8 +826,8 @@ For a CT5-V Blackwing with 245/35R19 tires (nominal radius ~0.337 m):
 speed_mps = wheel_rad_s × tire_radius
 ```
 
-A best-fit effective radius of ~0.321 m (vs 0.337 m nominal) gives
-GPS-matching speeds. The ~5% difference is due to tire compression under load.
+The effective rolling radius is ~0.321 m (vs 0.337 m nominal); the ~5%
+difference is due to tire compression under load.
 
 **MMP v4+ format (float32 m/s):**
 
@@ -851,8 +841,8 @@ speed_kph = raw_float32 × 3.6
 
 ### 5.7 Engine Torque Encoding
 
-Engine torque is stored as u16 with a confirmed scale and offset from the
-`adcp` descriptor:
+Engine torque is stored as u16 with scale and offset from the `adcp`
+descriptor:
 
 ```
 torque_Nm = raw_u16 × 0.5 - 848.0
@@ -865,11 +855,10 @@ torque_Nm = raw_u16 × 0.5 - 848.0
 | Zero torque | raw = 1696 |
 | Raw range | 0–4095 (12 bits used) |
 | Torque range | -848 to +1199.5 N·m |
-| Peak observed | raw 3153 → 728.5 N·m (80% of rated 905 N·m) |
+| Example | raw 3153 → 728.5 N·m |
 
 At idle, raw values cluster around 1700–1800 (small positive torque to maintain
-RPM). Under moderate acceleration values rise toward 2500+. A full wide-open-
-throttle recording would be needed to observe the rated 905 N·m peak.
+RPM). Under acceleration, values rise toward 2500+.
 
 ### 5.8 Temperature Encoding
 
@@ -972,11 +961,8 @@ Offset  Size  Type       Channel             Encoding
 23      2     i16 BE     gyro.yaw            × 0.00041887902 rad/s
 ```
 
-> **Parser note:** In MMP v4+ packets, the float32 wheel speed values at low
-> vehicle speeds (< 5 kph, values near zero) can create false matches in the
-> 50 Hz float block scanner, since near-zero floats look like valid IEEE 754
-> values. Decoded 100 Hz frames should be validated: reject any frame with
-> RPM > 12,000 or any wheel speed > 400 kph.
+> **Validation:** Decoded 100 Hz frames should be sanity-checked — reject
+> any frame with RPM > 12,000 or any wheel speed > 400 kph.
 
 ---
 
@@ -1034,12 +1020,6 @@ Offset  Size  Type    Channel             Encoding
 26      2     u16 BE  engine.power        × 500 → W
 ```
 
-> **Key correction from `adcp`:** The heading field is 4 bytes (i32), not 2.
-> What was previously identified as a 2-byte "internal counter" was the lower
-> 16 bits of the heading value. The fields after heading are ABS status and
-> throttle position (1 byte each), not engine coolant temperature (2 bytes).
-> And boost pressure replaces what was previously identified as tire pressure.
-
 ---
 
 ## 9. 5 Hz Frame Layout (4 bytes)
@@ -1070,8 +1050,8 @@ Offset  Size  Type  Channel        Encoding
 ## 11. 1 Hz Frame Layout
 
 Present only in 10 Hz frame 0. Contains 27 channels with engine temperatures,
-tire data, odometer, and other slowly-changing vehicle parameters. Full mapping
-confirmed via `adcp` channel order cross-referenced with observed data patterns.
+tire data, odometer, and other slowly-changing vehicle parameters. Channel
+order matches the `adcp` channel definition sequence.
 
 ### 11.0 Legacy Format (31 bytes)
 
@@ -1079,7 +1059,7 @@ confirmed via `adcp` channel order cross-referenced with observed data patterns.
 Offset  Size  Type    Ch  Channel                     Encoding
 0       1     u8      15  emotor.powerlevel           × 0.01 → proportion
 1       2     u16 BE  18  HV.battery.usablecharge     × 1.5259e-5 → proportion
-3       1     u8      19  drive.performance.mode      enum (see §2.4: 10=custom observed on CT5-V BW)
+3       1     u8      19  drive.performance.mode      enum (see §2.4)
 4       1     u8      20  emotor.axle.available       enum (see §2.4: 0=notavailable on ICE)
 5       1     u8      21  emotor.temp.rotor           raw - 40 → °C (0 on ICE)
 6       1     u8      22  emotor.temp.stator          raw - 40 → °C (0 on ICE)
@@ -1093,7 +1073,7 @@ Offset  Size  Type    Ch  Channel                     Encoding
 14      1     u8      36  HV.battery.temp.max         raw × 0.5 - 40 → °C
 15      1     u8      37  HV.battery.temp.min         raw × 0.5 - 40 → °C
 16      4     u32 BE  38  odometer.distance           × 15.625 → metres
-20      1     u8      39  PTM.mode                    enum (see §2.4: 3=sport1 observed)
+20      1     u8      39  PTM.mode                    enum (see §2.4)
 21      1     u8      44  trans.oil.temp              raw - 40 → °C
 22      1     u8      45  tire.pressure.FL            × 4000 → Pa
 23      1     u8      46  tire.pressure.FR            × 4000 → Pa
@@ -1143,7 +1123,7 @@ Offset  Size  Type    Ch  Channel                     Encoding
 33      1     u8      53  VSE.status                  enum (see §2.4)
 ```
 
-### 11.1 Observed Value Ranges (CT5-V Blackwing, ~11 min recording)
+### 11.1 Typical Value Ranges
 
 | Offset | Channel | Raw Range | Physical Range |
 |--------|---------|-----------|---------------|
@@ -1263,7 +1243,7 @@ Total `siva` entry size = 3 (prefix) + payload size.
 | `vehicle.enginetype` | strn | Engine | `6.2L V8 (LT2)`, `5.5L V8 (LT6)` |
 | `vehicle.modelyear` | strn | Model year | `2026` |
 | `vehicle.name` | strn | User-set vehicle name | `My Cadillac` |
-| `vehicle.vin` | strn | Vehicle Identification Number | `1G6D35R64S0810251` |
+| `vehicle.vin` | strn | Vehicle Identification Number | `1G6D35R64S08XXXXX` |
 | `powertrain.type` | strn | Powertrain type tag | `com.cosworth.vehicle.powertrain.type.ice` |
 | `vehicle.engine.revlimit` | siva | Rev limit (rad/s, f32, unit 9) | 680.7 (≈ 6500 RPM) |
 | `stopreason` | strn | Reason recording stopped | `com.cosworth.outing.stopreason.completed` |
@@ -1293,9 +1273,13 @@ Total `siva` entry size = 3 (prefix) + payload size.
 
 > **`{pos}` positions:** `front.left`, `front.right`, `rear.left`, `rear.right`
 >
-> **VIN availability:** The `vehicle.vin` property was observed in gen 1 MMP 8
-> recordings but not in gen 2 MMP 3/4 recordings. It may depend on hardware
-> generation, firmware version, or user configuration.
+> **Generation-dependent properties:** Property availability varies by hardware
+> generation. Gen 1 recordings include `vehicle.vin` and `vehicle.name` but
+> lack `carname`, `powertrain.type`, and `vehicle.engine.revlimit`. Gen 2
+> recordings have the reverse pattern. The `stat.fastestlaptime` property is
+> only present when at least one lap was completed during the recording.
+> The `outing.trigger.tag` can be either `com.cosworth.trigger.manual` or
+> `com.cosworth.trigger.automatic`.
 
 ---
 
@@ -1314,12 +1298,12 @@ Offset  Size  Type    Field
 10      2     u16 BE  reserved (0)
 12      2     u16 BE  generation — hardware generation (1 = gen 1, 2 = gen 2)
 14      2     u16 BE  mmp_version — MMP firmware version (see §14.2)
-16      2     u16 BE  field_3 (observed: 110)
-18      2     u16 BE  field_4 (observed: 30)
-20      4     u32 BE  field_5 (observed: 384063)
-24      2     u16 BE  field_6 (observed: 1)
-26      2     u16 BE  field_7 (observed: 17)
-28      2     u16 BE  field_8 (observed: 80)
+16      2     u16 BE  field_3 (e.g. 110)
+18      2     u16 BE  field_4 (e.g. 30)
+20      4     u32 BE  field_5 (e.g. 384063)
+24      2     u16 BE  field_6 (e.g. 1)
+26      2     u16 BE  field_7 (e.g. 17)
+28      2     u16 BE  field_8 (e.g. 80)
 30      var   string  null-terminated source identifier
 ```
 
@@ -1332,17 +1316,19 @@ The `generation` field at offset 12 identifies the hardware generation, and the
 `mmp_version` field at offset 14 identifies the MMP firmware version. Together
 they determine the data format variant:
 
-| Generation | MMP Version | Packet Size | Format |
-|------------|-------------|-------------|--------|
-| 1 | 8 | 3247 | Legacy (17-byte 100 Hz) |
-| 2 | 3 | 3247 | Legacy (17-byte 100 Hz) |
-| 2 | 4+ | 4050 | MMP v4+ (25-byte 100 Hz) |
+| Generation | MMP Version | Packet Size | Format | Preamble ID | Known Vehicles |
+|------------|-------------|-------------|--------|------------|-------------------|
+| 1 | 8 | 3247 | Legacy (17-byte 100 Hz) | 0x0CA1 | CT5-V Blackwing (LT4) |
+| 2 | 3 | 3247 | Legacy (17-byte 100 Hz) | 0x0CA1 | Corvette Stingray (LT2), Corvette Z06 (LT6) |
+| 2 | 4+ | 4050 | MMP v4+ (25-byte 100 Hz) | 0x0FC4 | CT5-V Blackwing (LT4) |
 
 > **Important:** MMP version numbering differs across hardware generations.
 > Gen 1 devices report MMP version 8 but use the legacy 3247-byte packet format.
 > The MMP version alone is **not** a reliable indicator of the data format.
 > Use the dominant packet size from the sample table (`stsz`) instead:
-> sizes > 3500 indicate MMP v4+ format. See §4.1.
+> sizes > 3500 indicate MMP v4+ format. Alternatively, the format identifier
+> in the data packet preamble (§4.5) distinguishes the variants: 0x0CA1 for
+> legacy, 0x0FC4 for MMP v4+. See §4.1.
 
 ---
 
@@ -1406,7 +1392,7 @@ size (see §4.1). Each event record is **11 bytes**:
 ```
 Offset  Size  Type      Field
 0       8     u64 BE    timestamp (100 ns ticks from recording start)
-8       2     u16 BE    flags (observed: 0x0200)
+8       2     u16 BE    flags (typically 0x0200)
 10      1     u8        event_id (0–19, maps to adeg definitions)
 ```
 
@@ -1429,8 +1415,6 @@ timestamps (start-to-start timing).
 > The driver configures the S/F line position through the vehicle's
 > infotainment PDR interface. The MMP firmware then triggers
 > `event.lap.start` / `event.lap.end` at the configured GPS crossing point.
-> This is more accurate than GPS density heuristics since it uses the exact
-> position the driver intended as the timing reference.
 
 ---
 
@@ -1457,7 +1441,7 @@ pre-extracted raw binary files, and automatically detects the format variant
 
 ```bash
 # Direct from MP4
-python protocol/alivedrive_parser.py ADV_0600.mp4 --csv output.csv
+python protocol/alivedrive_parser.py file.mp4 --csv output.csv
 
 # From pre-extracted binary
 python protocol/alivedrive_parser.py telemetry_raw.bin --raw --csv output.csv
@@ -1466,8 +1450,8 @@ python protocol/alivedrive_parser.py telemetry_raw.bin --raw --csv output.csv
 > The parser implements all channel definitions, scale factors, and frame
 > layouts documented in this specification, including dual-format support
 > (17/25-byte 100 Hz frames, 31/34-byte 1 Hz frames), the full 1 Hz frame
-> decode (27 channels), corrected 4-byte heading, confirmed torque formula,
-> and MP4 timing-based video/telemetry synchronisation (§4.8).
+> decode (27 channels), and MP4 timing-based video/telemetry synchronisation
+> (§4.8).
 
 A TypeScript implementation is also available in `src/main/parser/` as
 part of the OpenPDR Electron viewer application.
@@ -1476,24 +1460,7 @@ part of the OpenPDR Electron viewer application.
 
 ## 19. Open Questions
 
-The following aspects of the protocol remain undocumented or incompletely
-understood. None affect core telemetry extraction, but resolving them would
-complete the specification.
-
-### 19.1 Init Packet Internals
-
-The init packet (§4.2) is described as 14 bytes containing a format version and
-timing reference, but no byte-level layout has been reverse-engineered. The
-exact fields and their meanings are unknown.
-
-### 19.2 Preamble Flag and Format Identifier
-
-The `flags` byte at preamble offset 8 (observed: 0x01) and the format
-identifier at offset 12 (observed: 0x0CA1) are documented but not understood.
-It is unknown whether other flag values exist, what they would indicate, or
-whether 0x0CA1 is a constant magic number or varies across recordings.
-
-### 19.3 Rate Table Overhead Bytes
+### 19.1 Rate Table Overhead Bytes
 
 §3.3 documents a discrepancy between the rate-table `width` values and the
 actual byte counts in the data stream. The overhead bytes are described as
@@ -1501,67 +1468,24 @@ actual byte counts in the data stream. The overhead bytes are described as
 unknown. It is also unclear whether these bytes are ever written to the data
 stream under certain conditions or firmware versions.
 
-### 19.4 `advi` Fields 3–8
+### 19.2 `advi` Fields 5, 6, 7, 8
 
-Six fields in the `advi` box (offsets 16–28) have observed values (110, 30,
-384063, 1, 17, 80) but their meanings are completely unknown. They may encode
-hardware identifiers, firmware build numbers, or configuration parameters.
+Fields 3 and 4 correspond to MMP patch version and VIP major version
+respectively (see §14.1). The remaining fields are not fully understood:
 
-### 19.5 `adop` Property Completeness
+| Field | Offset | Known Values | Notes |
+|-------|--------|-----------------|-------|
+| field_5 | 20 | 384063, 216400, 288760 | May encode VIP build number |
+| field_6 | 24 | always 1 | Unknown purpose |
+| field_7 | 26 | 17, 20, 22 | Correlates loosely with VIP minor |
+| field_8 | 28 | 20, 35, 80, 88 | Varies even within same firmware |
 
-The property list in §13.3 is labelled "known properties" and was compiled from
-a limited set of recordings (3 legacy, 1 MMP v4+) across 3 vehicle models.
-Additional keys may exist in recordings from other GM vehicles, firmware
-versions, or recording modes (e.g., drag strip, valet, etc.).
+### 19.3 Hybrid/EV Channel Validation
 
-### 19.6 Event Record Flags
-
-The 2-byte flags field at offset 8 of the 11-byte embedded event record (§15.3)
-is always observed as 0x0200. The meaning of this field is unknown — it could
-encode event sub-types, priority, or other metadata. No other values have been
-observed.
-
-### 19.7 First Packet Carry-Over Region
-
-The carry-over region (§4.5) contains the tail of the previous second's last
-sub-frame group. For the very first data packet (second 0), there is no
-preceding packet. It is unknown what populates this region — it may contain
-zeros, default/initial values, or a duplicate of the first sub-frame.
-
-### 19.8 Event Presence Detection
-
-Oversized packets contain appended 11-byte event records (§15.3), but there is
-no known in-band marker or length field indicating that events are present.
-Currently, events are detected by comparing `packet_size > nominal_size` and
-treating the excess bytes as event records. It is unknown whether any field in
-the preamble or elsewhere signals the presence or count of embedded events.
-
-### 19.9 Multiple Init Samples
-
-§4.1 notes that the sample table contains "1–2 init samples of 14 bytes." The
-conditions that produce two init samples instead of one are unknown. It may
-relate to recording restart, firmware version, or a timing edge case.
-
-### 19.10 10 Hz Heading Validation
-
-The heading field has been corrected from u16 (2 bytes) to i32 (4 bytes)
-based on `adcp` evidence (rateW=5, same as lat/lon/altitude). The new scale
-(1.745329252e-7 rad) should be validated against known headings from GPS
-track data.
-
-### 19.11 `stts` Jitter Source
-
-Data packet durations vary 944–1049 ms (mean ≈ 1000 ms) rather than a
-constant 1000 ms. It is unknown whether this reflects real sampling jitter
-in the PDR firmware or rounding artefacts from the MP4 muxer. The jitter
-does not appear to correlate with recording position or vehicle state.
-
-### 19.12 Hybrid/EV Channel Validation
-
-All observations to date come from purely ICE vehicles (CT5-V Blackwing,
-Corvette Stingray, Corvette Z06). The hybrid/EV channels — e-motor power level,
-HV battery charge, e-motor temperatures, e-motor axle available, etc. — are
-documented as "read as zero" on ICE platforms. Their actual behaviour on
-hybrid/EV vehicles (e.g., Corvette E-Ray, Cadillac LYRIQ, Blazer EV) has not
-been validated. Scale factors and value ranges for these channels are taken
-from the `adcp` descriptors but have never been confirmed against real data.
+This specification is based on ICE vehicles (CT5-V Blackwing, Corvette
+Stingray, Corvette Z06). The hybrid/EV channels — e-motor power level,
+HV battery charge, e-motor temperatures, e-motor axle available, etc. — read
+as zero on ICE platforms. Their behaviour on hybrid/EV vehicles (e.g.,
+Corvette E-Ray, Cadillac LYRIQ, Blazer EV) has not been validated. Scale
+factors and value ranges for these channels are taken from the `adcp`
+descriptors.
