@@ -116,7 +116,7 @@ export function parseSampleTable(
     }
   }
 
-  return { sampleSizes, chunkOffsets, stscEntries, sampleCount }
+  return { sampleSizes, chunkOffsets, stscEntries, sampleCount: sampleSizes.length }
 }
 
 /**
@@ -149,6 +149,10 @@ export function getSampleOffsets(table: SampleTable): number[] {
       offset += sampleSizes[sampleIdx]
       sampleIdx++
     }
+  }
+
+  if (offsets.length < table.sampleCount) {
+    console.warn(`getSampleOffsets: produced ${offsets.length} offsets but sampleCount is ${table.sampleCount} (truncated sample table?)`)
   }
 
   return offsets

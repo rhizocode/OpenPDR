@@ -27,7 +27,7 @@ export function findAdcoTrack(moovBuf: Uint8Array): TrackInfo | null {
       const trakOffset = hdr.offset
       const trakSize = hdr.size
       const trakData = hdr.dataStart
-      const trakEnd = trakOffset + trakSize
+      const trakEnd = Math.min(trakOffset + trakSize, moovEnd)
 
       // Search for hdlr with handler_type "adrv"
       const hdlrResults = findAllBoxes(moovBuf, 'hdlr', trakData, trakEnd, 0, 8, dv)
@@ -178,6 +178,7 @@ export function parseAdop(data: Uint8Array): AdopProps {
       pos += 16 // skip UUID, not useful for display
     } else {
       // Unknown tag — stop parsing to avoid corruption
+      console.warn(`parseAdop: unknown tag "${tag}" at offset ${pos - 4}, stopping`)
       break
     }
   }
