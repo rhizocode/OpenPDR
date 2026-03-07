@@ -1081,8 +1081,8 @@ html, body {
   border-radius: 6px;
   padding: 4px 0;
   z-index: 1000;
-  font-size: 0.7em;
-  min-width: 240px;
+  font-size: 0.75em;
+  min-width: 220px;
   max-width: calc(100vw - 24px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
@@ -1094,8 +1094,8 @@ html, body {
 .gear-section-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 14px;
+  gap: 6px;
+  padding: 4px 10px;
   cursor: pointer;
   color: var(--text-primary);
   font-weight: 600;
@@ -1117,7 +1117,7 @@ html, body {
 }
 
 .gear-section-content {
-  padding: 4px 14px 10px;
+  padding: 4px 10px 8px;
   border-bottom: 1px solid #333;
 }
 
@@ -1163,6 +1163,7 @@ html, body {
   border-radius: 4px;
   cursor: pointer;
   width: 100%;
+  font-size: inherit;
 }
 
 .edit-actions button:hover {
@@ -1228,6 +1229,7 @@ html, body {
   border: 1px solid #444;
   border-radius: 3px;
   font-family: 'Consolas', monospace;
+  font-size: inherit;
 }
 
 /* Settings hint text */
@@ -1247,6 +1249,7 @@ html, body {
   border: 1px solid #444;
   border-radius: 3px;
   font-family: 'Consolas', monospace;
+  font-size: inherit;
 }
 
 /* Font size stepper */
@@ -1263,6 +1266,7 @@ html, body {
   border: 1px solid #444;
   border-radius: 3px;
   line-height: 1;
+  font-size: inherit;
   cursor: pointer;
   display: flex;
   align-items: center;

@@ -56,7 +56,7 @@ export function buildRpmPanel(container: HTMLDivElement): void {
   statusValue.className = 'rpm-detected-engine'
   statusValue.textContent = detected
     ? `${detected.label} (${detected.redline} RPM)`
-    : 'Unknown engine'
+    : 'No file loaded'
   statusRow.appendChild(statusLabel)
   statusRow.appendChild(statusValue)
   container.appendChild(statusRow)
@@ -128,9 +128,12 @@ const STEP = 10
 
 /** CSS selectors for UI chrome — overlays are intentionally excluded */
 const UI_SELECTORS = [
-  '#toolbar', '#gear-panel', '#controls', '#chart-panel',
+  '#toolbar', '#controls', '#chart-panel',
   '#no-file-prompt', '#parse-progress', '#debug-panel',
 ]
+
+/** Gear panel scales at 75% of the main UI scale to match toolbar button size */
+const GEAR_PANEL_RATIO = 0.75
 
 let fontStyleEl: HTMLStyleElement | null = null
 let currentFontScale = DEFAULT_SIZE
@@ -149,9 +152,10 @@ function applyFontScale(pct: number): void {
     fontStyleEl.id = 'ui-font-scale'
     document.head.appendChild(fontStyleEl)
   }
+  const gearPct = Math.round(pct * GEAR_PANEL_RATIO)
   fontStyleEl.textContent = UI_SELECTORS
     .map(s => `${s} { font-size: ${pct}%; }`)
-    .join('\n')
+    .join('\n') + `\n#gear-panel { font-size: ${gearPct}%; }`
   for (const cb of fontScaleListeners) cb()
 }
 
