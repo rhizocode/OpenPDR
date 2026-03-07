@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol } from 'electron'
-import { join, resolve } from 'path'
+import { join, resolve, isAbsolute } from 'path'
 import { createReadStream } from 'fs'
 import { stat } from 'fs/promises'
 import { parsePdrFile } from '../parser'
@@ -15,19 +15,22 @@ type Channel = keyof IpcChannels
 // Version logged after app is ready (via app.getVersion())
 
 let mainWindow: BrowserWindow | null = null
-let allowedVideoPaths = new Set<string>()
+let primaryVideoPath: string | null = null
+let compareVideoPath: string | null = null
 
-/** Add a video path, capping at 2 entries (primary + compare). */
+function normalizePath(filePath: string): string {
+  return resolve(filePath).replace(/\\/g, '/')
+}
+
+/** Add a video path (primary fills first, then compare is overwritten). */
 function addAllowedVideoPath(filePath: string): void {
-  const normalized = filePath.replace(/\\/g, '/')
-  if (allowedVideoPaths.has(normalized)) return
-  if (allowedVideoPaths.size >= 2) {
-    // Keep only the first entry (primary), evict the old compare path
-    const primary = allowedVideoPaths.values().next().value!
-    allowedVideoPaths.clear()
-    allowedVideoPaths.add(primary)
+  const normalized = normalizePath(filePath)
+  if (normalized === primaryVideoPath || normalized === compareVideoPath) return
+  if (primaryVideoPath === null) {
+    primaryVideoPath = normalized
+  } else {
+    compareVideoPath = normalized
   }
-  allowedVideoPaths.add(normalized)
 }
 let currentSession: { result: ParseResult; filePath: string } | null = null
 
@@ -79,9 +82,9 @@ app.whenReady().then(() => {
         filePath = filePath.slice(1)
       }
       // Normalize to collapse ".." traversal segments before allowlist check
-      filePath = resolve(filePath).replace(/\\/g, '/')
+      filePath = normalizePath(filePath)
 
-      if (!allowedVideoPaths.has(filePath)) {
+      if (filePath !== primaryVideoPath && filePath !== compareVideoPath) {
         return new Response('Forbidden', { status: 403 })
       }
 
@@ -190,15 +193,15 @@ ipcMain.handle('open-file-dialog' satisfies Channel, async () => {
 // IPC: Set allowed video path (used by drag-and-drop — dialog handler sets it automatically)
 // Restrict to .mp4 files to prevent renderer from authorizing arbitrary file reads
 ipcMain.handle('set-allowed-video-path' satisfies Channel, (_event, filePath: string) => {
-  if (typeof filePath !== 'string') return
-  const normalized = filePath.replace(/\\/g, '/')
-  if (!normalized.toLowerCase().endsWith('.mp4')) return
-  addAllowedVideoPath(resolve(filePath))
+  if (typeof filePath !== 'string' || !isAbsolute(filePath)) return
+  if (!filePath.toLowerCase().endsWith('.mp4')) return
+  addAllowedVideoPath(filePath)
 })
 
 // IPC: Reset allowed video paths (called when opening a new primary file)
 ipcMain.handle('reset-allowed-video-paths' satisfies Channel, () => {
-  allowedVideoPaths.clear()
+  primaryVideoPath = null
+  compareVideoPath = null
 })
 
 // IPC: Parse PDR file — extracts telemetry directly from MP4

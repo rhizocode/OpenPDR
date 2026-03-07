@@ -56,7 +56,10 @@ export function probeVideo(filePath: string): Promise<VideoMeta> {
       // Parse fps: search only within the matched video stream line to avoid
       // picking up encoding stats or other "fps" values from ffmpeg output
       const streamLine = streamMatch[0]
-      const fpsMatch = streamLine.match(/(\d+(?:\.\d+)?)\s+fps/)
+      const fpsMatch = streamLine.match(/(\d+(?:\.\d+)?)\s+(?:fps|tbr)/)
+      if (!fpsMatch) {
+        console.warn('[ffprobe] Could not parse frame rate, defaulting to 30 fps')
+      }
       const fps = Math.max(1, fpsMatch ? parseFloat(fpsMatch[1]) : 30)
 
       resolve({ width, height, fps, duration })

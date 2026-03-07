@@ -28,12 +28,18 @@ export function exportGpx(
 
     const baseMs = baseDate.getTime()
 
-    // Write preamble
-    ws.write(GPX_HEADER)
-    ws.write(`  <metadata><name>${escapeXml(trackName)}</name></metadata>\n`)
-    ws.write(`  <trk>\n`)
-    ws.write(`  <name>${escapeXml(trackName)}</name>\n`)
-    ws.write(`  <trkseg>\n`)
+    // Write preamble — destroy stream on failure to avoid leaking the file handle
+    try {
+      ws.write(GPX_HEADER)
+      ws.write(`  <metadata><name>${escapeXml(trackName)}</name></metadata>\n`)
+      ws.write(`  <trk>\n`)
+      ws.write(`  <name>${escapeXml(trackName)}</name>\n`)
+      ws.write(`  <trkseg>\n`)
+    } catch (err) {
+      ws.destroy()
+      reject(err as Error)
+      return
+    }
 
     let i = startIdx
 
