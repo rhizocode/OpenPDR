@@ -11,7 +11,7 @@ import {
   STEERING_SCALE, RAD_TO_DEG, WHEEL_SPEED_SCALE, TIRE_RADIUS_M, MPS_TO_KPH,
   GYRO_YAW_SCALE, DEG_SCALE, ALT_SCALE, HEADING_DEG_SCALE, SPEED_SCALE,
   MPS_TO_MPH, BOOST_PRESSURE_SCALE, POWER_SCALE, OIL_PRESSURE_SCALE,
-  FUEL_LEVEL_SCALE, ODOMETER_SCALE, TIRE_PRESSURE_SCALE, BRAKE_PEDAL_MAX,
+  FUEL_LEVEL_SCALE, ODOMETER_SCALE, TIRE_PRESSURE_SCALE,
   enumLabel,
 } from './constants'
 
@@ -374,9 +374,9 @@ function validate100Hz(f: Hz100Frame): boolean {
 
 // ── Helper: average an array of sub-frames ──
 
-/** Remap raw brake pedal position for display: 0–BRAKE_PEDAL_MAX → 0–1. */
+/** Pass-through: brake display scaling is now handled by the renderer. */
 function remapBrake(raw: number): number {
-  return Math.min(raw / BRAKE_PEDAL_MAX, 1)
+  return raw
 }
 
 function avg100Hz(frames: Hz100Frame[]): {

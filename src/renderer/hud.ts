@@ -17,7 +17,7 @@ import { initRpmBar, drawRpmBar } from './rpm-bar'
 import { initSteeringIndicator, drawSteering } from './steering'
 import { applyOverlayConfigB } from './compare-overlay-b'
 import { isCompareMode, rpmConfigA } from './compare-state'
-import { DEFAULT_OVERLAY, resolveGearDisplay, formatTimestamp } from './defaults'
+import { DEFAULT_OVERLAY, resolveGearDisplay, formatTimestamp, getBrakeDisplay } from './defaults'
 import { STORAGE_KEYS } from './storage-keys'
 
 const OVERLAY_STORAGE_KEY = STORAGE_KEYS.overlayConfig
@@ -157,7 +157,7 @@ function updateHud(row: TelemetryRow | null): void {
   // Pedal bars (cheap DOM style update)
   if (overlayConfig.pedals) {
     throttleFill.style.width = `${(row.throttle * 100).toFixed(0)}%`
-    brakeFill.style.width = `${(row.brake * 100).toFixed(0)}%`
+    brakeFill.style.width = `${(getBrakeDisplay(row.brake) * 100).toFixed(0)}%`
   }
 
   // GPS display (cheap DOM text update)

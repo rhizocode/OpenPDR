@@ -39,8 +39,8 @@ export interface TelemetryStore {
   engine_power_kw: Float32Array
 
   // ── 100 Hz averaged ──
-  brake: Float32Array      // remapped pedal position (0–1, scaled for display)
-  brake_raw: Float32Array  // raw pedal position (0–1, true CAN bus value)
+  brake: Float32Array      // raw pedal position (0–1, display scaling in renderer)
+  brake_raw: Float32Array  // same as brake (kept for CSV export compatibility)
   rpm: Float32Array
   engine_torque_nm: Float32Array
   steering_deg: Float32Array

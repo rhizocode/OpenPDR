@@ -44,7 +44,7 @@ const PEDAL_GAP = 3
 // Gear box
 const GEAR_BOX_SIZE = 48
 
-import { resolveGearDisplay } from './defaults'
+import { resolveGearDisplay, getBrakeDisplay } from './defaults'
 
 // ── Track map projection (from track-map.ts) ──
 
@@ -667,7 +667,7 @@ function renderOverlayFrame(
 
   if (config.pedals) {
     const p = px(layout.pedals)
-    drawPedalsOverlay(ctx, row.throttle, row.brake, p.x, p.y, p.s)
+    drawPedalsOverlay(ctx, row.throttle, getBrakeDisplay(row.brake), p.x, p.y, p.s)
   }
 
   if (config.gps) {

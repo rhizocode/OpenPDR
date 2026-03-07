@@ -7,10 +7,12 @@
  */
 
 import type { OverlayConfig } from './types'
+import type { BrakeMode } from './defaults'
 import { applyOverlayConfig, getOverlayConfig, setOverlayConfig } from './hud'
 import { saveRpmConfig, getRpmConfig, loadRpmConfig, getDetectedEngine, isManualOverride, setManualOverride } from './rpm-gauge'
 import { avSyncOffset, setAvSyncOffset } from './state'
 import { STORAGE_KEYS } from './storage-keys'
+import { getBrakeMode, setBrakeMode } from './defaults'
 
 const OVERLAY_STORAGE_KEY = STORAGE_KEYS.overlayConfig
 
@@ -201,6 +203,42 @@ export function buildFontSizePanel(container: HTMLDivElement): void {
   row.appendChild(display)
   row.appendChild(plus)
   container.appendChild(row)
+}
+
+/** Build Brake Display mode toggle (Raw / Enhanced) */
+export function buildBrakeDisplayPanel(container: HTMLDivElement): void {
+  container.innerHTML = ''
+
+  const row = document.createElement('div')
+  row.className = 'settings-row'
+
+  const label = document.createElement('label')
+  label.textContent = 'Mode'
+
+  const select = document.createElement('select')
+  const options: { value: BrakeMode; label: string }[] = [
+    { value: 'enhanced', label: 'Enhanced' },
+    { value: 'raw', label: 'Raw Pedal' },
+  ]
+  for (const opt of options) {
+    const el = document.createElement('option')
+    el.value = opt.value
+    el.textContent = opt.label
+    select.appendChild(el)
+  }
+  select.value = getBrakeMode()
+  select.addEventListener('change', () => {
+    setBrakeMode(select.value as BrakeMode)
+  })
+
+  row.appendChild(label)
+  row.appendChild(select)
+  container.appendChild(row)
+
+  const hint = document.createElement('div')
+  hint.className = 'settings-hint'
+  hint.textContent = 'Enhanced scales pedal travel to braking effort. Raw shows true pedal position.'
+  container.appendChild(hint)
 }
 
 function buildNumberRow(label: string, value: number, onChange: (val: number) => void, disabled = false): HTMLDivElement {

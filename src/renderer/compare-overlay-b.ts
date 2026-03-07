@@ -14,7 +14,7 @@ import { drawRpmGauge } from './rpm-gauge'
 import { rpmConfigB } from './compare-state'
 import { drawGForce } from './gforce-ball'
 import { drawSteering } from './steering'
-import { resolveGearDisplay, formatTimestamp } from './defaults'
+import { resolveGearDisplay, formatTimestamp, getBrakeDisplay } from './defaults'
 
 // ── B-side DOM refs (created on enter, nulled on exit) ──
 let anchorB: HTMLDivElement | null = null
@@ -233,7 +233,7 @@ export function updateOverlayBRow(row: TelemetryRow | null): void {
   if (gearValueB) gearValueB.textContent = lastKnownGearB
 
   if (throttleFillB) throttleFillB.style.width = `${(row.throttle * 100).toFixed(0)}%`
-  if (brakeFillB) brakeFillB.style.width = `${(row.brake * 100).toFixed(0)}%`
+  if (brakeFillB) brakeFillB.style.width = `${(getBrakeDisplay(row.brake) * 100).toFixed(0)}%`
 
   if (gpsLatB) gpsLatB.textContent = row.lat.toFixed(6)
   if (gpsLonB) gpsLonB.textContent = row.lon.toFixed(6)

@@ -34,6 +34,7 @@ import {
   onCompareLapChange,
 } from './compare-state'
 import { buildDeltaTime, trackPositionToTime } from './compare-sync'
+import { getBrakeDisplay, onBrakeModeChange } from './defaults'
 
 // ── Channel configuration ──
 
@@ -45,6 +46,8 @@ interface ChartChannel {
   storeAccessor: (store: TelemetryStore) => ArrayLike<number>
   /** Scale factor applied to raw store values (e.g. 100 for 0-1 → 0-100%) */
   scale: number
+  /** Optional per-value transform applied before scale (e.g. brake display curve) */
+  transform?: (v: number) => number
   /** Read a single value for HUD current-value display */
   rowAccessor: (row: TelemetryRow) => number
   unit: string
@@ -65,7 +68,7 @@ const CHANNELS: ChartChannel[] = [
   { key: 'speed', label: 'Speed', color: '#3399ff', storeAccessor: s => s.speed_mph, scale: 1, rowAccessor: r => r.speed_mph, unit: 'mph', min: 0, max: 200, precision: 0, defaultEnabled: true },
   { key: 'rpm', label: 'RPM', color: '#ff6b00', storeAccessor: s => s.rpm, scale: 1, rowAccessor: r => r.rpm, unit: 'rpm', min: 0, max: 7000, precision: 0, defaultEnabled: true },
   { key: 'throttle', label: 'Throttle', color: '#00cc66', storeAccessor: s => s.throttle, scale: 100, rowAccessor: r => r.throttle * 100, unit: '%', min: 0, max: 100, precision: 0, defaultEnabled: true },
-  { key: 'brake', label: 'Brake', color: '#ff3333', storeAccessor: s => s.brake, scale: 100, rowAccessor: r => r.brake * 100, unit: '%', min: 0, max: 100, precision: 0, defaultEnabled: true },
+  { key: 'brake', label: 'Brake', color: '#ff3333', storeAccessor: s => s.brake, scale: 100, transform: getBrakeDisplay, rowAccessor: r => getBrakeDisplay(r.brake) * 100, unit: '%', min: 0, max: 100, precision: 0, defaultEnabled: true },
   { key: 'gear', label: 'Gear', color: '#88cc00', storeAccessor: () => new Float32Array(0), scale: 1, rowAccessor: r => { const g = r.gear_raw; return (g !== undefined && g >= 1 && g <= 10) ? g : 0 }, unit: '', min: 0, max: 10, precision: 0, defaultEnabled: false },
   { key: 'gforce_lat', label: 'G Lat', color: '#66ccff', storeAccessor: s => s.gforce_lat, scale: 1, rowAccessor: r => r.gforce_lat, unit: 'g', min: -1.5, max: 1.5, precision: 2, defaultEnabled: false },
   { key: 'gforce_lon', label: 'G Lon', color: '#cc66ff', storeAccessor: s => s.gforce_lon, scale: 1, rowAccessor: r => r.gforce_lon, unit: 'g', min: -1.5, max: 1.5, precision: 2, defaultEnabled: false },
@@ -267,6 +270,18 @@ export function initChartPanel(): void {
     rebuildChannelData()
     resizeAndRender()
     chartEmpty.classList.add('hidden')
+  })
+
+  // Rebuild chart when brake display mode changes
+  onBrakeModeChange(() => {
+    if (isCompareMode()) {
+      buildScaledCacheCompare()
+      rebuildCompareChannelData()
+    } else {
+      buildScaledCache()
+      rebuildChannelData()
+    }
+    resizeAndRender()
   })
 
   // On row change: rebuild frame cache (labels show new current values)
@@ -504,10 +519,16 @@ function buildScaledCache(): void {
   const store = telemetryStore
   if (!store || store.length === 0) return
   for (const config of CHANNELS) {
-    if (config.scale !== 1) {
+    if (config.scale !== 1 || config.transform) {
       const raw = config.storeAccessor(store)
       const scaled = new Float32Array(store.length)
-      for (let i = 0; i < store.length; i++) scaled[i] = raw[i] * config.scale
+      const tx = config.transform
+      const sc = config.scale
+      if (tx) {
+        for (let i = 0; i < store.length; i++) scaled[i] = tx(raw[i]) * sc
+      } else {
+        for (let i = 0; i < store.length; i++) scaled[i] = raw[i] * sc
+      }
       scaledCache.set(config.key, scaled)
     }
   }
@@ -529,16 +550,27 @@ function buildScaledCacheCompare(): void {
   const sb = storeB
   if (!sa || !sb) return
   for (const config of CHANNELS) {
-    if (config.scale !== 1) {
+    if (config.scale !== 1 || config.transform) {
+      const tx = config.transform
+      const sc = config.scale
+
       const rawA = config.storeAccessor(sa)
-      const scaledA = new Float32Array(sa.length)
-      for (let i = 0; i < sa.length; i++) scaledA[i] = rawA[i] * config.scale
-      scaledCacheA.set(config.key, scaledA)
+      const sA = new Float32Array(sa.length)
+      if (tx) {
+        for (let i = 0; i < sa.length; i++) sA[i] = tx(rawA[i]) * sc
+      } else {
+        for (let i = 0; i < sa.length; i++) sA[i] = rawA[i] * sc
+      }
+      scaledCacheA.set(config.key, sA)
 
       const rawB = config.storeAccessor(sb)
-      const scaledB = new Float32Array(sb.length)
-      for (let i = 0; i < sb.length; i++) scaledB[i] = rawB[i] * config.scale
-      scaledCacheB.set(config.key, scaledB)
+      const sB = new Float32Array(sb.length)
+      if (tx) {
+        for (let i = 0; i < sb.length; i++) sB[i] = tx(rawB[i]) * sc
+      } else {
+        for (let i = 0; i < sb.length; i++) sB[i] = rawB[i] * sc
+      }
+      scaledCacheB.set(config.key, sB)
     }
   }
   // Gear: build dense arrays for A and B

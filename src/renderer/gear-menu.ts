@@ -7,7 +7,7 @@
 
 import { onTelemetryLoad } from './state'
 import { buildEditPanel } from './edit-mode'
-import { buildRpmPanel, buildAvSyncPanel, buildFontSizePanel } from './overlay-settings'
+import { buildRpmPanel, buildAvSyncPanel, buildFontSizePanel, buildBrakeDisplayPanel } from './overlay-settings'
 import { buildExportPanel } from './export-menu'
 import { triggerUpdateCheck } from './update-ui'
 
@@ -25,6 +25,7 @@ export function initGearMenu(): void {
     { id: 'overlays',     label: 'Overlays',     build: buildEditPanel },
     { id: 'export',       label: 'Export',        build: buildExportPanel },
     { id: 'rpm-zones',    label: 'RPM Zones',     build: buildRpmPanel },
+    { id: 'brake-display',label: 'Brake Display',  build: buildBrakeDisplayPanel },
     { id: 'av-sync',      label: 'A/V Sync',      build: buildAvSyncPanel },
     { id: 'font-size',    label: 'Font Size',      build: buildFontSizePanel },
     { id: 'about',        label: 'About',           build: buildAboutPanel },

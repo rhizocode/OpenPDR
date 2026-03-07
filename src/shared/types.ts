@@ -32,8 +32,8 @@ export interface TelemetryRow {
   engine_power_kw: number
 
   // 100 Hz (averaged per 10 Hz period)
-  brake: number       // remapped pedal position (0–1, scaled for display)
-  brake_raw: number   // raw pedal position (0–1, true CAN bus value)
+  brake: number       // raw pedal position (0–1, display scaling in renderer)
+  brake_raw: number   // same as brake (kept for CSV export compatibility)
   rpm: number
   engine_torque_nm: number
   steering_deg: number

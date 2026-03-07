@@ -6,6 +6,7 @@
  */
 
 import type { OverlayConfig, OverlayLayout, RpmConfig } from './types'
+import { STORAGE_KEYS } from './storage-keys'
 
 // ── Overlay visibility defaults ──
 
@@ -49,6 +50,47 @@ export const GEAR_DISPLAY: Record<string, string> = {
 export function resolveGearDisplay(gear: string | undefined): string {
   if (!gear) return '-'
   return GEAR_DISPLAY[gear] ?? gear
+}
+
+// ── Brake display mode ──
+// Raw CAN bus "brake.position" is pedal travel (0–1). Power-assisted brakes
+// mean hard braking rarely exceeds ~40% pedal travel.  "Enhanced" mode scales
+// 0–40% to 0–100% with a gamma curve so the overlay reads more like braking
+// effort rather than raw pedal travel.  "Raw" mode shows true pedal position.
+
+export type BrakeMode = 'raw' | 'enhanced'
+
+const BRAKE_PEDAL_MAX = 0.40
+const BRAKE_GAMMA = 1.5   // >1 compresses low-end, feels more natural
+
+let brakeMode: BrakeMode = (localStorage.getItem(STORAGE_KEYS.brakeMode) as BrakeMode) || 'enhanced'
+
+export function getBrakeMode(): BrakeMode { return brakeMode }
+
+const brakeModeListeners: Array<(mode: BrakeMode) => void> = []
+
+/** Register a callback when brake display mode changes. */
+export function onBrakeModeChange(cb: (mode: BrakeMode) => void): void {
+  brakeModeListeners.push(cb)
+}
+
+export function setBrakeMode(mode: BrakeMode): void {
+  brakeMode = mode
+  localStorage.setItem(STORAGE_KEYS.brakeMode, mode)
+  for (const cb of brakeModeListeners) cb(mode)
+}
+
+/**
+ * Map raw brake pedal position (0–1) to display value (0–1) based on current mode.
+ *   raw:      pass-through (true pedal travel %)
+ *   enhanced: (pedal / 0.40)^1.5  clamped to 1 — scales to full range with a
+ *             concave curve that compresses the low end so light braking doesn't
+ *             look exaggerated while hard braking still reads as 100%.
+ */
+export function getBrakeDisplay(raw: number): number {
+  if (brakeMode === 'raw') return raw
+  const t = Math.min(raw / BRAKE_PEDAL_MAX, 1)
+  return Math.pow(t, BRAKE_GAMMA)
 }
 
 // ── Formatting helpers ──

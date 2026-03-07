@@ -16,4 +16,5 @@ export const STORAGE_KEYS = {
   fontSize: 'pdr-ui-font-size',
   panelState: 'pdr-panel-state',
   lapsPanelWidth: 'pdr-laps-panel-width',
+  brakeMode: 'pdr-brake-mode',
 } as const
