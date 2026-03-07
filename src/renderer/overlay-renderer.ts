@@ -613,10 +613,26 @@ function drawSessionOverlay(
 
 // ── Composite frame renderer ──
 
-/** Track map canvas size — must match the CSS dimensions of #hud-trackMap (200×160)
- *  since the overlay anchor is at native video resolution, these CSS pixels map 1:1. */
-function getTrackMapSize(): { w: number; h: number } {
-  return { w: 200, h: 160 }
+/** Track map canvas size — adapts to the track's aspect ratio while preserving
+ *  roughly the same area as the original 200×160 default. */
+function getTrackMapSize(trackLayout: TrackLayout | null): { w: number; h: number } {
+  if (!trackLayout) return { w: 200, h: 160 }
+  const b = trackLayout.bounds
+  const latRange = b.maxLat - b.minLat
+  const lonRange = b.maxLon - b.minLon
+  if (latRange === 0 || lonRange === 0) return { w: 200, h: 160 }
+
+  const cosLat = Math.cos(((b.minLat + b.maxLat) / 2) * (Math.PI / 180))
+  const trackW = lonRange * cosLat * 111320
+  const trackH = latRange * 111320
+  const aspect = trackW / trackH
+
+  const area = 200 * 160
+  let w = Math.sqrt(area * aspect)
+  let h = area / w
+  w = Math.max(100, Math.min(260, Math.round(w)))
+  h = Math.max(100, Math.min(260, Math.round(h)))
+  return { w, h }
 }
 
 function renderOverlayFrame(
@@ -677,7 +693,7 @@ function renderOverlayFrame(
 
   if (config.trackMap && trackLayout) {
     const p = px(layout.trackMap)
-    const mapSize = getTrackMapSize()
+    const mapSize = getTrackMapSize(trackLayout)
     drawTrackMapOverlay(ctx, row, p.x, p.y, mapSize.w, mapSize.h, p.s, trackLayout)
   }
 

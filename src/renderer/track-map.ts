@@ -15,6 +15,7 @@ let canvas: HTMLCanvasElement
 let ctx: CanvasRenderingContext2D
 let cachedLayout: TrackLayout | null = null
 let dpr = 1
+let hudElement: HTMLElement | null = null
 
 // Offscreen cache for the static track polyline + S/F marker.
 // Rebuilt only on telemetry load or canvas resize; per-frame work is just blit + dot.
@@ -25,6 +26,38 @@ let trackCacheCtx: CanvasRenderingContext2D | null = null
 let lastDotLat = NaN
 let lastDotLon = NaN
 let lastZoomRef: typeof chartZoom = null
+
+// ── Container sizing ─────────────────────────────────────────────────────────
+
+/** Default CSS area (200 × 160 = 32000 sq px). */
+const BASE_AREA = 200 * 160
+const MIN_DIM = 100
+const MAX_DIM = 260
+
+/** Resize #hud-trackMap to match the track's meter-space aspect ratio. */
+function fitContainerToTrack(layout: TrackLayout): void {
+  if (!hudElement) return
+  const b = layout.bounds
+  const latRange = b.maxLat - b.minLat
+  const lonRange = b.maxLon - b.minLon
+  if (latRange === 0 || lonRange === 0) return
+
+  const cosLat = Math.cos(((b.minLat + b.maxLat) / 2) * (Math.PI / 180))
+  const trackW = lonRange * cosLat * 111320
+  const trackH = latRange * 111320
+  const aspect = trackW / trackH // >1 = wide, <1 = tall
+
+  // Solve: w * h = BASE_AREA and w/h = aspect
+  let w = Math.sqrt(BASE_AREA * aspect)
+  let h = BASE_AREA / w
+
+  // Clamp
+  w = Math.max(MIN_DIM, Math.min(MAX_DIM, Math.round(w)))
+  h = Math.max(MIN_DIM, Math.min(MAX_DIM, Math.round(h)))
+
+  hudElement.style.width = `${w}px`
+  hudElement.style.height = `${h}px`
+}
 
 // ── Projection ────────────────────────────────────────────────────────────────
 
@@ -298,6 +331,7 @@ function resizeCanvas(): boolean {
 
 export function initTrackMap(el: HTMLCanvasElement): void {
   canvas = el
+  hudElement = canvas.closest('#hud-trackMap') as HTMLElement | null
   const c = canvas.getContext('2d')
   if (!c) return
   ctx = c
@@ -311,6 +345,7 @@ export function initTrackMap(el: HTMLCanvasElement): void {
     const ld = lapData
     if (ld?.hasLapData && ld.trackLayout) {
       cachedLayout = ld.trackLayout
+      fitContainerToTrack(cachedLayout)
       resizeCanvas()
       buildProjection(cachedLayout)
       renderTrackCache()
