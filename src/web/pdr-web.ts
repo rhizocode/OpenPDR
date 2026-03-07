@@ -33,20 +33,16 @@ function downloadBlob(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
-/** Stash a File and return a string key for it. */
+/** Stash a File and return a unique string key for it. */
 function stashFile(file: File): string {
-  const key = file.name
+  let key = file.name
+  if (fileMap.has(key)) {
+    let n = 2
+    while (fileMap.has(`${file.name} (${n})`)) n++
+    key = `${file.name} (${n})`
+  }
   fileMap.set(key, file)
   return key
-}
-
-/** Clear all stashed files and revoke all video blob URLs. */
-function clearStashedFiles(): void {
-  fileMap.clear()
-  for (const url of videoBlobUrls.values()) {
-    URL.revokeObjectURL(url)
-  }
-  videoBlobUrls.clear()
 }
 
 /** Binary search: find the first index where time[i] >= target. */

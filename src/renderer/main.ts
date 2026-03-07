@@ -230,6 +230,13 @@ document.querySelectorAll<HTMLButtonElement>('.panel-toggle').forEach((btn) => {
     }
   })
 
+  lapsResizeHandle.addEventListener('lostpointercapture', () => {
+    if (dragging) {
+      dragging = false
+      lapsResizeHandle.classList.remove('dragging')
+    }
+  })
+
   const savedWidth = localStorage.getItem(STORAGE_KEYS.lapsPanelWidth)
   if (savedWidth) lapsPanel.style.width = savedWidth
 }

@@ -50,7 +50,7 @@ export function exportGpx(
         const chunks: string[] = []
         for (; i < batchEnd; i++) {
           // Skip invalid GPS points
-          if (store.gps_fix_quality[i] === 0 || store.lat[i] === 0) continue
+          if (store.gps_fix_quality[i] === 0 || (store.lat[i] === 0 && store.lon[i] === 0)) continue
 
           chunks.push(formatTrkpt(
             store.lat[i],

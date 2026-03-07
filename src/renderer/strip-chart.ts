@@ -580,7 +580,12 @@ function computeAutoMax(cache: Map<string, Float32Array>, ...stores: TelemetrySt
         }
       }
     }
-    if (dataMax <= config.min) continue // no useful data
+    if (dataMax <= config.min) {
+      // Ensure sparse channels (e.g. gear) that return empty raw arrays
+      // still get a sensible auto-scale max if computedMax was cleared
+      if (!computedMax.has(config.key)) computedMax.set(config.key, config.max)
+      continue
+    }
     const step = autoScaleStep(dataMax)
     computedMax.set(config.key, Math.max(niceMax(dataMax, step), config.min + step))
   }
@@ -697,7 +702,10 @@ function computeAutoMaxCompare(cacheA: Map<string, Float32Array>, cacheB: Map<st
         }
       }
     }
-    if (dataMax <= config.min) continue
+    if (dataMax <= config.min) {
+      if (!computedMax.has(config.key)) computedMax.set(config.key, config.max)
+      continue
+    }
     const step = autoScaleStep(dataMax)
     computedMax.set(config.key, Math.max(niceMax(dataMax, step), config.min + step))
   }

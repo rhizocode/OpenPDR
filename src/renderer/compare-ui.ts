@@ -211,6 +211,8 @@ async function enterDifferentFile(): Promise<void> {
     resultB = await pdr.parsePdrFile(filePathB)
   } catch (err) {
     dbg('Compare: parse failed for file B: ' + (err instanceof Error ? err.message : String(err)))
+    videoB.removeAttribute('src')
+    videoB.load()
     return
   }
 
@@ -218,6 +220,8 @@ async function enterDifferentFile(): Promise<void> {
   const ldB = resultB.metadata.lapData
   if (!ldB?.hasLapData || ldB.laps.length < 1) {
     dbg('Compare: file B has no laps')
+    videoB.removeAttribute('src')
+    videoB.load()
     return
   }
 

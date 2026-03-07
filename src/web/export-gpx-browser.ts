@@ -30,7 +30,7 @@ export function exportGpxBlob(
     const batchEnd = Math.min(i + GPX_BATCH_SIZE, endIdx)
     const lines: string[] = []
     for (let j = i; j < batchEnd; j++) {
-      if (store.gps_fix_quality[j] === 0 || store.lat[j] === 0) continue
+      if (store.gps_fix_quality[j] === 0 || (store.lat[j] === 0 && store.lon[j] === 0)) continue
 
       lines.push(formatTrkpt(
         store.lat[j],

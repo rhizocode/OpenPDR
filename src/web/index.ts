@@ -12,4 +12,7 @@ import { installWebPdr } from './pdr-web'
 installWebPdr()
 
 // Dynamic import ensures window.pdr is set before renderer modules execute
-import('../renderer/main')
+import('../renderer/main').catch(err => {
+  document.body.textContent = `Failed to start: ${err instanceof Error ? err.message : err}`
+  console.error(err)
+})
