@@ -12,7 +12,7 @@
 
 import type {
   TelemetryRow, OverlayConfig, OverlayLayout, OverlayPosition,
-  RpmConfig, TrackLayout, RenderOverlayRequest, SessionInfo,
+  OverlayOrigin, RpmConfig, TrackLayout, RenderOverlayRequest, SessionInfo,
 } from './types'
 import { telemetryStore } from './state'
 import { getRowInto, createEmptyRow } from '../shared/telemetry-store'
@@ -676,56 +676,63 @@ function renderOverlayFrame(
 ): void {
   ctx.clearRect(0, 0, width, height)
 
-  // Helper to resolve % position to pixels
-  const px = (pos: OverlayPosition) => ({
-    x: (pos.left / 100) * width,
-    y: (pos.top / 100) * height,
-    s: pos.scale,
-  })
+  // Resolve %-based position to pixel coordinates, adjusting for origin.
+  // Draw functions always draw from top-left, so for non-tl origins we
+  // offset x/y by the scaled content dimensions.
+  const px = (pos: OverlayPosition, contentW: number, contentH: number) => {
+    const origin: OverlayOrigin = pos.origin ?? 'tl'
+    let x = (pos.left / 100) * width
+    let y = (pos.top / 100) * height
+    if (origin.includes('r')) x -= contentW * pos.scale
+    if (origin.includes('b')) y -= contentH * pos.scale
+    return { x, y, s: pos.scale }
+  }
 
   if (config.speed) {
-    const p = px(layout.speed)
+    // Speed: ~120px wide (variable), 60px tall
+    const p = px(layout.speed, 120, 60)
     drawSpeed(ctx, row, p.x, p.y, p.s)
   }
 
   if (config.rpmGauge) {
-    const p = px(layout.rpmGauge)
+    const p = px(layout.rpmGauge, RPM_W, RPM_H)
     drawRpmGaugeOverlay(ctx, row.rpm, p.x, p.y, p.s, rpmConfig)
   }
 
   if (config.gear) {
-    const p = px(layout.gear)
+    const p = px(layout.gear, GEAR_BOX_SIZE, GEAR_BOX_SIZE)
     drawGearOverlay(ctx, gearDisplay, p.x, p.y, p.s)
   }
 
   if (config.steering) {
-    const p = px(layout.steering)
+    const p = px(layout.steering, STEERING_ICON_SIZE, STEERING_ICON_SIZE)
     drawSteeringOverlay(ctx, row.steering_deg, p.x, p.y, p.s)
   }
 
   if (config.gforce) {
-    const p = px(layout.gforce)
+    const p = px(layout.gforce, GFORCE_SIZE, GFORCE_SIZE)
     drawGForceOverlay(ctx, row.gforce_lat, row.gforce_lon, p.x, p.y, p.s)
   }
 
   if (config.pedals) {
-    const p = px(layout.pedals)
+    const p = px(layout.pedals, PEDAL_BAR_W, PEDAL_BAR_H * 2 + PEDAL_GAP)
     drawPedalsOverlay(ctx, row.throttle, getBrakeDisplay(row.brake), p.x, p.y, p.s)
   }
 
   if (config.gps) {
-    const p = px(layout.gps)
+    const p = px(layout.gps, 100, 50)
     drawGpsOverlay(ctx, row, p.x, p.y, p.s)
   }
 
   if (config.trackMap && trackLayout) {
-    const p = px(layout.trackMap)
     const mapSize = getTrackMapSize(trackLayout)
+    const p = px(layout.trackMap, mapSize.w, mapSize.h)
     drawTrackMapOverlay(ctx, row, p.x, p.y, mapSize.w, mapSize.h, p.s, trackLayout)
   }
 
   if (config.session && sessionInfo) {
-    const p = px(layout.session)
+    // Session: variable size, estimate ~180x40
+    const p = px(layout.session, 180, 40)
     drawSessionOverlay(ctx, sessionInfo, p.x, p.y, p.s)
   }
 }

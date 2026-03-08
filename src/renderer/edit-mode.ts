@@ -6,7 +6,7 @@
  * Persists layout to localStorage.
  */
 
-import type { OverlayConfig, OverlayKey, OverlayPosition, OverlayLayout } from './types'
+import type { OverlayConfig, OverlayKey, OverlayPosition, OverlayLayout, OverlayOrigin } from './types'
 import { getEditMode, setEditMode, onEditModeChange } from './state'
 import { applyOverlayConfig, getOverlayConfig, setOverlayConfig } from './hud'
 import { syncPositionsToB } from './compare-overlay-b'
@@ -53,17 +53,97 @@ function saveLayout(): void {
   localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout))
 }
 
+// ── Origin helpers ──
+
+const ORIGIN_CSS: Record<OverlayOrigin, string> = {
+  tl: 'top left', tr: 'top right', bl: 'bottom left', br: 'bottom right',
+}
+
+const OPPOSITE_CORNER: Record<string, OverlayOrigin> = {
+  tl: 'br', tr: 'bl', bl: 'tr', br: 'tl',
+}
+
+const HYSTERESIS = 2 // % deadzone around 50% to prevent origin flicker
+
+/**
+ * Compute the origin quadrant from the overlay's visual center.
+ * Uses hysteresis: only flips when center moves decisively past 50%.
+ */
+function computeOrigin(key: OverlayKey): OverlayOrigin {
+  const el = hudElements.get(key)
+  if (!el) return layout[key].origin ?? 'tl'
+  const cRect = container.getBoundingClientRect()
+  if (cRect.width === 0 || cRect.height === 0) return layout[key].origin ?? 'tl'
+  const eRect = el.getBoundingClientRect()
+
+  const centerXPct = ((eRect.left + eRect.width / 2 - cRect.left) / cRect.width) * 100
+  const centerYPct = ((eRect.top + eRect.height / 2 - cRect.top) / cRect.height) * 100
+
+  const prev = layout[key].origin ?? 'tl'
+  const wasRight = prev.includes('r')
+  const wasBottom = prev.includes('b')
+
+  // Apply hysteresis: only flip when crossing 50 ± HYSTERESIS
+  const isRight = wasRight
+    ? centerXPct >= 50 - HYSTERESIS
+    : centerXPct >= 50 + HYSTERESIS
+  const isBottom = wasBottom
+    ? centerYPct >= 50 - HYSTERESIS
+    : centerYPct >= 50 + HYSTERESIS
+
+  if (isBottom) return isRight ? 'br' : 'bl'
+  return isRight ? 'tr' : 'tl'
+}
+
+/**
+ * Convert layout position from the current origin to a new origin
+ * without visually moving the overlay. Reads the element's bounding rect
+ * to find the new origin corner's position in container %.
+ */
+function convertOrigin(key: OverlayKey, newOrigin: OverlayOrigin): void {
+  const el = hudElements.get(key)
+  if (!el) return
+  const cRect = container.getBoundingClientRect()
+  if (cRect.width === 0 || cRect.height === 0) return
+  const eRect = el.getBoundingClientRect()
+
+  const newLeft = newOrigin.includes('l')
+    ? ((eRect.left - cRect.left) / cRect.width) * 100
+    : ((eRect.right - cRect.left) / cRect.width) * 100
+  const newTop = newOrigin.includes('t')
+    ? ((eRect.top - cRect.top) / cRect.height) * 100
+    : ((eRect.bottom - cRect.top) / cRect.height) * 100
+
+  layout[key] = { ...layout[key], left: newLeft, top: newTop, origin: newOrigin }
+}
+
 // ── Apply positions to DOM ──
 
 function applyPosition(key: OverlayKey): void {
   const el = hudElements.get(key)
   if (!el) return
   const pos = layout[key]
-  // Clear any CSS default positioning — we use left/top % exclusively
+  const origin = pos.origin ?? 'tl'
+
+  // Clear all directional properties
+  el.style.left = ''
   el.style.right = ''
+  el.style.top = ''
   el.style.bottom = ''
-  el.style.left = `${pos.left}%`
-  el.style.top = `${pos.top}%`
+
+  // Position from the origin corner
+  if (origin.includes('l')) {
+    el.style.left = `${pos.left}%`
+  } else {
+    el.style.right = `${100 - pos.left}%`
+  }
+  if (origin.includes('t')) {
+    el.style.top = `${pos.top}%`
+  } else {
+    el.style.bottom = `${100 - pos.top}%`
+  }
+
+  el.style.transformOrigin = ORIGIN_CSS[origin]
   el.style.transform = pos.scale !== 1 ? `scale(${pos.scale})` : ''
 }
 
@@ -76,43 +156,37 @@ export function applyAllPositions(): void {
 
 /**
  * Clamp every overlay so it sits fully inside the visible container.
- * Call after applying positions to guarantee nothing is off-screen.
+ * Origin-aware: adjusts the stored origin-corner position.
  */
 export function clampAllToViewport(): void {
   const cRect = container.getBoundingClientRect()
   if (cRect.width === 0 || cRect.height === 0) return
 
   for (const [key, el] of hudElements) {
-    // Skip hidden elements — getBoundingClientRect returns zeros for display:none
     if (!el.classList.contains('active')) continue
-    const elRect = el.getBoundingClientRect()
-    // Compute percentage position that keeps the element fully inside
+    const eRect = el.getBoundingClientRect()
+    const origin = layout[key].origin ?? 'tl'
     let leftPct = layout[key].left
     let topPct = layout[key].top
 
-    // Right edge overflow
-    const rightOverflow = (elRect.right - cRect.right)
-    if (rightOverflow > 0) {
-      leftPct -= (rightOverflow / cRect.width) * 100
-    }
-    // Bottom edge overflow
-    const bottomOverflow = (elRect.bottom - cRect.bottom)
-    if (bottomOverflow > 0) {
-      topPct -= (bottomOverflow / cRect.height) * 100
-    }
-    // Left edge overflow
-    const leftOverflow = (cRect.left - elRect.left)
-    if (leftOverflow > 0) {
-      leftPct += (leftOverflow / cRect.width) * 100
-    }
-    // Top edge overflow
-    const topOverflow = (cRect.top - elRect.top)
-    if (topOverflow > 0) {
-      topPct += (topOverflow / cRect.height) * 100
-    }
+    // Compute overflow on each edge
+    const rOver = eRect.right - cRect.right
+    const bOver = eRect.bottom - cRect.bottom
+    const lOver = cRect.left - eRect.left
+    const tOver = cRect.top - eRect.top
 
-    leftPct = Math.max(0, leftPct)
-    topPct = Math.max(0, topPct)
+    // For left-anchored origins, shift left to fix right overflow, shift right to fix left overflow
+    // For right-anchored origins, the directions are reversed
+    const xSign = origin.includes('l') ? 1 : -1
+    if (rOver > 0) leftPct -= xSign * (rOver / cRect.width) * 100
+    if (lOver > 0) leftPct += xSign * (lOver / cRect.width) * 100
+
+    const ySign = origin.includes('t') ? 1 : -1
+    if (bOver > 0) topPct -= ySign * (bOver / cRect.height) * 100
+    if (tOver > 0) topPct += ySign * (tOver / cRect.height) * 100
+
+    leftPct = Math.max(0, Math.min(100, leftPct))
+    topPct = Math.max(0, Math.min(100, topPct))
 
     if (leftPct !== layout[key].left || topPct !== layout[key].top) {
       layout[key] = { ...layout[key], left: leftPct, top: topPct }
@@ -127,8 +201,16 @@ let dragTarget: OverlayKey | null = null
 let dragOffsetX = 0
 let dragOffsetY = 0
 
+/** Get the screen-space position of an element's origin corner. */
+function originCornerPx(el: HTMLElement, origin: OverlayOrigin): { x: number; y: number } {
+  const r = el.getBoundingClientRect()
+  return {
+    x: origin.includes('l') ? r.left : r.right,
+    y: origin.includes('t') ? r.top : r.bottom,
+  }
+}
+
 function onPointerDown(key: OverlayKey, el: HTMLElement, e: PointerEvent): void {
-  // Ignore if clicking on the resize handle
   if ((e.target as HTMLElement).classList.contains('resize-handle')) return
 
   e.preventDefault()
@@ -137,9 +219,10 @@ function onPointerDown(key: OverlayKey, el: HTMLElement, e: PointerEvent): void 
   el.classList.add('dragging')
   el.setPointerCapture(e.pointerId)
 
-  const rect = el.getBoundingClientRect()
-  dragOffsetX = e.clientX - rect.left
-  dragOffsetY = e.clientY - rect.top
+  const origin = layout[key].origin ?? 'tl'
+  const corner = originCornerPx(el, origin)
+  dragOffsetX = e.clientX - corner.x
+  dragOffsetY = e.clientY - corner.y
 }
 
 function onPointerMove(e: PointerEvent): void {
@@ -148,15 +231,30 @@ function onPointerMove(e: PointerEvent): void {
   if (!el) return
 
   const cRect = container.getBoundingClientRect()
-  const newLeft = ((e.clientX - dragOffsetX - cRect.left) / cRect.width) * 100
-  const newTop = ((e.clientY - dragOffsetY - cRect.top) / cRect.height) * 100
+  const newCornerX = e.clientX - dragOffsetX
+  const newCornerY = e.clientY - dragOffsetY
+  const newLeft = ((newCornerX - cRect.left) / cRect.width) * 100
+  const newTop = ((newCornerY - cRect.top) / cRect.height) * 100
 
   layout[dragTarget] = {
     ...layout[dragTarget],
-    left: Math.max(0, Math.min(95, newLeft)),
-    top: Math.max(0, Math.min(95, newTop)),
+    left: Math.max(0, Math.min(100, newLeft)),
+    top: Math.max(0, Math.min(100, newTop)),
   }
   applyPosition(dragTarget)
+
+  // Recompute origin based on new center position
+  const newOrigin = computeOrigin(dragTarget)
+  const curOrigin = layout[dragTarget].origin ?? 'tl'
+  if (newOrigin !== curOrigin) {
+    convertOrigin(dragTarget, newOrigin)
+    applyPosition(dragTarget)
+    // Update drag offset for the new origin corner
+    const corner = originCornerPx(el, newOrigin)
+    dragOffsetX = e.clientX - corner.x
+    dragOffsetY = e.clientY - corner.y
+  }
+
   syncPositionsToB(container)
 }
 
@@ -171,22 +269,49 @@ function onPointerUp(): void {
 // ── Resize logic ──
 
 let resizeTarget: OverlayKey | null = null
-let resizeStartX = 0
+let resizeCorner: OverlayOrigin = 'br'
+let resizeFixedPx = { x: 0, y: 0 }
+let resizeStartDiag = 0
 let resizeStartScale = 1
+let resizeOrigOrigin: OverlayOrigin = 'tl'
 
-function onResizePointerDown(key: OverlayKey, e: PointerEvent): void {
+function onResizePointerDown(key: OverlayKey, corner: OverlayOrigin, e: PointerEvent): void {
   e.preventDefault()
   e.stopPropagation()
   resizeTarget = key
-  resizeStartX = e.clientX
+  resizeCorner = corner
   resizeStartScale = layout[key].scale
+  resizeOrigOrigin = layout[key].origin ?? 'tl'
+
+  const el = hudElements.get(key)!
+  const r = el.getBoundingClientRect()
+
+  // The fixed corner is diagonally opposite the dragged corner
+  const fixed = OPPOSITE_CORNER[corner]
+  resizeFixedPx = {
+    x: fixed.includes('l') ? r.left : r.right,
+    y: fixed.includes('t') ? r.top : r.bottom,
+  }
+
+  resizeStartDiag = Math.hypot(e.clientX - resizeFixedPx.x, e.clientY - resizeFixedPx.y)
+
+  // Temporarily set origin to the fixed corner so CSS keeps it pinned
+  if (fixed !== resizeOrigOrigin) {
+    convertOrigin(key, fixed)
+    applyPosition(key)
+  }
+
   ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
 }
 
 function onResizePointerMove(e: PointerEvent): void {
   if (!resizeTarget) return
-  const delta = (e.clientX - resizeStartX) / 100
-  const newScale = Math.max(0.4, Math.min(2.5, resizeStartScale + delta))
+  if (resizeStartDiag === 0) return
+
+  const currentDiag = Math.hypot(e.clientX - resizeFixedPx.x, e.clientY - resizeFixedPx.y)
+  const ratio = currentDiag / resizeStartDiag
+  const newScale = Math.max(0.2, Math.min(6.0, resizeStartScale * ratio))
+
   layout[resizeTarget] = { ...layout[resizeTarget], scale: newScale }
   applyPosition(resizeTarget)
   syncPositionsToB(container)
@@ -194,21 +319,35 @@ function onResizePointerMove(e: PointerEvent): void {
 
 function onResizePointerUp(): void {
   if (!resizeTarget) return
+
+  // Recompute the natural origin from center position
+  const newOrigin = computeOrigin(resizeTarget)
+  const curOrigin = layout[resizeTarget].origin ?? 'tl'
+  if (newOrigin !== curOrigin) {
+    convertOrigin(resizeTarget, newOrigin)
+    applyPosition(resizeTarget)
+  }
+
   resizeTarget = null
   saveLayout()
 }
 
 // ── Edit mode enter/exit ──
 
+const CORNERS: OverlayOrigin[] = ['tl', 'tr', 'bl', 'br']
+
 function enterEditMode(): void {
   for (const [, el] of hudElements) {
     el.classList.add('edit-mode')
 
-    // Add resize handle if not already present
-    if (!el.querySelector('.resize-handle')) {
-      const handle = document.createElement('div')
-      handle.className = 'resize-handle'
-      el.appendChild(handle)
+    // Add 4 corner resize handles if not already present
+    for (const corner of CORNERS) {
+      if (!el.querySelector(`.resize-handle[data-corner="${corner}"]`)) {
+        const handle = document.createElement('div')
+        handle.className = 'resize-handle'
+        handle.dataset.corner = corner
+        el.appendChild(handle)
+      }
     }
   }
 
@@ -419,7 +558,8 @@ export function initEditMode(): void {
     const overlayEl = target.closest('.hud-element') as HTMLElement | null
     if (!overlayEl) return
     const key = overlayEl.dataset.overlay as OverlayKey
-    if (key) onResizePointerDown(key, e)
+    const corner = (target.dataset.corner ?? 'br') as OverlayOrigin
+    if (key) onResizePointerDown(key, corner, e)
   })
 
   // Pencil button toggles edit mode

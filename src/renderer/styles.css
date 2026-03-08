@@ -1068,7 +1068,7 @@ html, body {
   z-index: 10;
 }
 
-/* Resize handle (bottom-right corner of each overlay in edit mode) */
+/* Resize handles (all 4 corners of each overlay in edit mode) */
 .resize-handle {
   display: none;
 }
@@ -1076,16 +1076,18 @@ html, body {
 .hud-element.edit-mode .resize-handle {
   display: block;
   position: absolute;
-  right: -6px;
-  bottom: -6px;
   width: 12px;
   height: 12px;
   background: var(--accent);
   border: 1px solid #fff;
   border-radius: 2px;
-  cursor: nwse-resize;
   z-index: 11;
 }
+
+.resize-handle[data-corner="tl"] { left: -6px; top: -6px; cursor: nwse-resize; }
+.resize-handle[data-corner="tr"] { right: -6px; top: -6px; cursor: nesw-resize; }
+.resize-handle[data-corner="bl"] { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.resize-handle[data-corner="br"] { right: -6px; bottom: -6px; cursor: nwse-resize; }
 
 .hud-element.edit-mode .resize-handle:hover {
   background: #fff;

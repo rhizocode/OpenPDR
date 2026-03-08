@@ -287,7 +287,10 @@ export function syncPositionsToB(overlayAnchorA: HTMLDivElement): void {
     if (!elB) continue
     elB.style.left = elA.style.left
     elB.style.top = elA.style.top
+    elB.style.right = elA.style.right
+    elB.style.bottom = elA.style.bottom
     elB.style.transform = elA.style.transform
+    elB.style.transformOrigin = elA.style.transformOrigin
   }
 }
 

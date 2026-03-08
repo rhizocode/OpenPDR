@@ -176,11 +176,15 @@ export interface OverlayConfig {
 /** Overlay key — matches keys of OverlayConfig */
 export type OverlayKey = keyof OverlayConfig
 
+/** Anchor corner — determines which corner left/top refer to and the CSS transform-origin */
+export type OverlayOrigin = 'tl' | 'tr' | 'bl' | 'br'
+
 /** Position + scale for a single overlay element (% of video-container) */
 export interface OverlayPosition {
   left: number
   top: number
   scale: number
+  origin?: OverlayOrigin
 }
 
 /** Stored layout for all overlay elements */

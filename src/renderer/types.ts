@@ -16,6 +16,7 @@ export type {
   ExportScope,
   OverlayConfig,
   OverlayKey,
+  OverlayOrigin,
   OverlayPosition,
   OverlayLayout,
   RpmConfig,
