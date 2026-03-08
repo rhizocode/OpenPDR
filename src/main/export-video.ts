@@ -70,16 +70,13 @@ export async function exportVideo(
 
     const args: string[] = ['-y']  // overwrite output
 
-    // Source video (input 0)
-    args.push('-i', sourceVideoPath)
-
-    // Output-level seek (after -i) for frame-accurate trimming.
-    // Input-level -ss (before -i) only seeks to the nearest keyframe,
-    // which misaligns the overlay by up to one GOP length.
+    // Source video (input 0) — with optional input-level seek for partial exports.
+    // Input-level -ss (before -i) seeks to the exact frame and resets PTS to 0,
+    // so the overlay stream (also starting at PTS 0) stays aligned.
     if (!isFullExport) {
       args.push('-ss', startTime.toFixed(3))
-      args.push('-to', endTime.toFixed(3))
     }
+    args.push('-i', sourceVideoPath)
 
     // Overlay: raw RGBA from stdin (input 1)
     args.push(
@@ -96,10 +93,11 @@ export async function exportVideo(
     // Video encoding
     args.push('-c:v', 'libx264', '-crf', '23', '-preset', 'medium')
 
-    // Audio handling
+    // Audio handling + duration limit for partial exports
     if (isFullExport) {
       args.push('-c:a', 'copy')
     } else {
+      args.push('-t', duration.toFixed(3))
       args.push('-c:a', 'aac', '-b:a', '192k')
     }
 
@@ -178,6 +176,7 @@ export async function exportVideo(
       if (proc.stdin && !proc.stdin.destroyed) {
         proc.stdin.end()
       }
+      onProgress('Finalizing', 99)
     }
     ipcMain.on('overlay-frames-done' satisfies Channel, onDone)
 
