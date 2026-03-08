@@ -430,7 +430,7 @@ function renderTrackCache(): void {
 
   // Clip to rounded rectangle when a background is drawn
   if (hasBg) {
-    const radius = 8 * dpr
+    const radius = 14 * dpr
     c.save()
     c.beginPath()
     c.roundRect(0, 0, trackCache.width, trackCache.height, radius)
@@ -447,12 +447,34 @@ function renderTrackCache(): void {
 
   const hasSatBg = config.mapBackground === 'satellite' && !!satelliteImage
 
-  // Dark border stroke for contrast on satellite imagery
-  if (hasSatBg) {
+  // Draw track (skip when 'none')
+  if (config.trackColor !== 'none') {
+    // Dark border stroke for contrast on satellite imagery
+    if (hasSatBg) {
+      if (config.trackColor === 'solid') {
+        c.beginPath()
+        c.strokeStyle = 'rgba(0,0,0,0.6)'
+        c.lineWidth = trackLW + 4 * dpr
+        c.lineJoin = 'round'
+        c.lineCap = 'round'
+        let first = true
+        for (const pt of points) {
+          const px = gpsToCanvas(pt.lat, pt.lon)
+          if (!px) continue
+          if (first) { c.moveTo(px.x, px.y); first = false }
+          else { c.lineTo(px.x, px.y) }
+        }
+        c.stroke()
+      } else {
+        drawColoredTrackBorder(c)
+      }
+    }
+
     if (config.trackColor === 'solid') {
+      // Original white polyline
       c.beginPath()
-      c.strokeStyle = 'rgba(0,0,0,0.6)'
-      c.lineWidth = trackLW + 4 * dpr
+      c.strokeStyle = hasSatBg ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.6)'
+      c.lineWidth = trackLW
       c.lineJoin = 'round'
       c.lineCap = 'round'
       let first = true
@@ -464,27 +486,8 @@ function renderTrackCache(): void {
       }
       c.stroke()
     } else {
-      drawColoredTrackBorder(c)
+      drawColoredTrack(c, config.trackColor)
     }
-  }
-
-  if (config.trackColor === 'solid') {
-    // Original white polyline
-    c.beginPath()
-    c.strokeStyle = hasSatBg ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.6)'
-    c.lineWidth = trackLW
-    c.lineJoin = 'round'
-    c.lineCap = 'round'
-    let first = true
-    for (const pt of points) {
-      const px = gpsToCanvas(pt.lat, pt.lon)
-      if (!px) continue
-      if (first) { c.moveTo(px.x, px.y); first = false }
-      else { c.lineTo(px.x, px.y) }
-    }
-    c.stroke()
-  } else {
-    drawColoredTrack(c, config.trackColor)
   }
 
   // Start/finish marker — perpendicular to track direction
@@ -589,38 +592,55 @@ function drawPositionDot(gps?: typeof _gpsOut): void {
   ctx.arc(px.x, px.y, dotR, 0, Math.PI * 2)
   ctx.fillStyle = fillColor
   ctx.fill()
-  ctx.strokeStyle = '#fff'
-  ctx.lineWidth = Math.max(1.5 * dpr, dotR * 0.25)
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)'
+  ctx.lineWidth = 3 * dpr
   ctx.stroke()
 }
 
 // ── Zoom highlight ────────────────────────────────────────────────────────────
 
-/** Draw the track section within the chart zoom time window as a brighter overlay. */
+/** Dim the track sections outside the chart zoom window. */
 function drawZoomHighlight(): void {
   if (!chartZoom || !telemetryStore || !proj) return
   const store = telemetryStore
   if (store.length === 0) return
 
-  const startIdx = findClosestTimeIndex(store.time, chartZoom.startTime, store.length)
-  const endIdx = findClosestTimeIndex(store.time, chartZoom.endTime, store.length)
-  if (endIdx <= startIdx) return
+  const zoomStart = findClosestTimeIndex(store.time, chartZoom.startTime, store.length)
+  const zoomEnd = findClosestTimeIndex(store.time, chartZoom.endTime, store.length)
+  if (zoomEnd <= zoomStart) return
 
-  ctx.beginPath()
-  ctx.strokeStyle = 'rgba(255, 180, 0, 0.9)'
-  ctx.lineWidth = Math.round(trackLW * 1.4)
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'
+  ctx.lineWidth = Math.round(trackLW * 1.6)
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
 
-  let first = true
-  for (let i = startIdx; i <= endIdx; i++) {
-    if (store.lat[i] === 0 && store.lon[i] === 0) continue
-    const px = gpsToCanvasInto(store.lat[i], store.lon[i])
-    if (!px) continue
-    if (first) { ctx.moveTo(px.x, px.y); first = false }
-    else ctx.lineTo(px.x, px.y)
+  // Dim segment before zoom window
+  if (zoomStart > currentLapStartIdx) {
+    ctx.beginPath()
+    let first = true
+    for (let i = currentLapStartIdx; i <= zoomStart; i++) {
+      if (store.lat[i] === 0 && store.lon[i] === 0) continue
+      const px = gpsToCanvasInto(store.lat[i], store.lon[i])
+      if (!px) continue
+      if (first) { ctx.moveTo(px.x, px.y); first = false }
+      else ctx.lineTo(px.x, px.y)
+    }
+    ctx.stroke()
   }
-  ctx.stroke()
+
+  // Dim segment after zoom window
+  if (zoomEnd < currentLapEndIdx) {
+    ctx.beginPath()
+    let first = true
+    for (let i = zoomEnd; i <= currentLapEndIdx; i++) {
+      if (store.lat[i] === 0 && store.lon[i] === 0) continue
+      const px = gpsToCanvasInto(store.lat[i], store.lon[i])
+      if (!px) continue
+      if (first) { ctx.moveTo(px.x, px.y); first = false }
+      else ctx.lineTo(px.x, px.y)
+    }
+    ctx.stroke()
+  }
 }
 
 // ── Resize handling ───────────────────────────────────────────────────────────

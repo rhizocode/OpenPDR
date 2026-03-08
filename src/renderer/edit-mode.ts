@@ -491,6 +491,7 @@ function buildTrackMapSubSettings(): HTMLDivElement {
     el.textContent = opt.label
     trackSelect.appendChild(el)
   }
+  { const el = document.createElement('option'); el.value = 'none'; el.textContent = 'None'; trackSelect.appendChild(el) }
   trackSelect.value = config.trackColor
   trackSelect.addEventListener('change', () => {
     const c = getTrackMapConfig()
