@@ -11,23 +11,23 @@ import { STORAGE_KEYS } from './storage-keys'
 // ── Overlay visibility defaults ──
 
 export const DEFAULT_OVERLAY: OverlayConfig = {
-  speed: true, rpmGauge: true, rpmBar: false, gear: true, gforce: true,
-  pedals: true, steering: true, gps: true, trackMap: true, session: true,
+  speed: true, rpmGauge: false, rpmBar: true, gear: true, gforce: true,
+  pedals: true, steering: true, gps: false, trackMap: true, session: true,
 }
 
 // ── Overlay layout positions (% of container dimensions) ──
 
 export const DEFAULT_LAYOUT: OverlayLayout = {
-  speed:    { left: 1.5, top: 82, scale: 1 },
-  rpmGauge: { left: 13,  top: 78, scale: 1 },
-  rpmBar:   { left: 1.5, top: 95, scale: 1 },
-  gear:     { left: 27,  top: 82, scale: 1 },
-  steering: { left: 33,  top: 76, scale: 1 },
-  gforce:   { left: 82,  top: 68, scale: 1 },
-  pedals:   { left: 68,  top: 84, scale: 1 },
-  gps:      { left: 85,  top: 2,  scale: 1 },
-  trackMap: { left: 1.5, top: 2,  scale: 1 },
-  session:  { left: 85,  top: 12, scale: 1 },
+  speed:    { left: 46.41, top: 1.24,  scale: 2.01  },
+  rpmGauge: { left: 5.06,  top: 37.52, scale: 1.61  },
+  rpmBar:   { left: 26.37, top: 93.62, scale: 2.26  },
+  gear:     { left: 56.06, top: 82.32, scale: 1.81  },
+  steering: { left: 45.16, top: 71.93, scale: 2.36  },
+  gforce:   { left: 88.42, top: 79.60, scale: 1.77  },
+  pedals:   { left: 33.76, top: 85.38, scale: 2.00  },
+  gps:      { left: 87.17, top: 1.96,  scale: 1     },
+  trackMap: { left: 0.59,  top: 1.29,  scale: 1.83  },
+  session:  { left: 70.25, top: 1.05,  scale: 2.11  },
 }
 
 // ── RPM gauge defaults ──
