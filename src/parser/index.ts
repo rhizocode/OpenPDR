@@ -134,6 +134,13 @@ export async function parsePdrFile(
   const store = createTelemetryStore(estimatedRows)
   const allEvents: EmbeddedEvent[] = []
 
+  // The first sample in the data track is typically a small init/config packet
+  // that we skip (size < 100). However it still occupies time in the MP4
+  // timeline (usually 1 second via stts), pushing all real telemetry timestamps
+  // forward. We subtract the first real packet's sampleTime so telemetry time 0
+  // aligns with video time 0.
+  let timeBase = 0
+
   for (let i = 0; i < sampleOffsets.length; i++) {
     const offset = sampleOffsets[i]
     const size = sampleTable.sampleSizes[i]
@@ -144,7 +151,9 @@ export async function parsePdrFile(
 
     // Use MP4 presentation time from stts/elst when available,
     // fall back to packet index (assumes 1 second per packet)
-    const baseTime = trackTiming ? trackTiming.sampleTimes[i] : i
+    const rawBaseTime = trackTiming ? trackTiming.sampleTimes[i] : i
+    if (!timeBase && rawBaseTime > 0) timeBase = rawBaseTime
+    const baseTime = rawBaseTime - timeBase
 
     const rows = decodePacket(packet, baseTime, i, hz100Size)
     let storeFull = false

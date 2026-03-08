@@ -26,7 +26,7 @@ export function initGearMenu(): void {
     { id: 'export',       label: 'Export',        build: buildExportPanel },
     { id: 'rpm-zones',    label: 'RPM Zones',     build: buildRpmPanel },
     { id: 'brake-display',label: 'Brake Display',  build: buildBrakeDisplayPanel },
-    { id: 'av-sync',      label: 'A/V Sync',      build: buildAvSyncPanel },
+    { id: 'av-sync',      label: 'Sync Offset',   build: buildAvSyncPanel },
     { id: 'font-size',    label: 'Font Scale',      build: buildFontSizePanel },
     { id: 'about',        label: 'About',           build: buildAboutPanel },
   ]

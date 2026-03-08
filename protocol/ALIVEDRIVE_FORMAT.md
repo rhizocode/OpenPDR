@@ -746,6 +746,13 @@ decoder. Assuming each packet starts at exactly `packet_index × 1.0` seconds
 will drift by several seconds over long recordings due to the init packet's
 large `stts` delta, per-packet jitter, and the `edts` empty edit delay.
 
+> **Implementation note:** The first data packet's presentation time (~1.877 s)
+> reflects the init packet's timeline occupancy, not a real delay in telemetry
+> capture. The telemetry in that packet corresponds to video time 0, not video
+> time 1.877. Parsers that display telemetry synchronized to video playback
+> should subtract the first real data packet's presentation time from all
+> timestamps so that telemetry time 0 aligns with video time 0.
+
 ---
 
 ## 5. Scale Factors and Encoding

@@ -97,9 +97,9 @@ export function setSessionInfo(info: SessionInfo | null): void {
   sessionInfo = info
 }
 
-// ── Audio-to-video sync offset ──
+// ── Sync offset ──
 // Fine-tuning offset between telemetry and video playback (in seconds).
-// The parser now uses MP4 timing metadata (stts/elst) for proper sync,
+// The parser handles structural sync via MP4 timing metadata (stts/elst),
 // so this offset is purely for user-adjustable fine-tuning.
 // Positive = telemetry leads video.
 const AV_SYNC_KEY = STORAGE_KEYS.avSync

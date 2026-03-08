@@ -98,7 +98,7 @@ export function buildAvSyncPanel(container: HTMLDivElement): void {
 
   const syncLabel = document.createElement('label')
   syncLabel.textContent = 'Offset (ms)'
-  syncLabel.title = 'Positive = telemetry leads video to match audio timing'
+  syncLabel.title = 'Fine-tune telemetry alignment to video (ms)'
 
   const syncInput = document.createElement('input')
   syncInput.type = 'number'

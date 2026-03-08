@@ -12,7 +12,7 @@ export const STORAGE_KEYS = {
   rpmOverride: 'pdr-rpm-manual-override',
   chartChannels: 'pdr-chart-channels',
   chartHeight: 'pdr-chart-height',
-  avSync: 'pdr-av-sync-offset',
+  avSync: 'pdr-sync-offset',
   fontSize: 'pdr-ui-font-size',
   panelState: 'pdr-panel-state',
   lapsPanelWidth: 'pdr-laps-panel-width',
