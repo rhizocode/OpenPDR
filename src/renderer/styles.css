@@ -399,6 +399,7 @@ html, body {
   width: 80px;
   height: 80px;
   fill: rgba(30,30,30,0.85);
+  filter: drop-shadow(0 0 3px rgba(255,255,255,0.4));
   transition: none;
 }
 

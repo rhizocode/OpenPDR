@@ -331,9 +331,12 @@ function drawSteeringOverlay(
   ctx.scale(iconScale, iconScale)
   ctx.translate(-512, -512)  // center the path
 
-  // Dark wheel fill
+  // Dark wheel fill with subtle glow
+  ctx.shadowColor = 'rgba(255,255,255,0.4)'
+  ctx.shadowBlur = 3
   ctx.fillStyle = 'rgba(30,30,30,0.85)'
   ctx.fill(steeringPath2D)
+  ctx.shadowBlur = 0
 
   // Red notch at top center (matches SVG rect x=500 y=118 w=24 h=40 rx=5)
   ctx.fillStyle = '#ab2010'
