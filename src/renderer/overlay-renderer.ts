@@ -320,24 +320,48 @@ function drawSteeringOverlay(
   ctx.translate(x, y)
   if (scale !== 1) ctx.scale(scale, scale)
 
-  // Label at the top of the bounding box (matches DOM: label block sits above SVG)
-  const labelH = 22  // approximate line-height for bold 18px font
-  ctx.fillStyle = '#fff'
-  ctx.font = 'bold 18px Consolas, monospace'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'top'
-  ctx.fillText(`${Math.abs(Math.round(deg))}\u00B0`, STEERING_ICON_SIZE / 2, 0)
-
-  // Steering wheel icon — rotate around center, positioned below label
   const iconCx = STEERING_ICON_SIZE / 2
-  const iconCy = labelH + STEERING_ICON_SIZE / 2
+  const iconCy = STEERING_ICON_SIZE / 2
+
+  // Steering wheel icon — rotate around center
+  ctx.save()
   ctx.translate(iconCx, iconCy)
   ctx.rotate((-deg * Math.PI) / 180)  // negate: PDR positive = left turn
   const iconScale = STEERING_ICON_SIZE / 1024  // SVG viewBox is 1024x1024
   ctx.scale(iconScale, iconScale)
   ctx.translate(-512, -512)  // center the path
-  ctx.fillStyle = 'rgba(255,255,255,0.75)'
+
+  // Dark wheel fill
+  ctx.fillStyle = 'rgba(30,30,30,0.85)'
   ctx.fill(steeringPath2D)
+
+  // Red notch at top center (matches SVG rect x=500 y=118 w=24 h=40 rx=5)
+  ctx.fillStyle = '#ab2010'
+  ctx.beginPath()
+  ctx.roundRect(500, 118, 24, 80, 5)
+  ctx.fill()
+
+  ctx.restore()
+
+  // Label centered on wheel (number only drives centering, ° appended after)
+  const numStr = `${Math.abs(Math.round(deg))}`
+  const degStr = numStr + '\u00B0'
+  ctx.font = 'bold 18px Consolas, monospace'
+  ctx.textBaseline = 'middle'
+
+  // Measure number width to center on it, not on number+symbol
+  const numW = ctx.measureText(numStr).width
+  const labelX = iconCx - numW / 2
+
+  // Text glow
+  ctx.shadowColor = 'rgba(0,0,0,0.9)'
+  ctx.shadowBlur = 6
+  ctx.fillStyle = '#fff'
+  ctx.textAlign = 'left'
+  ctx.fillText(degStr, labelX, iconCy)
+  // Double-stamp for stronger glow
+  ctx.fillText(degStr, labelX, iconCy)
+  ctx.shadowBlur = 0
 
   ctx.restore()
 }

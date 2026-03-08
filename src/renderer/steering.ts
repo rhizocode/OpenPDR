@@ -18,8 +18,10 @@ export function drawSteering(deg: number, targetSvg?: SVGSVGElement, targetLabel
   const svg = targetSvg ?? svgEl
   const lbl = targetLabel ?? labelEl
 
-  // Update numeric label (non-rotated)
-  lbl.textContent = `${Math.abs(Math.round(deg))}\u00B0`
+  // Update numeric label (non-rotated).
+  // Number is inline (drives centering), degree symbol has width:0 so it doesn't shift center.
+  const num = `${Math.abs(Math.round(deg))}`
+  lbl.innerHTML = `${num}<span class="deg-symbol">\u00B0</span>`
 
   // Negate: PDR positive = left turn
   svg.style.transform = `rotate(${-deg}deg)`

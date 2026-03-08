@@ -370,18 +370,33 @@ html, body {
 }
 
 .steering-label {
-  display: block;
-  text-align: center;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   font: bold 18px Consolas, monospace;
   color: #fff;
+  text-shadow: 0 0 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.6);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.steering-label .deg-symbol {
+  display: inline-block;
+  width: 0;
+  overflow: visible;
 }
 
 .steering-svg {
   display: block;
   width: 80px;
   height: 80px;
-  fill: rgba(255,255,255,0.75);
+  fill: rgba(30,30,30,0.85);
   transition: none;
+}
+
+.steering-notch {
+  fill: #ab2010;
 }
 
 /* G-force */
