@@ -107,7 +107,7 @@ function rpmToDeg(rpm: number, maxRpm: number): number {
   return START_DEG + (rpm / maxRpm) * SWEEP_DEG
 }
 
-function buildGauge(svg: SVGSVGElement, cfg: RpmConfig): GaugeElements {
+export function buildGauge(svg: SVGSVGElement, cfg: RpmConfig): GaugeElements {
   // Clear any existing content
   svg.innerHTML = ''
   setAttrs(svg, { viewBox: `0 0 ${W} ${H}`, width: W, height: H })

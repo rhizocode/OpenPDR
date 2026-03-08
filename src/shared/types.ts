@@ -196,11 +196,19 @@ export interface RpmConfig {
   maxRpm: number
 }
 
+/** Track map appearance settings for video export */
+export interface TrackMapExportConfig {
+  dotColor: string
+  trackColor: string
+  mapBackground: string
+}
+
 /** Options passed from renderer to main for video export */
 export interface VideoExportOptions {
   overlayConfig: OverlayConfig
   overlayLayout: OverlayLayout
   rpmConfig: RpmConfig
+  trackMapConfig?: TrackMapExportConfig
 }
 
 /** Parameters sent from main to renderer to request overlay frame rendering */
@@ -216,6 +224,7 @@ export interface RenderOverlayRequest {
   rpmConfig: RpmConfig
   trackLayout: TrackLayout | null
   sessionInfo?: SessionInfo
+  trackMapConfig?: TrackMapExportConfig
 }
 
 // ── Auto-update types ────────────────────────────────────────────────────────

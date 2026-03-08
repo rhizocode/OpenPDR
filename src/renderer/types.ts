@@ -23,6 +23,7 @@ export type {
   SessionInfo,
   VideoExportOptions,
   RenderOverlayRequest,
+  TrackMapExportConfig,
   UpdateStatus,
   ReleaseNote,
   PdrApi,

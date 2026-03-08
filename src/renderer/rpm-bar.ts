@@ -4,6 +4,11 @@
  * Horizontal bar from 0 to maxRpm with green/red zones matching the RPM gauge.
  * Labels at 1000 RPM intervals with drop shadows, minor ticks at 500 RPM.
  * Uses the same RpmConfig (redline, maxRpm) as the arc gauge.
+ *
+ * Supports detached (non-DOM) instances for the video export renderer:
+ *   const svg = createSvgEl('svg')
+ *   buildBar(svg, cfg)
+ *   drawRpmBar(rpm, svg, cfg)
  */
 
 import type { RpmConfig } from './types'
@@ -15,7 +20,6 @@ const BAR_X = 0, BAR_Y = 4, BAR_W = W, BAR_H = 20
 const NS = 'http://www.w3.org/2000/svg'
 
 let primarySvg: SVGSVGElement | null = null
-let barElements: BarElements | null = null
 
 interface BarElements {
   svg: SVGSVGElement
@@ -24,6 +28,8 @@ interface BarElements {
   cfgKey: string
   lastDrawnRpm: number
 }
+
+const barMap = new WeakMap<SVGSVGElement, BarElements>()
 
 function createSvgEl<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
   return document.createElementNS(NS, tag) as SVGElementTagNameMap[K]
@@ -35,11 +41,11 @@ function setAttrs(el: SVGElement, attrs: Record<string, string | number>): void 
   }
 }
 
-function cfgKey(cfg: RpmConfig): string {
+function cfgKeyStr(cfg: RpmConfig): string {
   return `${cfg.redline}:${cfg.maxRpm}`
 }
 
-function buildBar(svg: SVGSVGElement, cfg: RpmConfig): BarElements {
+export function buildBar(svg: SVGSVGElement, cfg: RpmConfig): BarElements {
   svg.innerHTML = ''
   setAttrs(svg, { viewBox: `0 0 ${W} ${H}`, width: W, height: H })
   svg.style.overflow = 'visible'
@@ -128,17 +134,17 @@ function buildBar(svg: SVGSVGElement, cfg: RpmConfig): BarElements {
 
   const entry: BarElements = {
     svg, activeGreen, activeRed,
-    cfgKey: cfgKey(cfg),
+    cfgKey: cfgKeyStr(cfg),
     lastDrawnRpm: -1,
   }
-  barElements = entry
+  barMap.set(svg, entry)
   return entry
 }
 
 function ensureBar(svg: SVGSVGElement, cfg: RpmConfig): BarElements {
-  if (barElements && barElements.svg === svg && barElements.cfgKey === cfgKey(cfg)) {
-    return barElements
-  }
+  const existing = barMap.get(svg)
+  const key = cfgKeyStr(cfg)
+  if (existing && existing.cfgKey === key) return existing
   return buildBar(svg, cfg)
 }
 
@@ -161,10 +167,11 @@ export function initRpmBar(): void {
 
 // ── Draw (called every frame) ──
 
-export function drawRpmBar(rpm: number): void {
-  if (!primarySvg) return
-  const cfg = getRpmConfig()
-  const b = ensureBar(primarySvg, cfg)
+export function drawRpmBar(rpm: number, targetSvg?: SVGSVGElement, overrideCfg?: RpmConfig): void {
+  const svg = targetSvg ?? primarySvg
+  if (!svg) return
+  const cfg = overrideCfg ?? getRpmConfig()
+  const b = ensureBar(svg, cfg)
 
   const rounded = Math.round(rpm)
   if (rounded === b.lastDrawnRpm) return

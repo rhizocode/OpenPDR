@@ -14,6 +14,7 @@ import type { TrackMapColorMode } from './defaults'
 import type { TrackLayout } from './types'
 import { fetchSatelliteImage } from './satellite-tiles'
 import type { SatelliteResult } from './satellite-tiles'
+import { valueToColor, computeSpeedMax as computeSpeedMaxShared } from './track-map-render'
 
 let canvas: HTMLCanvasElement
 let ctx: CanvasRenderingContext2D
@@ -41,43 +42,11 @@ let currentLapStartIdx = 0    // telemetry store index for current lap start
 let currentLapEndIdx = 0      // telemetry store index for current lap end
 let trackedLapIdx = -1        // which lap index the colored cache was built for
 
-/** Map a 0..1 normalized value to red→yellow→green. */
-function valueToColor(t: number): string {
-  t = Math.max(0, Math.min(1, t))
-  let r: number, g: number
-  if (t < 0.5) {
-    r = 255
-    g = Math.round((t / 0.5) * 220)
-  } else {
-    r = Math.round(255 * (1 - (t - 0.5) / 0.5))
-    g = 220
-  }
-  return `rgb(${r},${g},0)`
-}
-
-function autoScaleStep(value: number): number {
-  if (value <= 0) return 1
-  const mag = Math.pow(10, Math.floor(Math.log10(value)))
-  if (value / mag <= 2) return mag / 5
-  if (value / mag <= 5) return mag / 2
-  return mag
-}
-
-function niceMax(value: number, step: number): number {
-  return Math.ceil(value / step) * step
-}
-
 /** Compute auto-scaled max speed from the telemetry file. */
 function computeSpeedMax(): void {
   const store = telemetryStore
   if (!store || store.length === 0) { speedMax = 160; return }
-  let max = 0
-  for (let i = 0; i < store.length; i++) {
-    if (store.speed_kph[i] > max) max = store.speed_kph[i]
-  }
-  if (max <= 0) { speedMax = 160; return }
-  const step = autoScaleStep(max)
-  speedMax = niceMax(max, step)
+  speedMax = computeSpeedMaxShared(store)
 }
 
 /** Detect current lap and update store index range. Returns true if lap changed. */

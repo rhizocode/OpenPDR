@@ -8,12 +8,13 @@
 
 import type { ExportScope, VideoExportOptions } from './types'
 import { telemetryStore, lapData } from './state'
-import { DEFAULT_OVERLAY, DEFAULT_LAYOUT, DEFAULT_RPM_CONFIG } from './defaults'
+import { DEFAULT_OVERLAY, DEFAULT_LAYOUT, DEFAULT_RPM_CONFIG, DEFAULT_TRACKMAP_CONFIG } from './defaults'
 import { STORAGE_KEYS } from './storage-keys'
 
 const OVERLAY_CONFIG_KEY = STORAGE_KEYS.overlayConfig
 const OVERLAY_LAYOUT_KEY = STORAGE_KEYS.overlayLayout
 const RPM_CONFIG_KEY = STORAGE_KEYS.rpmConfig
+const TRACKMAP_CONFIG_KEY = STORAGE_KEYS.trackMapConfig
 
 /** Read current overlay/layout/RPM config from localStorage */
 function getVideoExportOptions(): VideoExportOptions {
@@ -36,7 +37,13 @@ function getVideoExportOptions(): VideoExportOptions {
     if (saved) rpmConfig = { ...DEFAULT_RPM_CONFIG, ...JSON.parse(saved) }
   } catch { /* use defaults */ }
 
-  return { overlayConfig, overlayLayout, rpmConfig }
+  let trackMapConfig = DEFAULT_TRACKMAP_CONFIG
+  try {
+    const saved = localStorage.getItem(TRACKMAP_CONFIG_KEY)
+    if (saved) trackMapConfig = { ...DEFAULT_TRACKMAP_CONFIG, ...JSON.parse(saved) }
+  } catch { /* use defaults */ }
+
+  return { overlayConfig, overlayLayout, rpmConfig, trackMapConfig }
 }
 
 // ── Export Progress UI ──
