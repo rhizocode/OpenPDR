@@ -413,11 +413,11 @@ html, body {
   display: block;
 }
 
-#gforce-canvas,
-#gforce-canvas-b {
+#gforce-svg,
+#gforce-svg-b {
   display: block;
-  background: rgba(0,0,0,0.5);
-  border-radius: 50%;
+  width: 120px;
+  height: 120px;
 }
 
 /* Pedal bars */

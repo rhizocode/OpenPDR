@@ -26,7 +26,7 @@ let gpsLatB: HTMLSpanElement | null = null
 let gpsLonB: HTMLSpanElement | null = null
 let gpsAltB: HTMLSpanElement | null = null
 let rpmSvgB: SVGSVGElement | null = null
-let gforceCanvasB: HTMLCanvasElement | null = null
+let gforceSvgB: SVGSVGElement | null = null
 let steeringSvgB: SVGSVGElement | null = null
 let steeringLabelB: HTMLSpanElement | null = null
 
@@ -64,7 +64,7 @@ export function createOverlayB(videoContainer: HTMLDivElement, overlayAnchorA: H
   gpsLonB = anchorB.querySelector('#hud-gps-lon-b') as HTMLSpanElement
   gpsAltB = anchorB.querySelector('#hud-gps-alt-b') as HTMLSpanElement
   rpmSvgB = anchorB.querySelector('#hud-rpm-gauge-b svg') as SVGSVGElement
-  gforceCanvasB = anchorB.querySelector('#gforce-canvas-b') as HTMLCanvasElement
+  gforceSvgB = anchorB.querySelector('#gforce-svg-b') as unknown as SVGSVGElement
   steeringSvgB = anchorB.querySelector('#steering-svg-b') as unknown as SVGSVGElement
   steeringLabelB = anchorB.querySelector('#steering-label-b') as HTMLSpanElement
 
@@ -132,7 +132,7 @@ export function destroyOverlayB(): void {
   gpsLonB = null
   gpsAltB = null
   rpmSvgB = null
-  gforceCanvasB = null
+  gforceSvgB = null
   steeringSvgB = null
   steeringLabelB = null
   hudBActive = false
@@ -271,7 +271,7 @@ export function smoothAndDrawB(
 
   if (rpmSvgB) drawRpmGauge(displayedRpmB, rpmSvgB, rpmConfigB)
   if (steeringSvgB && steeringLabelB) drawSteering(displayedSteeringB, steeringSvgB, steeringLabelB)
-  if (gforceCanvasB) drawGForce(displayedGLatB, displayedGLonB, gforceCanvasB)
+  if (gforceSvgB) drawGForce(displayedGLatB, displayedGLonB, gforceSvgB)
 }
 
 /**

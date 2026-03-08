@@ -645,14 +645,49 @@ function drawZoomHighlight(): void {
 
 // ── Resize handling ───────────────────────────────────────────────────────────
 
+const MAX_CANVAS_DIM = 2048
+
 function resizeCanvas(): boolean {
-  const rect = canvas.getBoundingClientRect()
+  if (!hudElement) return false
   dpr = window.devicePixelRatio || 1
-  const w = Math.round(rect.width * dpr)
-  const h = Math.round(rect.height * dpr)
+
+  // Container's intrinsic layout size (ignoring CSS transforms)
+  const layoutW = hudElement.clientWidth
+  const layoutH = hudElement.clientHeight
+  if (layoutW === 0 || layoutH === 0) return false
+
+  // Detect CSS transform scale on the container
+  const containerRect = hudElement.getBoundingClientRect()
+  const cssScale = containerRect.width / layoutW
+
+  // Canvas resolution = final physical pixel count on screen, capped
+  let w = Math.round(layoutW * cssScale * dpr)
+  let h = Math.round(layoutH * cssScale * dpr)
+  const maxDim = Math.max(w, h)
+  if (maxDim > MAX_CANVAS_DIM) {
+    const s = MAX_CANVAS_DIM / maxDim
+    w = Math.round(w * s)
+    h = Math.round(h * s)
+  }
   if (canvas.width === w && canvas.height === h) return false
+
   canvas.width = w
   canvas.height = h
+
+  // Set canvas CSS box to the post-transform display size, then counter-scale
+  // so it fits back into the container.  Parent's transform re-scales it up.
+  // Net effect: canvas pixels map 1:1 to physical display pixels.
+  if (cssScale !== 1) {
+    canvas.style.width = `${layoutW * cssScale}px`
+    canvas.style.height = `${layoutH * cssScale}px`
+    canvas.style.transformOrigin = 'top left'
+    canvas.style.transform = `scale(${1 / cssScale})`
+  } else {
+    canvas.style.width = `${layoutW}px`
+    canvas.style.height = `${layoutH}px`
+    canvas.style.transform = ''
+  }
+
   if (cachedLayout) buildProjection(cachedLayout)
   return true
 }
@@ -751,5 +786,5 @@ export function initTrackMap(el: HTMLCanvasElement): void {
     } else {
       drawEmpty()
     }
-  }).observe(canvas)
+  }).observe(hudElement!)
 }
