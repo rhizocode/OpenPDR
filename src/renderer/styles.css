@@ -276,7 +276,7 @@ html, body {
 #hud-speed-unit,
 #hud-speed-unit-b {
   font-size: 18px;
-  color: #ccc;
+  color: #fff;
   text-shadow: 0 0 8px rgba(0,0,0,0.8);
 }
 

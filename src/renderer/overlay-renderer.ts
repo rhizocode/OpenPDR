@@ -155,7 +155,7 @@ function drawSpeed(
   // Unit — CSS: text-shadow: 0 0 8px rgba(0,0,0,0.8)
   setShadow(ctx, 8, 'rgba(0,0,0,0.8)')
   const valueWidth = ctx.measureText(Math.round(row.speed_mph).toString()).width
-  ctx.fillStyle = '#ccc'
+  ctx.fillStyle = '#fff'
   ctx.font = '18px Consolas, monospace'
   ctx.fillText('MPH', valueWidth + 4, 56)
   clearShadow(ctx)
