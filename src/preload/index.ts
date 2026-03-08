@@ -17,6 +17,7 @@ function validateExportScope(scope: ExportScope): string | null {
 }
 
 const api: PdrApi = {
+  platform: 'electron',
   openFileDialog: (): Promise<string | null> =>
     ipcRenderer.invoke('open-file-dialog' satisfies Channel),
 

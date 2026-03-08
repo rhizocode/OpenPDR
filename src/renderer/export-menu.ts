@@ -182,13 +182,15 @@ export function buildExportPanel(container: HTMLDivElement): void {
     )
   }
 
-  // Video section
-  addSectionTitle(container, 'Video (with overlays)')
-  addItem(container, 'Full Recording', () => doExport('video', { type: 'full' }))
-  for (const lap of laps) {
-    addItem(container, `Lap ${lap.lapNumber}`, () =>
-      doExport('video', { type: 'lap', lapNumber: lap.lapNumber })
-    )
+  // Video section (Electron only — requires ffmpeg)
+  if (window.pdr.platform !== 'web') {
+    addSectionTitle(container, 'Video (with overlays)')
+    addItem(container, 'Full Recording', () => doExport('video', { type: 'full' }))
+    for (const lap of laps) {
+      addItem(container, `Lap ${lap.lapNumber}`, () =>
+        doExport('video', { type: 'lap', lapNumber: lap.lapNumber })
+      )
+    }
   }
 }
 

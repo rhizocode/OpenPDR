@@ -31,4 +31,6 @@ export type {
 
 declare global {
   interface Window { pdr: import('../shared/types').PdrApi }
+  /** Injected by Vite `define` at build time */
+  const __APP_VERSION__: string
 }

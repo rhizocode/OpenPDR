@@ -31,6 +31,8 @@ export function initGearMenu(): void {
     { id: 'about',        label: 'About',           build: buildAboutPanel },
   ]
 
+  const accordionItems: { content: HTMLDivElement; chevron: HTMLSpanElement }[] = []
+
   for (const sec of sections) {
     const header = document.createElement('div')
     header.className = 'gear-section-header'
@@ -51,8 +53,19 @@ export function initGearMenu(): void {
     content.id = `gear-content-${sec.id}`
     content.style.display = 'none'
 
+    const idx = accordionItems.length
+    accordionItems.push({ content, chevron })
+
     header.addEventListener('click', () => {
       const isOpen = content.style.display !== 'none'
+      // Collapse all sections
+      for (let i = 0; i < accordionItems.length; i++) {
+        if (i !== idx) {
+          accordionItems[i].content.style.display = 'none'
+          accordionItems[i].chevron.textContent = '\u25B8'
+        }
+      }
+      // Toggle the clicked section
       content.style.display = isOpen ? 'none' : ''
       chevron.textContent = isOpen ? '\u25B8' : '\u25BE'
     })
@@ -114,8 +127,18 @@ function buildAboutPanel(container: HTMLDivElement): void {
   versionRow.appendChild(versionValue)
   container.appendChild(versionRow)
 
+  // Description + link
+  const desc = document.createElement('div')
+  desc.className = 'about-description'
+  desc.innerHTML =
+    'OpenPDR is an open source viewer for Performance Data Recorder files. ' +
+    'For more information, visit ' +
+    '<a href="https://github.com/rhizocode/OpenPDR" target="_blank" rel="noopener">github.com/rhizocode/OpenPDR</a>' +
+    '<br><br>Comments, Questions, or Feedback? Email <a href="mailto:contact@openpdr.org">contact@openpdr.org</a>'
+  container.appendChild(desc)
+
   // Check for updates button (Electron only)
-  if (window.pdr?.checkForUpdates) {
+  if (window.pdr.platform !== 'web' && window.pdr?.checkForUpdates) {
     const checkRow = document.createElement('div')
     checkRow.className = 'edit-actions'
     const checkBtn = document.createElement('button')

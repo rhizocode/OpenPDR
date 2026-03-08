@@ -247,6 +247,7 @@ export interface UpdateStatus {
 // ── PdrApi interface (renderer ↔ preload/web bridge) ─────────────────────────
 
 export interface PdrApi {
+  platform: 'electron' | 'web'
   openFileDialog(): Promise<string | null>
   parsePdrFile(filePath: string): Promise<ParseResult>
   onParseProgress(callback: (phase: string, pct: number) => void): () => void

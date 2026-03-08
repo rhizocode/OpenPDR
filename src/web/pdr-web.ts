@@ -85,6 +85,7 @@ function getBaseName(): string {
 let progressCallback: ((phase: string, pct: number) => void) | null = null
 
 const pdrWeb: PdrApi = {
+  platform: 'web',
   async openFileDialog(): Promise<string | null> {
     return new Promise((resolve) => {
       const input = document.createElement('input')
@@ -227,7 +228,7 @@ const pdrWeb: PdrApi = {
   },
 
   async getAppVersion(): Promise<string> {
-    return '0.0.0-web'
+    return `${__APP_VERSION__}-web`
   },
 }
 

@@ -1155,6 +1155,23 @@ html, body {
   padding: 4px 0;
 }
 
+.about-description {
+  color: var(--text-secondary);
+  line-height: 1.5;
+  padding: 6px 0;
+  max-width: 210px;
+  word-wrap: break-word;
+}
+
+.about-description a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.about-description a:hover {
+  text-decoration: underline;
+}
+
 .edit-row {
   display: flex;
   align-items: center;
