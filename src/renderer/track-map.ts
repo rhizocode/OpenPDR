@@ -12,6 +12,8 @@ import { findClosestTimeIndex } from '../shared/telemetry-store'
 import { getTrackMapConfig, onTrackMapConfigChange, getBrakeDisplay } from './defaults'
 import type { TrackMapColorMode } from './defaults'
 import type { TrackLayout } from './types'
+import { fetchSatelliteImage } from './satellite-tiles'
+import type { SatelliteResult } from './satellite-tiles'
 
 let canvas: HTMLCanvasElement
 let ctx: CanvasRenderingContext2D
@@ -23,6 +25,11 @@ let hudElement: HTMLElement | null = null
 // Rebuilt only on telemetry load or canvas resize; per-frame work is just blit + dot.
 let trackCache: HTMLCanvasElement | null = null
 let trackCacheCtx: CanvasRenderingContext2D | null = null
+
+// Satellite imagery
+let satelliteImage: SatelliteResult | null = null
+let satelliteFetchInFlight = false
+let satelliteBoundsKey = ''   // tracks which bounds we fetched for
 
 // Last drawn dot position — skip redraw when unchanged
 let lastDotLat = NaN
@@ -269,6 +276,57 @@ function computePerpendicularAngle(
   return trackAngle + Math.PI / 2 // perpendicular
 }
 
+// ── Satellite imagery ─────────────────────────────────────────────────────────
+
+/** Compute a cache key for bounds so we don't re-fetch for the same track. */
+function boundsKey(b: TrackLayout['bounds']): string {
+  return `${b.minLat.toFixed(6)},${b.maxLat.toFixed(6)},${b.minLon.toFixed(6)},${b.maxLon.toFixed(6)}`
+}
+
+/** Trigger a satellite fetch if needed. Async — redraws when complete. */
+function maybeFetchSatellite(): void {
+  if (!cachedLayout) return
+  const config = getTrackMapConfig()
+  if (config.mapBackground !== 'satellite') return
+
+  const key = boundsKey(cachedLayout.bounds)
+  if (satelliteImage && satelliteBoundsKey === key) return  // already fetched
+  if (satelliteFetchInFlight) return
+
+  satelliteFetchInFlight = true
+  fetchSatelliteImage(cachedLayout.bounds).then(result => {
+    satelliteFetchInFlight = false
+    if (result) {
+      satelliteImage = result
+      satelliteBoundsKey = key
+      // Redraw with satellite background
+      renderTrackCache()
+      blitTrack()
+      drawZoomHighlight()
+      drawPositionDot()
+    }
+  }).catch(() => {
+    satelliteFetchInFlight = false
+  })
+}
+
+/** Draw satellite image onto the given canvas context, mapped to GPS projection. */
+function drawSatelliteBackground(c: CanvasRenderingContext2D): void {
+  if (!satelliteImage || !proj) return
+
+  // Map the satellite image's lat/lon bounds to canvas pixel positions
+  const topLeft = gpsToCanvas(satelliteImage.maxLat, satelliteImage.minLon)
+  const bottomRight = gpsToCanvas(satelliteImage.minLat, satelliteImage.maxLon)
+  if (!topLeft || !bottomRight) return
+
+  const dx = topLeft.x
+  const dy = topLeft.y
+  const dw = bottomRight.x - topLeft.x
+  const dh = bottomRight.y - topLeft.y
+
+  c.drawImage(satelliteImage.image, dx, dy, dw, dh)
+}
+
 // ── Drawing ───────────────────────────────────────────────────────────────────
 
 function drawEmpty(): void {
@@ -327,6 +385,32 @@ function drawColoredTrack(c: CanvasRenderingContext2D, mode: TrackMapColorMode):
   }
 }
 
+/** Draw a dark border path behind the colored track for satellite contrast. */
+function drawColoredTrackBorder(c: CanvasRenderingContext2D): void {
+  const store = telemetryStore
+  if (!store || store.length === 0) return
+
+  const startIdx = currentLapStartIdx
+  const endIdx = currentLapEndIdx
+  if (endIdx <= startIdx) return
+
+  c.beginPath()
+  c.strokeStyle = 'rgba(0,0,0,0.35)'
+  c.lineWidth = trackLW + 2 * dpr
+  c.lineJoin = 'round'
+  c.lineCap = 'round'
+
+  let first = true
+  for (let i = startIdx; i <= endIdx; i++) {
+    if (store.lat[i] === 0 && store.lon[i] === 0) continue
+    const px = gpsToCanvas(store.lat[i], store.lon[i])
+    if (!px) continue
+    if (first) { c.moveTo(px.x, px.y); first = false }
+    else c.lineTo(px.x, px.y)
+  }
+  c.stroke()
+}
+
 /** Render the static track polyline + S/F marker to the offscreen cache. */
 function renderTrackCache(): void {
   if (!cachedLayout || !proj) return
@@ -342,11 +426,52 @@ function renderTrackCache(): void {
 
   const { points, startFinishLat, startFinishLon } = cachedLayout
   const config = getTrackMapConfig()
+  const hasBg = config.mapBackground !== 'none'
+
+  // Clip to rounded rectangle when a background is drawn
+  if (hasBg) {
+    const radius = 8 * dpr
+    c.save()
+    c.beginPath()
+    c.roundRect(0, 0, trackCache.width, trackCache.height, radius)
+    c.clip()
+  }
+
+  // Background layer
+  if (config.mapBackground === 'satellite' && satelliteImage) {
+    drawSatelliteBackground(c)
+  } else if (config.mapBackground === 'solid') {
+    c.fillStyle = '#1a1a1a'
+    c.fillRect(0, 0, trackCache!.width, trackCache!.height)
+  }
+
+  const hasSatBg = config.mapBackground === 'satellite' && !!satelliteImage
+
+  // Dark border stroke for contrast on satellite imagery
+  if (hasSatBg) {
+    if (config.trackColor === 'solid') {
+      c.beginPath()
+      c.strokeStyle = 'rgba(0,0,0,0.6)'
+      c.lineWidth = trackLW + 4 * dpr
+      c.lineJoin = 'round'
+      c.lineCap = 'round'
+      let first = true
+      for (const pt of points) {
+        const px = gpsToCanvas(pt.lat, pt.lon)
+        if (!px) continue
+        if (first) { c.moveTo(px.x, px.y); first = false }
+        else { c.lineTo(px.x, px.y) }
+      }
+      c.stroke()
+    } else {
+      drawColoredTrackBorder(c)
+    }
+  }
 
   if (config.trackColor === 'solid') {
     // Original white polyline
     c.beginPath()
-    c.strokeStyle = 'rgba(255,255,255,0.6)'
+    c.strokeStyle = hasSatBg ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.6)'
     c.lineWidth = trackLW
     c.lineJoin = 'round'
     c.lineCap = 'round'
@@ -378,6 +503,22 @@ function renderTrackCache(): void {
              sfPx.y - Math.sin(perpAngle) * halfLen)
     c.stroke()
     c.setLineDash([])
+    c.restore()
+  }
+
+  // Attribution when satellite background is active
+  if (hasSatBg) {
+    c.save()
+    c.font = `${Math.round(9 * dpr)}px sans-serif`
+    c.fillStyle = 'rgba(255,255,255,0.5)'
+    c.textAlign = 'right'
+    c.textBaseline = 'bottom'
+    c.fillText('Powered by Esri', trackCache!.width - 4 * dpr, trackCache!.height - 2 * dpr)
+    c.restore()
+  }
+
+  // Restore the rounded-rect clip
+  if (hasBg) {
     c.restore()
   }
 }
@@ -512,6 +653,8 @@ export function initTrackMap(el: HTMLCanvasElement): void {
     lastDotLat = NaN
     lastDotLon = NaN
     trackedLapIdx = -1
+    satelliteImage = null
+    satelliteBoundsKey = ''
     const ld = lapData
     if (ld?.hasLapData && ld.trackLayout) {
       cachedLayout = ld.trackLayout
@@ -520,6 +663,7 @@ export function initTrackMap(el: HTMLCanvasElement): void {
       buildProjection(cachedLayout)
       computeSpeedMax()
       updateCurrentLap()
+      maybeFetchSatellite()
       renderTrackCache()
       blitTrack()
       drawPositionDot()
@@ -569,6 +713,7 @@ export function initTrackMap(el: HTMLCanvasElement): void {
   // Rebuild track cache when color settings change
   onTrackMapConfigChange(() => {
     if (cachedLayout && proj) {
+      maybeFetchSatellite()
       updateCurrentLap()
       renderTrackCache()
       blitTrack()

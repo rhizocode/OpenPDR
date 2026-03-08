@@ -11,7 +11,7 @@ import { getEditMode, setEditMode, onEditModeChange } from './state'
 import { applyOverlayConfig, getOverlayConfig, setOverlayConfig } from './hud'
 import { syncPositionsToB } from './compare-overlay-b'
 import { DEFAULT_LAYOUT, getTrackMapConfig, setTrackMapConfig } from './defaults'
-import type { TrackMapColorMode } from './defaults'
+import type { TrackMapColorMode, TrackMapBgMode } from './defaults'
 import { STORAGE_KEYS } from './storage-keys'
 
 const LAYOUT_STORAGE_KEY = STORAGE_KEYS.overlayLayout
@@ -360,6 +360,32 @@ function buildTrackMapSubSettings(): HTMLDivElement {
   trackRow.appendChild(trackLabel)
   trackRow.appendChild(trackSelect)
   wrapper.appendChild(trackRow)
+
+  // Map Background
+  const bgOptions: { value: TrackMapBgMode; label: string }[] = [
+    { value: 'none', label: 'None' },
+    { value: 'satellite', label: 'Satellite' },
+    { value: 'solid', label: 'Solid' },
+  ]
+  const bgRow = document.createElement('div')
+  bgRow.className = 'settings-row'
+  const bgLabel = document.createElement('label')
+  bgLabel.textContent = 'Map'
+  const bgSelect = document.createElement('select')
+  for (const opt of bgOptions) {
+    const el = document.createElement('option')
+    el.value = opt.value
+    el.textContent = opt.label
+    bgSelect.appendChild(el)
+  }
+  bgSelect.value = config.mapBackground
+  bgSelect.addEventListener('change', () => {
+    const c = getTrackMapConfig()
+    setTrackMapConfig({ ...c, mapBackground: bgSelect.value as TrackMapBgMode })
+  })
+  bgRow.appendChild(bgLabel)
+  bgRow.appendChild(bgSelect)
+  wrapper.appendChild(bgRow)
 
   return wrapper
 }

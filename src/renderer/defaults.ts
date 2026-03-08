@@ -55,15 +55,18 @@ export function resolveGearDisplay(gear: string | undefined): string {
 // ── Track map color config ──
 
 export type TrackMapColorMode = 'solid' | 'speed' | 'throttle' | 'brake'
+export type TrackMapBgMode = 'none' | 'satellite' | 'solid'
 
 export interface TrackMapConfig {
   dotColor: TrackMapColorMode
   trackColor: TrackMapColorMode
+  mapBackground: TrackMapBgMode
 }
 
 export const DEFAULT_TRACKMAP_CONFIG: TrackMapConfig = {
   dotColor: 'speed',
   trackColor: 'solid',
+  mapBackground: 'none',
 }
 
 let trackMapConfig: TrackMapConfig = loadTrackMapConfig()
