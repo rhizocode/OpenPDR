@@ -72,6 +72,8 @@ let hudActive = false  // true after first telemetry row received
 
 // ── Carry-forward state for sparse channels ──
 let lastKnownGear = '-'
+/** Last numbered gear (ignoring N) — used for shift direction across N gaps */
+let lastRankedGear = '-'
 
 // ── Shift indicator ──
 const shiftArrow = document.getElementById('hud-shift-arrow') as HTMLSpanElement
@@ -99,6 +101,7 @@ function flashShift(direction: 'up' | 'down'): void {
 
 export function resetCarryForward(): void {
   lastKnownGear = '-'
+  lastRankedGear = '-'
   if (shiftFlashTimer) { clearTimeout(shiftFlashTimer); shiftFlashTimer = null }
   shiftArrow.className = 'shift-arrow'
 }
@@ -139,15 +142,24 @@ function updateHud(row: TelemetryRow | null): void {
   }
 
   // Gear (carry forward sparse value — cheap DOM text update + shift detection)
+  // Manual transmissions briefly pass through N between gears (e.g. 3→N→4).
+  // We skip the N transition for arrow purposes and compare against the last
+  // numbered gear so the arrow still fires correctly.
   if (row.gear !== undefined) {
     const newDisplay = resolveGearDisplay(row.gear)
     if (newDisplay !== lastKnownGear && overlayConfig.gear) {
-      const prevRank = gearRank(lastKnownGear)
       const newRank = gearRank(newDisplay)
-      if (prevRank > 0 && newRank > 0) {
-        flashShift(newRank > prevRank ? 'up' : 'down')
+      if (newRank > 0) {
+        // Transitioning to a numbered gear — compare against last ranked gear
+        const prevRank = gearRank(lastRankedGear)
+        if (prevRank > 0 && newRank !== prevRank) {
+          flashShift(newRank > prevRank ? 'up' : 'down')
+        }
       }
+      // N (or P/R) → no arrow flash
     }
+    // Track last ranked gear separately so N gaps don't break detection
+    if (gearRank(newDisplay) > 0) lastRankedGear = newDisplay
     lastKnownGear = newDisplay
   }
   if (overlayConfig.gear) {
