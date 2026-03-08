@@ -90,25 +90,20 @@ const pdrWeb: PdrApi = {
       const input = document.createElement('input')
       input.type = 'file'
       input.accept = '.mp4'
-      let resolved = false
+      input.style.display = 'none'
+      document.body.appendChild(input)
 
-      input.onchange = () => {
-        if (resolved) return
-        resolved = true
+      const cleanup = () => { input.remove() }
+
+      input.addEventListener('change', () => {
+        cleanup()
         const file = input.files?.[0]
-        if (!file) { resolve(null); return }
-        resolve(stashFile(file))
-      }
-      // Handle cancel — the change event won't fire, so use a focus fallback
-      const onFocus = () => {
-        window.removeEventListener('focus', onFocus)
-        setTimeout(() => {
-          if (resolved) return
-          resolved = true
-          resolve(null)
-        }, 300)
-      }
-      window.addEventListener('focus', onFocus)
+        resolve(file ? stashFile(file) : null)
+      })
+      input.addEventListener('cancel', () => {
+        cleanup()
+        resolve(null)
+      })
       input.click()
     })
   },
