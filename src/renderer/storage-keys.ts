@@ -17,4 +17,5 @@ export const STORAGE_KEYS = {
   panelState: 'pdr-panel-state',
   lapsPanelWidth: 'pdr-laps-panel-width',
   brakeMode: 'pdr-brake-mode',
+  trackMapConfig: 'pdr-trackmap-config',
 } as const

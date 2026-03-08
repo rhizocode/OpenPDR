@@ -6,9 +6,11 @@
  * A position dot tracks the current video time.
  */
 
-import { lapData, currentRow, interpPrev, interpNext, interpAlpha, telemetryStore, chartZoom, onChartZoomChange } from './state'
+import { lapData, currentRow, interpPrev, interpNext, interpAlpha, telemetryStore, chartZoom, onChartZoomChange, getSyncedTime } from './state'
 import { onTelemetryLoad, onFrameTick } from './state'
 import { findClosestTimeIndex } from '../shared/telemetry-store'
+import { getTrackMapConfig, onTrackMapConfigChange, getBrakeDisplay } from './defaults'
+import type { TrackMapColorMode } from './defaults'
 import type { TrackLayout } from './types'
 
 let canvas: HTMLCanvasElement
@@ -26,6 +28,103 @@ let trackCacheCtx: CanvasRenderingContext2D | null = null
 let lastDotLat = NaN
 let lastDotLon = NaN
 let lastZoomRef: typeof chartZoom = null
+
+// ── Track color state ────────────────────────────────────────────────────────
+
+let trackLW = 5               // track line width in device pixels (recomputed on resize)
+
+let speedMax = 160            // auto-scaled max speed in kph
+let currentLapStartIdx = 0    // telemetry store index for current lap start
+let currentLapEndIdx = 0      // telemetry store index for current lap end
+let trackedLapIdx = -1        // which lap index the colored cache was built for
+
+/** Map a 0..1 normalized value to red→yellow→green. */
+function valueToColor(t: number): string {
+  t = Math.max(0, Math.min(1, t))
+  let r: number, g: number
+  if (t < 0.5) {
+    r = 255
+    g = Math.round((t / 0.5) * 220)
+  } else {
+    r = Math.round(255 * (1 - (t - 0.5) / 0.5))
+    g = 220
+  }
+  return `rgb(${r},${g},0)`
+}
+
+function autoScaleStep(value: number): number {
+  if (value <= 0) return 1
+  const mag = Math.pow(10, Math.floor(Math.log10(value)))
+  if (value / mag <= 2) return mag / 5
+  if (value / mag <= 5) return mag / 2
+  return mag
+}
+
+function niceMax(value: number, step: number): number {
+  return Math.ceil(value / step) * step
+}
+
+/** Compute auto-scaled max speed from the telemetry file. */
+function computeSpeedMax(): void {
+  const store = telemetryStore
+  if (!store || store.length === 0) { speedMax = 160; return }
+  let max = 0
+  for (let i = 0; i < store.length; i++) {
+    if (store.speed_kph[i] > max) max = store.speed_kph[i]
+  }
+  if (max <= 0) { speedMax = 160; return }
+  const step = autoScaleStep(max)
+  speedMax = niceMax(max, step)
+}
+
+/** Detect current lap and update store index range. Returns true if lap changed. */
+function updateCurrentLap(): boolean {
+  const ld = lapData
+  const store = telemetryStore
+  if (!ld?.hasLapData || !store || store.length === 0) {
+    if (trackedLapIdx !== -1) {
+      trackedLapIdx = -1
+      currentLapStartIdx = 0
+      currentLapEndIdx = store ? store.length - 1 : 0
+      return true
+    }
+    return false
+  }
+
+  const t = getSyncedTime()
+  let lapIdx = -1
+
+  // Check if currently inside a lap
+  for (let i = 0; i < ld.laps.length; i++) {
+    if (t >= ld.laps[i].startTime && t < ld.laps[i].endTime) {
+      lapIdx = i
+      break
+    }
+  }
+
+  // If between laps, use last completed lap
+  if (lapIdx === -1) {
+    for (let i = ld.laps.length - 1; i >= 0; i--) {
+      if (t >= ld.laps[i].endTime) { lapIdx = i; break }
+    }
+  }
+
+  // Before any laps started — use first lap
+  if (lapIdx === -1 && ld.laps.length > 0) lapIdx = 0
+
+  if (lapIdx === trackedLapIdx) return false
+  trackedLapIdx = lapIdx
+
+  if (lapIdx >= 0 && lapIdx < ld.laps.length) {
+    const lap = ld.laps[lapIdx]
+    currentLapStartIdx = findClosestTimeIndex(store.time, lap.startTime, store.length)
+    currentLapEndIdx = findClosestTimeIndex(store.time, lap.endTime, store.length)
+  } else {
+    currentLapStartIdx = 0
+    currentLapEndIdx = store.length - 1
+  }
+  return true
+}
 
 // ── Container sizing ─────────────────────────────────────────────────────────
 
@@ -107,6 +206,10 @@ function buildProjection(layout: TrackLayout): void {
     lonRange,
     cosLat,
   }
+
+  // Track line width: ~3% of smaller canvas dimension, min 4 CSS px
+  const minDim = Math.min(canvas.width, canvas.height)
+  trackLW = Math.max(4 * dpr, Math.round(minDim * 0.03))
 }
 
 /** Allocating version — used in non-hot paths (track cache, S/F marker). */
@@ -179,6 +282,51 @@ function drawEmpty(): void {
   ctx.textBaseline = 'alphabetic'
 }
 
+/** Draw the track as individually colored line segments based on telemetry values. */
+function drawColoredTrack(c: CanvasRenderingContext2D, mode: TrackMapColorMode): void {
+  const store = telemetryStore
+  if (!store || store.length === 0) return
+
+  const startIdx = currentLapStartIdx
+  const endIdx = currentLapEndIdx
+  if (endIdx <= startIdx) return
+
+  c.lineWidth = trackLW
+  c.lineCap = 'round'
+
+  let prevX = NaN, prevY = NaN
+  for (let i = startIdx; i <= endIdx; i++) {
+    if (store.lat[i] === 0 && store.lon[i] === 0) continue
+    const px = gpsToCanvas(store.lat[i], store.lon[i])
+    if (!px) continue
+
+    if (!isNaN(prevX)) {
+      let t: number
+      switch (mode) {
+        case 'speed':
+          t = speedMax > 0 ? store.speed_kph[i] / speedMax : 0
+          break
+        case 'throttle':
+          t = store.throttle[i]
+          break
+        case 'brake':
+          t = 1 - getBrakeDisplay(store.brake[i]) // invert: high brake = red
+          break
+        default:
+          t = 0
+      }
+
+      c.beginPath()
+      c.strokeStyle = valueToColor(t)
+      c.moveTo(prevX, prevY)
+      c.lineTo(px.x, px.y)
+      c.stroke()
+    }
+    prevX = px.x
+    prevY = px.y
+  }
+}
+
 /** Render the static track polyline + S/F marker to the offscreen cache. */
 function renderTrackCache(): void {
   if (!cachedLayout || !proj) return
@@ -193,21 +341,26 @@ function renderTrackCache(): void {
   const c = trackCacheCtx!
 
   const { points, startFinishLat, startFinishLon } = cachedLayout
+  const config = getTrackMapConfig()
 
-  // Track polyline — scale by DPR so it looks the same as export at native resolution
-  c.beginPath()
-  c.strokeStyle = 'rgba(255,255,255,0.6)'
-  c.lineWidth = 5 * dpr
-  c.lineJoin = 'round'
-  c.lineCap = 'round'
-  let first = true
-  for (const pt of points) {
-    const px = gpsToCanvas(pt.lat, pt.lon)
-    if (!px) continue
-    if (first) { c.moveTo(px.x, px.y); first = false }
-    else { c.lineTo(px.x, px.y) }
+  if (config.trackColor === 'solid') {
+    // Original white polyline
+    c.beginPath()
+    c.strokeStyle = 'rgba(255,255,255,0.6)'
+    c.lineWidth = trackLW
+    c.lineJoin = 'round'
+    c.lineCap = 'round'
+    let first = true
+    for (const pt of points) {
+      const px = gpsToCanvas(pt.lat, pt.lon)
+      if (!px) continue
+      if (first) { c.moveTo(px.x, px.y); first = false }
+      else { c.lineTo(px.x, px.y) }
+    }
+    c.stroke()
+  } else {
+    drawColoredTrack(c, config.trackColor)
   }
-  c.stroke()
 
   // Start/finish marker — perpendicular to track direction
   const sfPx = gpsToCanvas(startFinishLat, startFinishLon)
@@ -238,9 +391,9 @@ function blitTrack(): void {
 }
 
 /** Pre-allocated output for currentGps — reused every frame. */
-const _gpsOut = { lat: NaN, lon: NaN, spd: 0 }
+const _gpsOut = { lat: NaN, lon: NaN, spd: 0, throttle: 0, brake: 0 }
 
-/** Interpolated GPS position for the current frame (zero allocation). */
+/** Interpolated GPS position + telemetry for the current frame (zero allocation). */
 function currentGps(): typeof _gpsOut | null {
   if (!currentRow) return null
   if (interpPrev && interpNext && interpPrev !== interpNext) {
@@ -248,15 +401,19 @@ function currentGps(): typeof _gpsOut | null {
     _gpsOut.lat = interpPrev.lat + (interpNext.lat - interpPrev.lat) * a
     _gpsOut.lon = interpPrev.lon + (interpNext.lon - interpPrev.lon) * a
     _gpsOut.spd = interpPrev.speed_kph + (interpNext.speed_kph - interpPrev.speed_kph) * a
+    _gpsOut.throttle = interpPrev.throttle + (interpNext.throttle - interpPrev.throttle) * a
+    _gpsOut.brake = interpPrev.brake + (interpNext.brake - interpPrev.brake) * a
   } else {
     _gpsOut.lat = currentRow.lat
     _gpsOut.lon = currentRow.lon
     _gpsOut.spd = currentRow.speed_kph
+    _gpsOut.throttle = currentRow.throttle
+    _gpsOut.brake = currentRow.brake
   }
   return _gpsOut
 }
 
-function drawPositionDot(gps?: { lat: number; lon: number; spd: number }): void {
+function drawPositionDot(gps?: typeof _gpsOut): void {
   if (!cachedLayout) return
   const pos = gps ?? currentGps()
   if (!pos) return
@@ -264,23 +421,35 @@ function drawPositionDot(gps?: { lat: number; lon: number; spd: number }): void 
   const px = gpsToCanvasInto(pos.lat, pos.lon)
   if (!px) return
 
-  // Colour by speed: green → yellow → red
-  const spd = Math.max(0, pos.spd)
-  let r: number, g: number
-  if (spd < 80) {
-    r = Math.round((spd / 80) * 255)
-    g = 220
-  } else {
-    r = 255
-    g = Math.round(220 * (1 - Math.min((spd - 80) / 80, 1)))
+  const config = getTrackMapConfig()
+  let fillColor: string
+
+  switch (config.dotColor) {
+    case 'solid':
+      fillColor = '#ffffff'
+      break
+    case 'speed': {
+      const t = speedMax > 0 ? Math.max(0, pos.spd) / speedMax : 0
+      fillColor = valueToColor(t)
+      break
+    }
+    case 'throttle':
+      fillColor = valueToColor(pos.throttle)
+      break
+    case 'brake':
+      fillColor = valueToColor(1 - getBrakeDisplay(pos.brake))
+      break
+    default:
+      fillColor = '#ffffff'
   }
 
+  const dotR = Math.max(trackLW * 0.9, 6 * dpr)
   ctx.beginPath()
-  ctx.arc(px.x, px.y, 6 * dpr, 0, Math.PI * 2)
-  ctx.fillStyle = `rgb(${r},${g},0)`
+  ctx.arc(px.x, px.y, dotR, 0, Math.PI * 2)
+  ctx.fillStyle = fillColor
   ctx.fill()
   ctx.strokeStyle = '#fff'
-  ctx.lineWidth = 1.5 * dpr
+  ctx.lineWidth = Math.max(1.5 * dpr, dotR * 0.25)
   ctx.stroke()
 }
 
@@ -298,7 +467,7 @@ function drawZoomHighlight(): void {
 
   ctx.beginPath()
   ctx.strokeStyle = 'rgba(255, 180, 0, 0.9)'
-  ctx.lineWidth = 7 * dpr
+  ctx.lineWidth = Math.round(trackLW * 1.4)
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
 
@@ -342,12 +511,15 @@ export function initTrackMap(el: HTMLCanvasElement): void {
   onTelemetryLoad(() => {
     lastDotLat = NaN
     lastDotLon = NaN
+    trackedLapIdx = -1
     const ld = lapData
     if (ld?.hasLapData && ld.trackLayout) {
       cachedLayout = ld.trackLayout
       fitContainerToTrack(cachedLayout)
       resizeCanvas()
       buildProjection(cachedLayout)
+      computeSpeedMax()
+      updateCurrentLap()
       renderTrackCache()
       blitTrack()
       drawPositionDot()
@@ -362,6 +534,13 @@ export function initTrackMap(el: HTMLCanvasElement): void {
     const resized = resizeCanvas()
     if (cachedLayout && proj) {
       if (resized) renderTrackCache()
+
+      // Check if lap changed (only matters for colored track mode)
+      const tmConfig = getTrackMapConfig()
+      if (tmConfig.trackColor !== 'solid') {
+        const lapChanged = updateCurrentLap()
+        if (lapChanged) renderTrackCache()
+      }
 
       // Skip redraw when position unchanged, no resize, and no zoom change
       const gps = currentGps()
@@ -383,6 +562,16 @@ export function initTrackMap(el: HTMLCanvasElement): void {
     if (cachedLayout && proj) {
       blitTrack()
       drawZoomHighlight()
+      drawPositionDot()
+    }
+  })
+
+  // Rebuild track cache when color settings change
+  onTrackMapConfigChange(() => {
+    if (cachedLayout && proj) {
+      updateCurrentLap()
+      renderTrackCache()
+      blitTrack()
       drawPositionDot()
     }
   })

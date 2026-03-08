@@ -52,6 +52,45 @@ export function resolveGearDisplay(gear: string | undefined): string {
   return GEAR_DISPLAY[gear] ?? gear
 }
 
+// ── Track map color config ──
+
+export type TrackMapColorMode = 'solid' | 'speed' | 'throttle' | 'brake'
+
+export interface TrackMapConfig {
+  dotColor: TrackMapColorMode
+  trackColor: TrackMapColorMode
+}
+
+export const DEFAULT_TRACKMAP_CONFIG: TrackMapConfig = {
+  dotColor: 'speed',
+  trackColor: 'solid',
+}
+
+let trackMapConfig: TrackMapConfig = loadTrackMapConfig()
+
+function loadTrackMapConfig(): TrackMapConfig {
+  const saved = localStorage.getItem(STORAGE_KEYS.trackMapConfig)
+  if (saved) {
+    try { return { ...DEFAULT_TRACKMAP_CONFIG, ...JSON.parse(saved) } }
+    catch { return { ...DEFAULT_TRACKMAP_CONFIG } }
+  }
+  return { ...DEFAULT_TRACKMAP_CONFIG }
+}
+
+export function getTrackMapConfig(): TrackMapConfig { return trackMapConfig }
+
+const trackMapConfigListeners: Array<() => void> = []
+
+export function onTrackMapConfigChange(cb: () => void): void {
+  trackMapConfigListeners.push(cb)
+}
+
+export function setTrackMapConfig(config: TrackMapConfig): void {
+  trackMapConfig = config
+  localStorage.setItem(STORAGE_KEYS.trackMapConfig, JSON.stringify(config))
+  for (const cb of trackMapConfigListeners) cb()
+}
+
 // ── Brake display mode ──
 // Raw CAN bus "brake.position" is pedal travel (0–1). Power-assisted brakes
 // mean hard braking rarely exceeds ~40% pedal travel.  "Enhanced" mode scales

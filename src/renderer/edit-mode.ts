@@ -10,7 +10,8 @@ import type { OverlayConfig, OverlayKey, OverlayPosition, OverlayLayout } from '
 import { getEditMode, setEditMode, onEditModeChange } from './state'
 import { applyOverlayConfig, getOverlayConfig, setOverlayConfig } from './hud'
 import { syncPositionsToB } from './compare-overlay-b'
-import { DEFAULT_LAYOUT } from './defaults'
+import { DEFAULT_LAYOUT, getTrackMapConfig, setTrackMapConfig } from './defaults'
+import type { TrackMapColorMode } from './defaults'
 import { STORAGE_KEYS } from './storage-keys'
 
 const LAYOUT_STORAGE_KEY = STORAGE_KEYS.overlayLayout
@@ -264,6 +265,11 @@ export function buildEditPanel(panel: HTMLDivElement): void {
     lbl.appendChild(document.createTextNode(label))
     row.appendChild(lbl)
     panel.appendChild(row)
+
+    // Track Map sub-settings: dot color + track color dropdowns
+    if (key === 'trackMap') {
+      panel.appendChild(buildTrackMapSubSettings())
+    }
   }
 
   // Reset layout button
@@ -296,6 +302,66 @@ export function buildEditPanel(panel: HTMLDivElement): void {
   })
   actions.appendChild(resetBtn)
   panel.appendChild(actions)
+}
+
+// ── Track Map sub-settings ──
+
+function buildTrackMapSubSettings(): HTMLDivElement {
+  const wrapper = document.createElement('div')
+  wrapper.className = 'trackmap-sub-settings'
+
+  const options: { value: TrackMapColorMode; label: string }[] = [
+    { value: 'solid', label: 'Solid' },
+    { value: 'speed', label: 'Speed' },
+    { value: 'throttle', label: 'Throttle' },
+    { value: 'brake', label: 'Brake' },
+  ]
+
+  const config = getTrackMapConfig()
+
+  // Vehicle Dot Color
+  const dotRow = document.createElement('div')
+  dotRow.className = 'settings-row'
+  const dotLabel = document.createElement('label')
+  dotLabel.textContent = 'Dot Color'
+  const dotSelect = document.createElement('select')
+  for (const opt of options) {
+    const el = document.createElement('option')
+    el.value = opt.value
+    el.textContent = opt.label
+    dotSelect.appendChild(el)
+  }
+  dotSelect.value = config.dotColor
+  dotSelect.addEventListener('change', () => {
+    const c = getTrackMapConfig()
+    setTrackMapConfig({ ...c, dotColor: dotSelect.value as TrackMapColorMode })
+  })
+  dotRow.appendChild(dotLabel)
+  dotRow.appendChild(dotSelect)
+  wrapper.appendChild(dotRow)
+
+  // Track Color
+  const trackRow = document.createElement('div')
+  trackRow.className = 'settings-row'
+  const trackLabel = document.createElement('label')
+  trackLabel.textContent = 'Track Color'
+  const trackSelect = document.createElement('select')
+  for (const opt of options) {
+    const el = document.createElement('option')
+    el.value = opt.value
+    el.textContent = opt.label
+    trackSelect.appendChild(el)
+  }
+  trackSelect.value = config.trackColor
+  trackSelect.addEventListener('change', () => {
+    const c = getTrackMapConfig()
+    setTrackMapConfig({ ...c, trackColor: trackSelect.value as TrackMapColorMode })
+  })
+  trackRow.appendChild(trackLabel)
+  trackRow.appendChild(trackSelect)
+  wrapper.appendChild(trackRow)
+
+  return wrapper
 }
 
 // ── Initialize ──

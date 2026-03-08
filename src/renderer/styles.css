@@ -1275,6 +1275,20 @@ html, body {
   font-size: inherit;
 }
 
+/* Track map sub-settings (indented under Track Map checkbox) */
+.trackmap-sub-settings {
+  padding-left: 24px;
+}
+
+.trackmap-sub-settings .settings-row {
+  padding: 2px 0;
+}
+
+.trackmap-sub-settings label {
+  font-size: 0.85em;
+  color: rgba(255, 255, 255, 0.7);
+}
+
 /* Font size stepper */
 .font-size-row {
   justify-content: space-between;
