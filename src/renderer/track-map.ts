@@ -31,10 +31,6 @@ let satelliteImage: SatelliteResult | null = null
 let satelliteFetchInFlight = false
 let satelliteBoundsKey = ''   // tracks which bounds we fetched for
 
-// Last drawn dot position — skip redraw when unchanged
-let lastDotLat = NaN
-let lastDotLon = NaN
-let lastZoomRef: typeof chartZoom = null
 
 // ── Track color state ────────────────────────────────────────────────────────
 
@@ -705,8 +701,6 @@ export function initTrackMap(el: HTMLCanvasElement): void {
   drawEmpty()
 
   onTelemetryLoad(() => {
-    lastDotLat = NaN
-    lastDotLon = NaN
     trackedLapIdx = -1
     satelliteImage = null
     satelliteBoundsKey = ''
@@ -741,19 +735,12 @@ export function initTrackMap(el: HTMLCanvasElement): void {
         if (lapChanged) renderTrackCache()
       }
 
-      // Skip redraw when position unchanged, no resize, and no zoom change
       const gps = currentGps()
-      const lat = gps?.lat ?? NaN
-      const lon = gps?.lon ?? NaN
-      const zoomChanged = lastZoomRef !== chartZoom
-      lastZoomRef = chartZoom
-      if (lat === lastDotLat && lon === lastDotLon && !resized && !zoomChanged) return
-      lastDotLat = lat
-      lastDotLon = lon
+      if (!gps || isNaN(gps.lat) || isNaN(gps.lon)) return
 
       blitTrack()
       drawZoomHighlight()
-      drawPositionDot(gps ?? undefined)
+      drawPositionDot(gps)
     }
   })
 

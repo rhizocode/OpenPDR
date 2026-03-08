@@ -457,3 +457,56 @@ export function trimStore(store: TelemetryStore): TelemetryStore {
     vse_status: store.vse_status.slice(0, n),
   }
 }
+
+/**
+ * Interpolate GPS lat/lon between genuine fixes.
+ *
+ * GPS receivers often update slower than the telemetry row rate (e.g. 2 Hz
+ * GPS vs 10 Hz rows), so consecutive rows carry identical lat/lon values.
+ * This creates a staircase pattern that causes visible dot stuttering on
+ * the track map.
+ *
+ * This function finds runs of duplicate lat/lon and replaces them with
+ * values linearly interpolated by time between the bounding genuine fixes.
+ * Called once after parsing — no runtime cost.
+ */
+export function interpolateGps(store: TelemetryStore): void {
+  const n = store.length
+  if (n < 3) return
+
+  const lat = store.lat
+  const lon = store.lon
+  const time = store.time
+
+  let i = 0
+  while (i < n) {
+    // Find the end of a run of identical lat/lon
+    const refLat = lat[i]
+    const refLon = lon[i]
+    let j = i + 1
+    while (j < n && lat[j] === refLat && lon[j] === refLon) j++
+
+    // If this run is only 1 row, or we're at the very end, nothing to interpolate
+    if (j - i <= 1 || j >= n) {
+      i = j
+      continue
+    }
+
+    // We have a run [i .. j-1] of identical coordinates.
+    // The genuine fix before the run is at i, the next genuine fix is at j.
+    // Linearly interpolate all rows in (i, j) exclusive by time.
+    const nextLat = lat[j]
+    const nextLon = lon[j]
+    const t0 = time[i]
+    const span = time[j] - t0
+    if (span <= 0) { i = j; continue }
+
+    for (let k = i + 1; k < j; k++) {
+      const alpha = (time[k] - t0) / span
+      lat[k] = refLat + (nextLat - refLat) * alpha
+      lon[k] = refLon + (nextLon - refLon) * alpha
+    }
+
+    i = j
+  }
+}

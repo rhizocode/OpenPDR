@@ -19,7 +19,7 @@ import { findAdcoTrack, parseAdvi, parseAdop, parseAdeg } from './adco-track'
 import { parseSampleTable, getSampleOffsets, parseTrackTiming } from './sample-table'
 import { decodePacket } from './telemetry-decoder'
 import { extractEvents } from './event-extractor'
-import { createTelemetryStore, writeRow, trimStore } from '../shared/telemetry-store'
+import { createTelemetryStore, writeRow, trimStore, interpolateGps } from '../shared/telemetry-store'
 import type { TelemetryStore } from '../shared/telemetry-store'
 import { detectLaps, detectLapsFromEvents } from './lap-detection'
 import type { ParseResult, SessionInfo, TelemetryRow, EmbeddedEvent, ProgressCallback } from './types'
@@ -179,6 +179,9 @@ export async function parsePdrFile(
 
   // Trim store to actual size (capacity was estimated)
   const trimmedStore = trimStore(store)
+
+  // Interpolate GPS between genuine fixes to eliminate duplicate-coordinate stutter
+  interpolateGps(trimmedStore)
 
   // If no refLocation from adop, derive it from the first decoded GPS position
   if (!refLocation && trimmedStore.length > 0) {
