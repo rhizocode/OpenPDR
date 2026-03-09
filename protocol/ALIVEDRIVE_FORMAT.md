@@ -145,10 +145,10 @@ Repeated for each channel:
 Offset  Size  Type    Field
 0       2     u16 BE  unit_id (maps to adud unit definitions)
 2       1     u8      type (0x01 = numeric)
-3       1     u8      format/subtype indicator
+3       1     u8      type_code (data type identifier — see §3.3 Type Code Registry)
 4       8     f64 BE  scale factor (raw × scale → SI unit)
 12      8     f64 BE  offset (added after scaling, in SI unit; Kelvin for temps)
-20      var   ---     min/max raw value bounds (width matches data type)
+20      var   ---     min/max raw value bounds (size determined by type_code)
 ```
 
 **Enum channel descriptor** (type byte = 0x02):
@@ -156,7 +156,7 @@ Offset  Size  Type    Field
 Offset  Size  Type    Field
 0       2     u16 BE  unit_id (typically 6 = none.none)
 2       1     u8      type (0x02 = enum)
-3       1     u8      format/subtype indicator (0x02 for u8 enum)
+3       1     u8      type_code (0x02 for u8 enum — see §3.3 Type Code Registry)
 4       1     u8      num_subfields (always 1)
 
 For each subfield:
@@ -169,6 +169,15 @@ For each subfield:
     var   string  null-terminated ASCII label
     1     u8      raw value
 ```
+
+> **Type code note:** The `type_code` byte in the `adcp` descriptor
+> determines the size of the min/max bound fields that follow. This is the
+> channel's **wire type** — the serialized data type used in the telemetry
+> stream — which is the same value stored in the `adcr` rate table (§3.2).
+> It may differ from the channel's native/ideal precision; for example, a
+> GPS coordinate channel has scale/offset values derived from float64
+> precision, but its wire type is `0x05` (i32), meaning it is serialized as
+> a 4-byte signed integer. See the Type Code Registry in §3.3.
 
 See §2.4 for the complete decoded value-to-label mappings for all 9 enum channels.
 
@@ -365,167 +374,214 @@ Offset  Size  Field
 0       3-4   padding bytes (3 for first group, 4 for subsequent groups)
 3/4     4     period (big-endian u32, in 100 ns ticks)
 7/8     2     num_channels (big-endian u16)
-9/10    N×3   channel entries: ch_id (u16 BE) + width (u8)
+9/10    N×3   channel entries: ch_id (u16 BE) + type_code (u8)
 ```
 
 > **Note:** In version 1 of the `adcr` format, the first group uses 3 padding
 > bytes before the period field, but all subsequent groups use 4 padding bytes.
 > Parsers must account for this asymmetry.
 
-### 3.3 Rate Groups
+### 3.3 Type Code Registry
+
+The `type_code` byte in each `adcr` channel entry (and each `adcp`
+descriptor) is a data type identifier from a shared Cosworth type system.
+It is **not** a byte count. The following table maps each observed type code
+to its semantics and serialized size:
+
+| Type Code | Semantics | Signed | Serialized Size | Read Operation |
+|-----------|-----------|--------|----------------|----------------|
+| 0x01 | u8 (bare) | No | 1 byte | `readUint8` |
+| 0x02 | u8 (flagged) | No | 1 byte | `readUint8` |
+| 0x03 | i16 BE | Yes | 2 bytes | `readInt16BE` |
+| 0x04 | u16 BE | No | 2 bytes | `readUint16BE` |
+| 0x05 | i32 BE | Yes | 4 bytes | `readInt32BE` |
+| 0x06 | u32 BE | No | 4 bytes | `readUint32BE` |
+| 0x09 | float32 BE | Yes | 4 bytes | `readFloat32BE` |
+| 0x0a | float64 BE | Yes | 8 bytes | `readFloat64BE` |
+
+Within each size class, odd codes are signed and even codes are unsigned
+(0x01 being the exception — a bare u8 without the status/quality flag that
+0x02 carries in Cosworth's internal representation). Codes 0x07 and 0x08
+are unobserved but likely reserved for i64 and u64 respectively.
+
+The distinction between 0x01 and 0x02 (both serialize to 1 byte of u8)
+likely reflects different internal handling in Cosworth's SDK — 0x02
+channels carry a quality/validity flag in the in-memory representation
+that is stripped during serialization. This has no effect on the on-disk
+format.
+
+### 3.4 Rate Groups
 
 **Legacy format** (MMP ≤ 3 / gen 1):
 
-| Group | Period (100 ns ticks) | Frequency | Channels | Rate-Table Width | Actual Width |
-|-------|----------------------|-----------|----------|-----------------|--------------|
-| 0 | 100,000 | 100 Hz | 9 | 32 bytes | **17 bytes** |
-| 1 | 200,000 | 50 Hz | 6 | 54 bytes | **24 bytes** |
-| 2 | 1,000,000 | 10 Hz | 12 | 44 bytes | **28 bytes** |
-| 3 | 2,000,000 | 5 Hz | 4 | 8 bytes | **4 bytes** |
-| 4 | 5,000,000 | 2 Hz | 1 | 2 bytes | **1 byte** |
-| 5 | 10,000,000 | 1 Hz | 27 | 59 bytes | **31 bytes** |
+| Group | Period (100 ns ticks) | Frequency | Channels | Frame Size |
+|-------|----------------------|-----------|----------|-----------|
+| 0 | 100,000 | 100 Hz | 9 | **17 bytes** |
+| 1 | 200,000 | 50 Hz | 6 | **24 bytes** |
+| 2 | 1,000,000 | 10 Hz | 12 | **28 bytes** |
+| 3 | 2,000,000 | 5 Hz | 4 | **4 bytes** |
+| 4 | 5,000,000 | 2 Hz | 1 | **1 byte** |
+| 5 | 10,000,000 | 1 Hz | 27 | **31 bytes** |
 
 **MMP v4+ format** (gen 2 MMP ≥ 4) — Groups 0 and 5 change:
 
-| Group | Frequency | Actual Width | Change |
-|-------|-----------|-------------|--------|
-| 0 | 100 Hz | **25 bytes** | wheel speed channels widen from u16 (2 bytes) to float32 (4 bytes), +8 bytes |
-| 5 | 1 Hz | **34 bytes** | drive.performance.mode widens from u8 (1 byte) to u32 (4 bytes), +3 bytes |
+| Group | Frequency | Frame Size | Change |
+|-------|-----------|-----------|--------|
+| 0 | 100 Hz | **25 bytes** | wheel speed channels change from type 0x04 (u16, 2 bytes) to 0x09 (float32, 4 bytes), +8 bytes |
+| 5 | 1 Hz | **34 bytes** | drive.performance.mode changes from type 0x02 (u8, 1 byte) to 0x06 (u32, 4 bytes), +3 bytes |
 
 Groups 1–4 are unchanged between format versions.
 
-> **Note:** The `width` values in the rate table do NOT represent
-> the actual byte count stored in the data stream. Each channel's rate-table
-> width includes metadata overhead bytes (quality/validity descriptors) that are
-> not written to the data. The overhead varies by data type:
->
-> | Data Type | Rate-Table Width | Actual Bytes | Overhead |
-> |-----------|-----------------|-------------|----------|
-> | u8 channels (except ch 15) | 2 | 1 | 1 |
-> | u8 emotor.powerlevel (ch 15) | 1 | 1 | 0 |
-> | u16 numeric channels | 4 | 2 | 2 |
-> | i16 signed (steering, gyro) | 3 | 2 | 1 |
-> | i32 GPS coordinates/heading | 5 | 4 | 1 |
-> | u32 odometer | 6 | 4 | 2 |
-> | float32 (accelerometer) | 9 | 4 | 5 |
-
-### 3.4 Group 0 Channels (100 Hz)
+### 3.5 Group 0 Channels (100 Hz)
 
 **Legacy format (17 bytes):**
 
-| Ch | Name | Rate-Table Width | Actual Bytes |
-|----|------|-----------------|--------------|
-| 16 | brake.position | 2 | 1 |
-| 29 | engine.speed | 4 | 2 |
-| 31 | engine.torque | 4 | 2 |
-| 42 | steering.angle | 3 | 2 |
-| 54 | wheel.speed.FL | 4 | 2 (u16) |
-| 55 | wheel.speed.FR | 4 | 2 (u16) |
-| 56 | wheel.speed.RL | 4 | 2 (u16) |
-| 57 | wheel.speed.RR | 4 | 2 (u16) |
-| 58 | gyro.yaw | 3 | 2 |
+| Ch | Name | Type | Bytes |
+|----|------|------|-------|
+| 16 | brake.position | 0x02 (u8) | 1 |
+| 29 | engine.speed | 0x04 (u16) | 2 |
+| 31 | engine.torque | 0x04 (u16) | 2 |
+| 42 | steering.angle | 0x03 (i16) | 2 |
+| 54 | wheel.speed.FL | 0x04 (u16) | 2 |
+| 55 | wheel.speed.FR | 0x04 (u16) | 2 |
+| 56 | wheel.speed.RL | 0x04 (u16) | 2 |
+| 57 | wheel.speed.RR | 0x04 (u16) | 2 |
+| 58 | gyro.yaw | 0x03 (i16) | 2 |
 
-**MMP v4+ format (25 bytes):** Wheel speed channels change from u16 (2 bytes)
-to float32 (4 bytes each), adding 8 bytes total:
+**MMP v4+ format (25 bytes):** Wheel speed channels change from type 0x04
+(u16, 2 bytes) to type 0x09 (float32, 4 bytes each), adding 8 bytes total:
 
-| Ch | Name | Rate-Table Width | Actual Bytes |
-|----|------|-----------------|--------------|
-| 16 | brake.position | 2 | 1 |
-| 29 | engine.speed | 4 | 2 |
-| 31 | engine.torque | 4 | 2 |
-| 42 | steering.angle | 3 | 2 |
-| 54 | wheel.speed.FL | **9** | **4 (float32)** |
-| 55 | wheel.speed.FR | **9** | **4 (float32)** |
-| 56 | wheel.speed.RL | **9** | **4 (float32)** |
-| 57 | wheel.speed.RR | **9** | **4 (float32)** |
-| 58 | gyro.yaw | 3 | 2 |
+| Ch | Name | Type | Bytes |
+|----|------|------|-------|
+| 16 | brake.position | 0x02 (u8) | 1 |
+| 29 | engine.speed | 0x04 (u16) | 2 |
+| 31 | engine.torque | 0x04 (u16) | 2 |
+| 42 | steering.angle | 0x03 (i16) | 2 |
+| 54 | wheel.speed.FL | **0x09 (float32)** | **4** |
+| 55 | wheel.speed.FR | **0x09 (float32)** | **4** |
+| 56 | wheel.speed.RL | **0x09 (float32)** | **4** |
+| 57 | wheel.speed.RR | **0x09 (float32)** | **4** |
+| 58 | gyro.yaw | 0x03 (i16) | 2 |
 
 > The `adcr` rate table encodes this difference: wheel speed channels have
-> width byte 0x04 (u16) in legacy files vs 0x09 (float32) in MMP v4+ files.
-> This can be used to detect the format variant from the adcr box alone.
+> type code 0x04 (u16) in legacy files vs 0x09 (float32) in MMP v4+ files.
+> This can be used to detect the format variant from the `adcr` box alone.
 
-### 3.5 Group 1 Channels (50 Hz, 24 bytes actual)
+### 3.6 Group 1 Channels (50 Hz, 24 bytes)
 
 Six channels, each stored as an IEEE 754 big-endian float32 (4 bytes):
 
-| Ch | Name | Rate-Table Width | Actual Bytes |
-|----|------|-----------------|--------------|
-| 8 | accel.device.x | 9 | 4 |
-| 9 | accel.device.y | 9 | 4 |
-| 10 | accel.device.z | 9 | 4 |
-| 11 | accel.vehicle.x | 9 | 4 |
-| 12 | accel.vehicle.y | 9 | 4 |
-| 13 | accel.vehicle.z | 9 | 4 |
+| Ch | Name | Type | Bytes |
+|----|------|------|-------|
+| 8 | accel.device.x | 0x09 (float32) | 4 |
+| 9 | accel.device.y | 0x09 (float32) | 4 |
+| 10 | accel.device.z | 0x09 (float32) | 4 |
+| 11 | accel.vehicle.x | 0x09 (float32) | 4 |
+| 12 | accel.vehicle.y | 0x09 (float32) | 4 |
+| 13 | accel.vehicle.z | 0x09 (float32) | 4 |
 
-### 3.6 Group 2 Channels (10 Hz, 28 bytes actual)
+### 3.7 Group 2 Channels (10 Hz, 28 bytes)
 
-| Ch | Name | Rate-Table Width | Actual Bytes |
-|----|------|-----------------|--------------|
-| 0 | speed | 4 | 2 |
-| 1 | gps.latitude | 5 | 4 |
-| 2 | gps.longitude | 5 | 4 |
-| 3 | gps.altitude | 5 | 4 |
-| 4 | gps.heading | 5 | 4 |
-| 5 | gps.fixquality | 2 | 1 |
-| 6 | gps.satellites | 2 | 1 |
-| 7 | ABS.status | 2 | 1 |
-| 14 | throttle.position | 2 | 1 |
-| 24 | boost.pressure | 4 | 2 |
-| 40 | emotor.power | 4 | 2 |
-| 41 | engine.power | 4 | 2 |
+| Ch | Name | Type | Bytes |
+|----|------|------|-------|
+| 0 | speed | 0x04 (u16) | 2 |
+| 1 | gps.latitude | 0x05 (i32) | 4 |
+| 2 | gps.longitude | 0x05 (i32) | 4 |
+| 3 | gps.altitude | 0x05 (i32) | 4 |
+| 4 | gps.heading | 0x05 (i32) | 4 |
+| 5 | gps.fixquality | 0x02 (u8) | 1 |
+| 6 | gps.satellites | 0x02 (u8) | 1 |
+| 7 | ABS.status | 0x02 (u8) | 1 |
+| 14 | throttle.position | 0x02 (u8) | 1 |
+| 24 | boost.pressure | 0x04 (u16) | 2 |
+| 40 | emotor.power | 0x04 (u16) | 2 |
+| 41 | engine.power | 0x04 (u16) | 2 |
 
-### 3.7 Group 3 Channels (5 Hz, 4 bytes actual)
+### 3.8 Group 3 Channels (5 Hz, 4 bytes)
 
-| Ch | Name | Rate-Table Width | Actual Bytes |
-|----|------|-----------------|--------------|
-| 17 | gear | 2 | 1 |
-| 30 | engine.startstop | 2 | 1 |
-| 33 | ESC.status | 2 | 1 |
-| 43 | TCS.status | 2 | 1 |
+| Ch | Name | Type | Bytes |
+|----|------|------|-------|
+| 17 | gear | 0x02 (u8) | 1 |
+| 30 | engine.startstop | 0x02 (u8) | 1 |
+| 33 | ESC.status | 0x02 (u8) | 1 |
+| 43 | TCS.status | 0x02 (u8) | 1 |
 
-### 3.8 Group 4 Channel (2 Hz, 1 byte actual)
+### 3.9 Group 4 Channel (2 Hz, 1 byte)
 
-| Ch | Name | Rate-Table Width | Actual Bytes |
-|----|------|-----------------|--------------|
-| 26 | oil.pressure | 2 | 1 |
+| Ch | Name | Type | Bytes |
+|----|------|------|-------|
+| 26 | oil.pressure | 0x02 (u8) | 1 |
 
-### 3.9 Group 5 Channels (1 Hz, 31 or 34 bytes actual)
+### 3.10 Group 5 Channels (1 Hz, 31 or 34 bytes)
 
 27 channels packed into 31 bytes (legacy) or 34 bytes (MMP v4+). Full
 byte-level mapping in §11.
 
-In MMP v4+, ch 19 (drive.performance.mode) widens from u8 (1 byte, rateW=2)
-to u32 (4 bytes, rateW=6), adding 3 bytes and shifting all subsequent channels.
+In MMP v4+, ch 19 (drive.performance.mode) changes from type 0x02 (u8,
+1 byte) to type 0x06 (u32, 4 bytes), adding 3 bytes and shifting all
+subsequent channels.
 
-| Ch | Name | Rate-Table Width | Actual Bytes (legacy) | Actual Bytes (MMP v4+) |
-|----|------|-----------------|----------------------|----------------------|
-| 15 | emotor.powerlevel | 1 | 1 | 1 |
-| 18 | HV.battery.usablecharge | 4 | 2 | 2 |
-| 19 | drive.performance.mode | 2 / **6** | 1 (u8) | **4 (u32)** |
-| 20 | emotor.axle.available | 2 | 1 | 1 |
-| 21 | emotor.temp.rotor | 2 | 1 | 1 |
-| 22 | emotor.temp.stator | 2 | 1 | 1 |
-| 23 | engine.temp.coolant | 2 | 1 | 1 |
-| 25 | engine.temp.airintake | 2 | 1 | 1 |
-| 27 | engine.temp.oil | 2 | 1 | 1 |
-| 28 | engine.powerlevel | 2 | 1 | 1 |
-| 32 | outside.air.temp | 2 | 1 | 1 |
-| 34 | fuel.level | 2 | 1 | 1 |
-| 35 | HV.battery.temp.avg | 2 | 1 | 1 |
-| 36 | HV.battery.temp.max | 2 | 1 | 1 |
-| 37 | HV.battery.temp.min | 2 | 1 | 1 |
-| 38 | odometer.distance | 6 | 4 | 4 |
-| 39 | PTM.mode | 2 | 1 | 1 |
-| 44 | trans.oil.temp | 2 | 1 | 1 |
-| 45 | tire.pressure.FL | 2 | 1 | 1 |
-| 46 | tire.pressure.FR | 2 | 1 | 1 |
-| 47 | tire.pressure.RL | 2 | 1 | 1 |
-| 48 | tire.pressure.RR | 2 | 1 | 1 |
-| 49 | tire.temp.FL | 2 | 1 | 1 |
-| 50 | tire.temp.FR | 2 | 1 | 1 |
-| 51 | tire.temp.RL | 2 | 1 | 1 |
-| 52 | tire.temp.RR | 2 | 1 | 1 |
-| 53 | VSE.status | 2 | 1 | 1 |
+| Ch | Name | Type (legacy) | Bytes (legacy) | Type (MMP v4+) | Bytes (MMP v4+) |
+|----|------|--------------|---------------|---------------|----------------|
+| 15 | emotor.powerlevel | 0x01 (u8) | 1 | 0x01 (u8) | 1 |
+| 18 | HV.battery.usablecharge | 0x04 (u16) | 2 | 0x04 (u16) | 2 |
+| 19 | drive.performance.mode | 0x02 (u8) | 1 | **0x06 (u32)** | **4** |
+| 20 | emotor.axle.available | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 21 | emotor.temp.rotor | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 22 | emotor.temp.stator | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 23 | engine.temp.coolant | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 25 | engine.temp.airintake | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 27 | engine.temp.oil | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 28 | engine.powerlevel | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 32 | outside.air.temp | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 34 | fuel.level | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 35 | HV.battery.temp.avg | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 36 | HV.battery.temp.max | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 37 | HV.battery.temp.min | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 38 | odometer.distance | 0x06 (u32) | 4 | 0x06 (u32) | 4 |
+| 39 | PTM.mode | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 44 | trans.oil.temp | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 45 | tire.pressure.FL | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 46 | tire.pressure.FR | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 47 | tire.pressure.RL | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 48 | tire.pressure.RR | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 49 | tire.temp.FL | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 50 | tire.temp.FR | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 51 | tire.temp.RL | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 52 | tire.temp.RR | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+| 53 | VSE.status | 0x02 (u8) | 1 | 0x02 (u8) | 1 |
+
+### 3.11 Computing Packet Size from Metadata
+
+A parser can compute the expected packet size purely from `adcr` metadata
+using the type code registry (§3.3) to map each channel's type code to its
+serialized byte count:
+
+```
+serialized_size(type_code) = {
+    0x01: 1, 0x02: 1, 0x03: 2, 0x04: 2,
+    0x05: 4, 0x06: 4, 0x09: 4, 0x0a: 8
+}
+
+frame_size(group) = sum(serialized_size(tc) for _, tc in group.channels)
+
+expected_packet_size =
+    14                              // preamble
+  + 100 × frame_size(group_0)      // 100 Hz
+  +  50 × frame_size(group_1)      // 50 Hz
+  +  10 × frame_size(group_2)      // 10 Hz
+  +   5 × frame_size(group_3)      // 5 Hz
+  +   2 × frame_size(group_4)      // 2 Hz
+  +   1 × frame_size(group_5)      // 1 Hz
+```
+
+This has been validated against all known firmware variants:
+- Legacy (MMP ≤ 3): computes to **3247 bytes** ✓
+- MMP v4+: computes to **4050 bytes** ✓
+
+If the computed size does not match the dominant sample size from `stsz`,
+the parser has encountered an unknown type code or a new format variant
+and should fail with a diagnostic rather than silently producing bad data.
 
 ---
 
@@ -1467,15 +1523,7 @@ part of the OpenPDR Electron viewer application.
 
 ## 19. Open Questions
 
-### 19.1 Rate Table Overhead Bytes
-
-§3.3 documents a discrepancy between the rate-table `width` values and the
-actual byte counts in the data stream. The overhead bytes are described as
-"quality/validity descriptors" but their exact structure and semantics are
-unknown. It is also unclear whether these bytes are ever written to the data
-stream under certain conditions or firmware versions.
-
-### 19.2 `advi` Fields 5, 6, 7, 8
+### 19.1 `advi` Fields 5, 6, 7, 8
 
 Fields 3 and 4 correspond to MMP patch version and VIP major version
 respectively (see §14.1). The remaining fields are not fully understood:
@@ -1487,7 +1535,7 @@ respectively (see §14.1). The remaining fields are not fully understood:
 | field_7 | 26 | 17, 20, 22 | Correlates loosely with VIP minor |
 | field_8 | 28 | 20, 35, 80, 88 | Varies even within same firmware |
 
-### 19.3 Hybrid/EV Channel Validation
+### 19.2 Hybrid/EV Channel Validation
 
 This specification is based on ICE vehicles (CT5-V Blackwing, Corvette
 Stingray, Corvette Z06). The hybrid/EV channels — e-motor power level,
