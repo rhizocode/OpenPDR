@@ -1,28 +1,27 @@
 # OpenPDR
 
-OpenPDR is an open-source viewer for **AliveDrive PDR 2.5** recordings — the Cosworth Performance Data Recorder found in 2025–2026 GM vehicles including the Cadillac CT5-V Blackwing, Corvette Z06, and Corvette Stingray.
+**Open-source, cross-platform telemetry viewer for the Cosworth Performance Data Recorder (PDR 2.5) in 2025–2026 GM vehicles**: Cadillac CT5-V Blackwing, Corvette Z06, Corvette Stingray, and others.
 
-The PDR records high-rate vehicle telemetry (GPS, accelerometer, engine, steering, wheel speeds, and more) into an MP4 file alongside the video. OpenPDR parses the binary telemetry and plays it back as a synchronized HUD overlay over the original video, without requiring Cosworth Toolbox or the AliveDrive app.
+PDR records vehicle data directly into the MP4 file alongside the video. OpenPDR reads that data and plays it back as a synchronized HUD overlay.
 
-> **Format note:** This covers the **AliveDrive PDR 2.5** format (`adrv`/`adco` codec), which is distinct from the older **Marlin** format (`ctbx`/`mrld`) used in Corvette C7/C8 PDR systems.
+> OpenPDR currently only supports the **AliveDrive PDR 2.5** format (`adrv`/`adco` codec), which is distinct from the older **Marlin** format (`ctbx`/`mrld`) used in C7/C8 Corvette PDR systems.
 
-> **Reverse engineering method:** The format was decoded entirely through binary analysis of MP4 files recorded directly by the vehicles. No proprietary software was decompiled, disassembled, or otherwise reverse-engineered. See [Protocol Documentation](#protocol-documentation) section for details.
+The format was reverse-engineered entirely through binary analysis of MP4 files recorded by the vehicles. Keep scrolling for [technical details](#how-the-parser-works), the full [protocol documentation](#protocol-documentation), or the [channel list](#telemetry-channels).
 
----
+## Get Started
 
-## Releases
+**This project is in beta.** It is mostly functional, but expect rough edges.
 
-Pre-built installers are available on the [Releases](https://github.com/rhizocode/OpenPDR/releases) page.
+- **Web**: Use OpenPDR right now at **[openpdr.org](https://openpdr.org)**. No install or account required. The application runs in your browser and your data remains on your device. The website also has limited mobile support.
 
----
+- **Desktop**:  Download an installer from the [latest release](https://github.com/rhizocode/OpenPDR/releases/latest) for Windows, macOS, or Linux.
 
-## Viewer
+## Build from Source
 
-OpenPDR runs as a **desktop app** (Electron) or directly in the **browser** (web version). Both share the same renderer, parser, and UI — only the file I/O layer differs.
+Both the Web and Desktop apps share the same renderer, parser, and UI. Only the file I/O layer differs.
 
 | | Desktop | Web |
 |---|---|---|
-| Install | Download from [Releases](https://github.com/rhizocode/OpenPDR/releases) | None — runs in browser |
 | File access | Native file dialogs | Browser file picker or drag-and-drop |
 | Video playback | Electron (Chromium) | Browser `<video>` element |
 | CSV/GPX export | Save dialog → file system | Browser download |
@@ -149,7 +148,7 @@ See [`protocol/ALIVEDRIVE_FORMAT.md`](protocol/ALIVEDRIVE_FORMAT.md) for the ful
 - Complete sub-frame byte layouts for all 6 rate groups (100/50/10/5/2/1 Hz)
 - Encoding details: temperature (Kelvin offset model), torque, pressure, GPS coordinates
 
-Both format variants are covered — legacy (3247-byte packets, gen 1 / MMP ≤ 3) and MMP v4+ (4050-byte packets, gen 2 MMP ≥ 4).
+Both format variants are covered: legacy (3247-byte packets, gen 1 / MMP ≤ 3) and MMP v4+ (4050-byte packets, gen 2 MMP ≥ 4).
 
 A standalone Python reference parser is available at [`protocol/alivedrive_parser.py`](protocol/alivedrive_parser.py).
 
@@ -157,11 +156,11 @@ A standalone Python reference parser is available at [`protocol/alivedrive_parse
 
 ## How the Parser Works
 
-1. **Track discovery** — locates the `adrv` handler / `adco` codec track in the MP4 container
-2. **Sample table parsing** — reads `stsz`, `stco`, `stsc` to find each telemetry sample's offset and size
-3. **GPS anchor detection** — finds valid GPS coordinate patterns to establish frame boundaries
-4. **Frame decoding** — walks the interleaved multi-rate structure relative to each GPS anchor
-5. **Playback sync** — binary search over decoded rows on each animation frame to drive the HUD overlay
+1. **Track discovery**:  locates the `adrv` handler / `adco` codec track in the MP4 container
+2. **Sample table parsing**:  reads `stsz`, `stco`, `stsc` to find each telemetry sample's offset and size
+3. **GPS anchor detection**:  finds valid GPS coordinate patterns to establish frame boundaries
+4. **Frame decoding**:  walks the interleaved multi-rate structure relative to each GPS anchor
+5. **Playback sync**:  binary search over decoded rows on each animation frame to drive the HUD overlay
 
 ---
 
