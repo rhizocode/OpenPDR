@@ -158,8 +158,8 @@ A standalone Python reference parser is available at [`protocol/alivedrive_parse
 
 1. **Track discovery**:  locates the `adrv` handler / `adco` codec track in the MP4 container
 2. **Sample table parsing**:  reads `stsz`, `stco`, `stsc` to find each telemetry sample's offset and size
-3. **GPS anchor detection**:  finds valid GPS coordinate patterns to establish frame boundaries
-4. **Frame decoding**:  walks the interleaved multi-rate structure relative to each GPS anchor
+3. **Deterministic offset computation**:  pre-computes all byte offsets from the known packet structure (preamble, carry-over, interleaved sub-frame groups)
+4. **Frame decoding**:  reads each multi-rate sub-frame at the computed offsets
 5. **Playback sync**:  binary search over decoded rows on each animation frame to drive the HUD overlay
 
 ---
