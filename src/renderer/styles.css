@@ -1787,3 +1787,141 @@ html, body {
   text-align: center;
   margin-top: 6px;
 }
+
+/* ── Mobile hamburger menu ── */
+#toolbar #btn-hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid #444;
+  padding: 0 8px;
+  height: 30px;
+  flex-shrink: 0;
+}
+#toolbar #btn-hamburger:hover {
+  background: #3a3a3a;
+}
+#toolbar #btn-hamburger.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.mobile-only-btn {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  /* Show hamburger, hide everything else */
+  #toolbar #btn-hamburger {
+    display: inline-flex;
+  }
+  #toolbar > #lap-selector,
+  #toolbar > .compare-select,
+  #toolbar > .toolbar-spacer,
+  #toolbar > #toolbar-center,
+  #toolbar > #fps-counter,
+  #toolbar > #btn-compare,
+  #toolbar > .mobile-only-btn {
+    display: none !important;
+  }
+  /* Keep filename truncated on collapsed bar */
+  #toolbar > #file-name {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* ── Menu open: vertical list ── */
+  #toolbar.mobile-open {
+    flex-wrap: wrap;
+    z-index: 500;
+    position: relative;
+    max-height: calc(100vh - 50px);
+    overflow-y: auto;
+    padding-bottom: 8px;
+  }
+
+  /* Row 1: Open File + filename */
+  #toolbar.mobile-open > #btn-open {
+    display: inline-flex !important;
+    order: 1;
+  }
+  #toolbar.mobile-open > #file-name {
+    display: inline-block !important;
+    order: 2;
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Row 2: Lap selector (full width) */
+  #toolbar.mobile-open > #lap-selector:not([style*="display: none"]):not([style*="display:none"]) {
+    display: flex !important;
+    order: 3;
+    flex-basis: 100%;
+    max-width: 100%;
+  }
+
+  /* Row 3: Compare button */
+  #toolbar.mobile-open > #btn-compare:not([style*="display: none"]):not([style*="display:none"]) {
+    display: inline-flex !important;
+    order: 4;
+  }
+
+  /* Row 4: Compare lap selectors (full width each) */
+  #toolbar.mobile-open > .compare-select:not([style*="display: none"]):not([style*="display:none"]) {
+    display: flex !important;
+    order: 5;
+    flex-basis: 100%;
+    max-width: 100%;
+  }
+
+  /* Row 5: Layout Edit Mode button */
+  #toolbar.mobile-open > .mobile-only-btn {
+    display: block !important;
+    order: 6;
+    flex-basis: 100%;
+    background: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid #444 !important;
+    padding: 8px 14px !important;
+    font-size: 0.85em !important;
+    font-weight: 600;
+    text-align: left;
+  }
+  #toolbar.mobile-open > .mobile-only-btn.active {
+    background: var(--accent) !important;
+    color: #fff !important;
+    border-color: var(--accent) !important;
+  }
+
+  /* Hide toolbar-center (pencil + gear icons are replaced by inline items) */
+  #toolbar.mobile-open > #toolbar-center {
+    display: none !important;
+  }
+
+  /* Gear panel moved inside toolbar: render inline */
+  #toolbar.mobile-open > #gear-panel {
+    display: block !important;
+    position: static !important;
+    transform: none !important;
+    order: 7;
+    flex-basis: 100%;
+    border: none;
+    border-top: 1px solid #333;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+    min-width: 0;
+    max-width: none;
+    background: transparent;
+  }
+
+  /* Gear panel standalone fallback (non-mobile-open, e.g. desktop gear click at edge) */
+  #gear-panel {
+    left: 0 !important;
+    right: 0 !important;
+    transform: none !important;
+    border-radius: 0 0 6px 6px !important;
+  }
+}
