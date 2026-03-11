@@ -39,6 +39,11 @@
       <div id="video-container">
         <video id="video" preload="auto" playsinline webkit-playsinline></video>
 
+        <!-- Toast shown when video decoder is lost (e.g. mobile sleep) -->
+        <div id="video-recovery-toast" class="hidden">
+          Playback interrupted by device - tap to reload
+        </div>
+
         <!-- HUD overlays — positioned inside anchor that matches video bounds -->
         <div id="video-overlay-anchor">
         <div class="hud-element" id="hud-speed" data-overlay="speed">

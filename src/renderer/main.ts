@@ -476,6 +476,67 @@ video.addEventListener('seeked', startAnimationLoop)
 // Also restart on timeupdate as a safety net
 video.addEventListener('timeupdate', startAnimationLoop)
 
+// ── Mobile sleep/wake video recovery ──
+// When a mobile device sleeps, the OS may release the hardware video decoder.
+// On wake the UI is fine but video frames are frozen. We detect this and
+// attempt recovery; if that fails we show a toast prompting the user to tap.
+{
+  const toast = document.getElementById('video-recovery-toast')!
+  let wasPlaying = false
+
+  document.addEventListener('visibilitychange', () => {
+    if (!video.src) return
+
+    if (document.hidden) {
+      // Entering sleep — remember playback state
+      wasPlaying = !video.paused
+      return
+    }
+
+    // Waking up — attempt to nudge the decoder back to life
+    const savedTime = video.currentTime
+    dbg('Visibility restored — attempting video decoder recovery')
+
+    // Nudge seek forces decoder re-init on most mobile browsers
+    video.currentTime = savedTime
+
+    // Give the decoder a moment, then check if it recovered
+    const timeout = setTimeout(() => {
+      // readyState < HAVE_CURRENT_DATA means decoder didn't recover
+      if (video.readyState < 2 || video.error) {
+        dbg(`Video decoder lost (readyState=${video.readyState}), showing recovery toast`)
+        toast.classList.remove('hidden')
+      } else if (wasPlaying) {
+        video.play().catch(() => {})
+      }
+    }, 500)
+
+    // If the seek actually works, we're fine — hide any toast and resume
+    video.addEventListener('seeked', function onRecovery() {
+      video.removeEventListener('seeked', onRecovery)
+      clearTimeout(timeout)
+      toast.classList.add('hidden')
+      if (wasPlaying) {
+        video.play().catch(() => {})
+      }
+    }, { once: true })
+  })
+
+  // Toast tap: reload video source at the same position
+  toast.addEventListener('click', () => {
+    const t = video.currentTime
+    const src = video.src
+    dbg('User tapped recovery toast — reloading video')
+    toast.classList.add('hidden')
+    video.src = ''
+    video.src = src
+    video.addEventListener('loadedmetadata', () => {
+      video.currentTime = t
+      startAnimationLoop()
+    }, { once: true })
+  })
+}
+
 // When entering compare mode, wire video A events to restart the animation loop
 let comparePlayHandler: (() => void) | null = null
 let compareSeekedHandler: (() => void) | null = null
