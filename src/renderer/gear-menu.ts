@@ -82,8 +82,10 @@ export function initGearMenu(): void {
     btn.classList.toggle('active', isVisible)
   })
 
-  // Close panel on outside click
+  // Close panel on outside click (skip when mobile menu manages visibility)
   document.addEventListener('pointerdown', (e) => {
+    const toolbar = document.getElementById('toolbar')
+    if (toolbar?.classList.contains('mobile-open')) return
     const target = e.target as Node
     if (!panel.contains(target) && target !== btn && !btn.contains(target)) {
       panel.classList.remove('visible')

@@ -8,7 +8,7 @@
 import './types' // side-effect: augments Window with pdr
 import { formatLapTime } from './defaults'
 import { STORAGE_KEYS } from './storage-keys'
-import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg, lapData, duration, viewRange, setViewRange, selectedLapIdx, getSyncedTime, seekToTelemetryTime, onTelemetryLoad, onViewRangeChange, avSyncOffset, setInterpState } from './state'
+import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg, lapData, duration, viewRange, setViewRange, selectedLapIdx, getSyncedTime, seekToTelemetryTime, onTelemetryLoad, onViewRangeChange, avSyncOffset, setInterpState, getEditMode, setEditMode, onEditModeChange } from './state'
 import { initHud } from './hud'
 import { initControls, getIsScrubbing } from './controls'
 import { initFileOpen } from './file-open'
@@ -66,6 +66,84 @@ initCompareUI()
 initGearMenu()
 initUpdateUI()
 initLapSelector()
+
+// ── Mobile hamburger menu ──
+{
+  const hbBtn = document.getElementById('btn-hamburger')
+  const tb = document.getElementById('toolbar')
+  const gearPanel = document.getElementById('gear-panel')
+  const editMobileBtn = document.getElementById('btn-edit-mobile')
+  if (hbBtn && tb && gearPanel && editMobileBtn) {
+    const mobileQuery = window.matchMedia('(max-width: 900px)')
+
+    function openMobileMenu(): void {
+      tb!.classList.add('mobile-open')
+      hbBtn!.classList.add('active')
+      // Move gear panel inside toolbar so it scrolls with menu items
+      tb!.appendChild(gearPanel!)
+    }
+
+    function closeMobileMenu(): void {
+      tb!.classList.remove('mobile-open')
+      hbBtn!.classList.remove('active')
+      // Move gear panel back to original position (sibling after toolbar)
+      tb!.parentElement!.insertBefore(gearPanel!, tb!.nextSibling)
+      gearPanel!.classList.remove('visible')
+    }
+
+    hbBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      if (tb.classList.contains('mobile-open')) {
+        closeMobileMenu()
+      } else {
+        openMobileMenu()
+      }
+    })
+
+    // Close on outside click
+    document.addEventListener('pointerdown', (e) => {
+      if (tb.classList.contains('mobile-open')) {
+        const target = e.target as Node
+        if (!tb.contains(target)) {
+          closeMobileMenu()
+        }
+      }
+    })
+
+    // Close menu after clicking a toolbar button (but NOT gear panel buttons)
+    tb.addEventListener('click', (e) => {
+      const el = e.target as HTMLElement
+      if (el === hbBtn || hbBtn.contains(el)) return
+      if (gearPanel.contains(el)) return
+      if (el === editMobileBtn || editMobileBtn.contains(el)) return
+      if (el.tagName === 'BUTTON' || el.closest('button')) {
+        closeMobileMenu()
+      }
+    })
+
+    // Close on select change (but NOT gear panel selects)
+    tb.addEventListener('change', (e) => {
+      if (gearPanel.contains(e.target as Node)) return
+      closeMobileMenu()
+    })
+
+    // Mobile edit mode button
+    editMobileBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      setEditMode(!getEditMode())
+    })
+    onEditModeChange(() => {
+      editMobileBtn.classList.toggle('active', getEditMode())
+    })
+
+    // If window resizes above breakpoint while menu is open, close cleanly
+    mobileQuery.addEventListener('change', () => {
+      if (!mobileQuery.matches && tb.classList.contains('mobile-open')) {
+        closeMobileMenu()
+      }
+    })
+  }
+}
 
 // ── Video overlay anchor sizing ──
 // The anchor div matches the video's rendered bounds inside the container,

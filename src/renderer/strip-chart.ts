@@ -475,6 +475,64 @@ export function initChartPanel(): void {
     setChartZoom({ startTime: newStart, endTime: newEnd })
   }, { passive: false })
 
+  // ── Pinch-to-zoom (touch) ──
+  let pinchStartDist = 0
+  let pinchStartDur = 0
+  let pinchCenterFrac = 0.5
+
+  canvas.addEventListener('touchstart', (e) => {
+    if (isCompareMode() || e.touches.length !== 2) return
+    e.preventDefault()
+
+    const rect = canvas.getBoundingClientRect()
+    const labelW = getLabelWidth()
+    const dataW = rect.width - labelW
+
+    const x1 = e.touches[0].clientX - rect.left - labelW
+    const x2 = e.touches[1].clientX - rect.left - labelW
+    pinchCenterFrac = Math.max(0, Math.min(1, ((x1 + x2) / 2) / dataW))
+
+    const dx = e.touches[0].clientX - e.touches[1].clientX
+    const dy = e.touches[0].clientY - e.touches[1].clientY
+    pinchStartDist = Math.hypot(dx, dy)
+
+    const z = chartZoom
+    pinchStartDur = z ? z.endTime - z.startTime : viewRange.endTime - viewRange.startTime
+  }, { passive: false })
+
+  canvas.addEventListener('touchmove', (e) => {
+    if (isCompareMode() || e.touches.length !== 2 || pinchStartDist === 0) return
+    e.preventDefault()
+
+    const dx = e.touches[0].clientX - e.touches[1].clientX
+    const dy = e.touches[0].clientY - e.touches[1].clientY
+    const curDist = Math.hypot(dx, dy)
+    if (curDist < 1) return
+
+    const scale = pinchStartDist / curDist  // >1 = pinch in (zoom out), <1 = pinch out (zoom in)
+    const newDur = pinchStartDur * scale
+
+    const viewDur = viewRange.endTime - viewRange.startTime
+    if (newDur >= viewDur) { setChartZoom(null); return }
+    if (newDur < 1.0) return  // minimum 1 second
+
+    const z = chartZoom
+    const curStart = z ? z.startTime : viewRange.startTime
+    const curEnd = z ? z.endTime : viewRange.endTime
+    const curDur = curEnd - curStart
+    const cursorTime = curStart + pinchCenterFrac * curDur
+
+    let newStart = cursorTime - pinchCenterFrac * newDur
+    let newEnd = cursorTime + (1 - pinchCenterFrac) * newDur
+
+    if (newStart < viewRange.startTime) { newStart = viewRange.startTime; newEnd = newStart + newDur }
+    if (newEnd > viewRange.endTime) { newEnd = viewRange.endTime; newStart = newEnd - newDur }
+
+    setChartZoom({ startTime: newStart, endTime: newEnd })
+  }, { passive: false })
+
+  canvas.addEventListener('touchend', () => { pinchStartDist = 0 })
+
   // ── Double-click to reset zoom ──
   canvas.addEventListener('dblclick', () => {
     if (!isCompareMode()) setChartZoom(null)
