@@ -159,7 +159,11 @@ function buildProjection(layout: TrackLayout): void {
   const totalW = lonRange * mPerDegLon
   const totalH = latRange * mPerDegLat
 
-  const pad = Math.min(canvas.width, canvas.height) * 0.08
+  // Ensure padding accommodates the dot (radius + stroke) so it doesn't clip at edges
+  const minDimPad = Math.min(canvas.width, canvas.height)
+  const estLW = Math.max(4 * dpr, Math.round(minDimPad * 0.03))
+  const estDotVisual = Math.max(estLW * 0.9, 4 * dpr) + 2 * dpr
+  const pad = Math.max(minDimPad * 0.08, estDotVisual + 2 * dpr)
   const availW = canvas.width - 2 * pad
   const availH = canvas.height - 2 * pad
 
@@ -552,13 +556,13 @@ function drawPositionDot(gps?: typeof _gpsOut): void {
       fillColor = '#ffffff'
   }
 
-  const dotR = Math.max(trackLW * 0.9, 6 * dpr)
+  const dotR = Math.max(trackLW * 0.9, 4 * dpr)
   ctx.beginPath()
   ctx.arc(px.x, px.y, dotR, 0, Math.PI * 2)
   ctx.fillStyle = fillColor
   ctx.fill()
   ctx.strokeStyle = 'rgba(0,0,0,0.5)'
-  ctx.lineWidth = 3 * dpr
+  ctx.lineWidth = 2 * dpr
   ctx.stroke()
 }
 
