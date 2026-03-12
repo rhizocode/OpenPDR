@@ -194,7 +194,7 @@ export function renderTrackToCanvas(c: CanvasRenderingContext2D, opts: TrackRend
     c.fillStyle = 'rgba(255,255,255,0.5)'
     c.textAlign = 'right'
     c.textBaseline = 'bottom'
-    c.fillText('Powered by Esri', opts.canvasW - 4 * dpr, opts.canvasH - 2 * dpr)
+    c.fillText('Esri, Maxar, Earthstar Geographics, and the GIS User Community', opts.canvasW - 4 * dpr, opts.canvasH - 2 * dpr)
     c.restore()
   }
 

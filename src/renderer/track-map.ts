@@ -485,7 +485,7 @@ function renderTrackCache(): void {
     c.fillStyle = 'rgba(255,255,255,0.5)'
     c.textAlign = 'right'
     c.textBaseline = 'bottom'
-    c.fillText('Powered by Esri', trackCache!.width - 4 * dpr, trackCache!.height - 2 * dpr)
+    c.fillText('Esri, Maxar, Earthstar Geographics, and the GIS User Community', trackCache!.width - 4 * dpr, trackCache!.height - 2 * dpr)
     c.restore()
   }
 
