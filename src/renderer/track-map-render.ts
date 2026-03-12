@@ -26,7 +26,7 @@ export interface Proj {
   cosLat: number
 }
 
-export function buildProjection(layout: TrackLayout, canvasW: number, canvasH: number): Proj | null {
+export function buildProjection(layout: TrackLayout, canvasW: number, canvasH: number, dpr = 1): Proj | null {
   const b = layout.bounds
   const latRange = b.maxLat - b.minLat
   const lonRange = b.maxLon - b.minLon
@@ -39,7 +39,11 @@ export function buildProjection(layout: TrackLayout, canvasW: number, canvasH: n
   const totalW = lonRange * mPerDegLon
   const totalH = latRange * mPerDegLat
 
-  const pad = Math.min(canvasW, canvasH) * 0.08
+  // Ensure padding accommodates the dot (radius + stroke) so it doesn't clip at edges
+  const minDimPad = Math.min(canvasW, canvasH)
+  const estLW = Math.max(4 * dpr, Math.round(minDimPad * 0.03))
+  const estDotVisual = Math.max(estLW * 0.9, 4 * dpr) + 2 * dpr
+  const pad = Math.max(minDimPad * 0.08, estDotVisual + 2 * dpr)
   const availW = canvasW - 2 * pad
   const availH = canvasH - 2 * pad
 
@@ -119,7 +123,7 @@ export interface TrackRenderOptions {
  * used by both live display and export.
  */
 export function renderTrackToCanvas(c: CanvasRenderingContext2D, opts: TrackRenderOptions): void {
-  const proj = buildProjection(opts.layout, opts.canvasW, opts.canvasH)
+  const proj = buildProjection(opts.layout, opts.canvasW, opts.canvasH, opts.dpr)
   if (!proj) return
 
   const { points, startFinishLat, startFinishLon } = opts.layout
@@ -190,7 +194,7 @@ export function renderTrackToCanvas(c: CanvasRenderingContext2D, opts: TrackRend
     c.fillStyle = 'rgba(255,255,255,0.5)'
     c.textAlign = 'right'
     c.textBaseline = 'bottom'
-    c.fillText('Powered by Esri', opts.canvasW - 4 * dpr, opts.canvasH - 2 * dpr)
+    c.fillText('Esri, Maxar, Earthstar Geographics, and the GIS User Community', opts.canvasW - 4 * dpr, opts.canvasH - 2 * dpr)
     c.restore()
   }
 
@@ -245,13 +249,13 @@ export function drawPositionDot(
       fillColor = '#ffffff'
   }
 
-  const dotR = Math.max(opts.trackLW * 0.9, 6 * opts.dpr)
+  const dotR = Math.max(opts.trackLW * 0.9, 4 * opts.dpr)
   c.beginPath()
   c.arc(px.x, px.y, dotR, 0, Math.PI * 2)
   c.fillStyle = fillColor
   c.fill()
   c.strokeStyle = 'rgba(0,0,0,0.5)'
-  c.lineWidth = 3 * opts.dpr
+  c.lineWidth = 2 * opts.dpr
   c.stroke()
 }
 

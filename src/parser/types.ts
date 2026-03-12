@@ -69,7 +69,9 @@ export interface TrackTiming {
   sttsEntries: SttsEntry[]
   /** Delay from edts/elst empty edit (seconds), 0 if no edit list */
   elstDelay: number
-  /** Per-sample presentation times in seconds (elst delay + cumulative stts) */
+  /** Media start time from first non-empty edit list entry (seconds), 0 if none */
+  mediaStartTime: number
+  /** Per-sample presentation times in seconds (elst delay + cumulative stts - mediaStartTime) */
   sampleTimes: Float64Array
 }
 
@@ -94,4 +96,46 @@ export interface EmbeddedEvent {
   eventId: number          // 0–19, maps to adeg definitions
   eventName: string        // e.g., "com.cosworth.event.lap.start"
   time: number             // seconds from recording start
+}
+
+// ── Format Detection ──────────────────────────────────────────────────────────
+
+/** Known PDR telemetry formats */
+export type FormatType = 'alivedrive' | 'marlin'
+
+/** Result of format detection on a moov buffer */
+export interface FormatDetection {
+  format: FormatType
+  trackInfo: TrackInfo
+}
+
+// ── Marlin-specific types ─────────────────────────────────────────────────────
+
+/** A single channel definition from the Marlin mrld dictionary (448-byte record). */
+export interface MarlinChannel {
+  channelId: number
+  typeId: number
+  units: string
+  intervalTicks: number   // sample interval in 100 ns units
+  multiplier: number      // raw → SI conversion multiplier
+  offset: number          // raw → SI conversion offset
+  name: string
+  description: string
+}
+
+/** Recording metadata from the Marlin mrlv box. */
+export interface MarlinMetadata {
+  recordingId: string
+  startDate: string
+  startTime: string
+  endTime: string
+  endDate: string
+  timezone: string
+  trackName: string
+  country: string
+  language: string
+  softwareVersion: string
+  unitSystem: string
+  recordingType: string
+  startTimestampTicks: number  // 100 ns since Unix epoch
 }

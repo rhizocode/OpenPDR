@@ -1,19 +1,29 @@
 # Protocol
 
-Reverse-engineered specification and reference parser for the **AliveDrive PDR 2.5** telemetry format embedded in MP4 recordings from the Cosworth Performance Data Recorder found in 2025–2026 GM vehicles (Cadillac CT5-V Blackwing, Corvette Z06, Corvette Stingray, and others).
+Reverse-engineered specifications and reference parsers for telemetry formats embedded in MP4 video recordings.
 
-## Contents
+## Formats
+
+### AliveDrive PDR 2.5 (`adrv` / `adco`)
+
+Cosworth Performance Data Recorder in 2025–2026 GM vehicles (Cadillac CT5-V Blackwing, Corvette Z06, Corvette Stingray, and others). 59 channels across 6 rate groups (1–100 Hz), fixed-rate multi-rate frame packing.
 
 | File | Description |
 |------|-------------|
 | [`ALIVEDRIVE_FORMAT.md`](ALIVEDRIVE_FORMAT.md) | Complete format specification — MP4 container layout, all 59 channel definitions, rate table structure, packet/frame byte layouts, scale factors, and encoding details for both legacy and MMP v4+ variants |
 | [`alivedrive_parser.py`](alivedrive_parser.py) | Reference Python parser — extracts all channels to CSV directly from an MP4 file or pre-extracted binary; no external dependencies |
 
-## Quick Reference
-
 ```bash
 # Extract telemetry to CSV from an MP4
 python protocol/alivedrive_parser.py recording.mp4 --csv output.csv
 ```
 
-See [`ALIVEDRIVE_FORMAT.md`](ALIVEDRIVE_FORMAT.md) §18 for full usage and the TypeScript implementation in `src/main/parser/`.
+### Marlin PDR 2.0 (`ctbx` / `marl`)
+
+Original Cosworth Performance Data Recorder in C7/C8 Corvette and Camaro. Up to 85 self-describing channels with event-driven full/diff record encoding and per-channel sample intervals from 1–100 Hz.
+
+| File | Description |
+|------|-------------|
+| [`MARLIN_FORMAT.md`](MARLIN_FORMAT.md) | Complete format specification — MP4 container layout, `mrlh`/`mrlv`/`mrld` box structures, 448-byte channel dictionary records, full/diff telemetry record encoding, two-stage unit conversion, and all known channel definitions |
+
+See [`ALIVEDRIVE_FORMAT.md`](ALIVEDRIVE_FORMAT.md) §18 for AliveDrive parser usage and the TypeScript implementation in `src/parser/`.

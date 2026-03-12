@@ -1,16 +1,18 @@
 /**
  * OpenPDR Telemetry Parser — Public API
  *
- * Parses PDR MP4 files and extracts telemetry data directly from the
- * AliveDrive adco data track. No JSON sidecar needed.
+ * Parses PDR MP4 files and extracts telemetry data from the embedded
+ * data track. Automatically detects the format (AliveDrive or Marlin)
+ * and routes to the appropriate parser. Both produce identical
+ * TelemetryStore output — callers are format-agnostic.
  *
  * Platform-agnostic: reads data through the PdrFileSource interface
  * instead of Node.js fs directly.
  *
  * Performance strategy:
  * - Read only the moov box (~100KB) into memory for box traversal
- * - Read each telemetry packet (~3247 bytes) individually via seek+read
- * - Never load the full 700MB file into memory
+ * - Read each telemetry packet individually via seek+read
+ * - Never load the full 700MB+ file into memory
  */
 
 import type { PdrFileSource } from '../shared/file-source'
@@ -22,7 +24,10 @@ import { extractEvents } from './event-extractor'
 import { createTelemetryStore, writeRow, trimStore, interpolateGps } from '../shared/telemetry-store'
 import type { TelemetryStore } from '../shared/telemetry-store'
 import { detectLaps, detectLapsFromEvents } from './lap-detection'
-import type { ParseResult, SessionInfo, TelemetryRow, EmbeddedEvent, ProgressCallback } from './types'
+import { detectFormat } from './format-detect'
+import { parseMarlSubBoxes } from './marlin/marlin-track'
+import { decodeMarlinSamples } from './marlin/marlin-decoder'
+import type { ParseResult, SessionInfo, TelemetryRow, EmbeddedEvent, ProgressCallback, TrackInfo } from './types'
 
 export type { TelemetryRow, ParseResult, ProgressCallback }
 export type { TelemetryStore }
@@ -48,36 +53,59 @@ export async function parsePdrFile(
 ): Promise<ParseResult> {
   onProgress?.('Reading MP4 structure...', 0)
 
-  // Step 1: Read and parse moov box
+  // Step 1: Read moov box (handles both moov-at-start and moov-at-end)
   const moovBuf = await readMoovBox(source)
 
-  // Step 2: Find the ADCO data track
-  const trackInfo = findAdcoTrack(moovBuf)
-  if (!trackInfo) {
-    throw new Error('Could not find AliveDrive data track (adrv/adco)')
+  // Step 2: Detect format
+  const detection = detectFormat(moovBuf)
+  if (!detection) {
+    throw new Error('No PDR data track found (checked for AliveDrive adrv/adco and Marlin ctbx/marl)')
   }
 
-  // Step 3: Parse sample table and track timing
+  console.log(`[parser] Detected format: ${detection.format}`)
+
+  // Step 3: Route to format-specific parser
+  switch (detection.format) {
+    case 'alivedrive':
+      return parseAliveDrive(source, moovBuf, detection.trackInfo, fileName, onProgress)
+    case 'marlin':
+      return parseMarlin(source, moovBuf, detection.trackInfo, fileName, onProgress)
+  }
+}
+
+// =============================================================================
+// AliveDrive Parser (existing logic, extracted unchanged)
+// =============================================================================
+
+async function parseAliveDrive(
+  source: PdrFileSource,
+  moovBuf: Uint8Array,
+  trackInfo: TrackInfo,
+  fileName: string,
+  onProgress?: ProgressCallback,
+): Promise<ParseResult> {
+  // Parse sample table and track timing
   const sampleTable = parseSampleTable(moovBuf, trackInfo.trakData, trackInfo.trakEnd)
   if (!sampleTable) {
     throw new Error('Could not parse sample table')
   }
   const sampleOffsets = getSampleOffsets(sampleTable)
 
-  // Parse mvhd timescale (needed for edts/elst conversion)
   const mvhdTimescale = parseMvhdTimescale(moovBuf)
-
-  // Parse track timing: mdhd timescale, stts durations, edts/elst delay
-  // This gives us per-sample presentation times for proper video sync
   const trackTiming = parseTrackTiming(
     moovBuf, trackInfo.trakData, trackInfo.trakEnd,
     mvhdTimescale, sampleTable.sampleCount,
   )
 
+  if (trackTiming) {
+    console.log(`[sync] Data track: elstDelay=${trackTiming.elstDelay.toFixed(3)}s, ` +
+      `mediaStart=${trackTiming.mediaStartTime.toFixed(3)}s, ` +
+      `sample0=${trackTiming.sampleTimes[0]?.toFixed(3)}s, sample1=${trackTiming.sampleTimes[1]?.toFixed(3)}s`)
+  }
+
   onProgress?.('Parsing metadata...', 5)
 
-  // Step 4: Parse metadata sub-boxes (advi, adop)
-  // Prefer structured findBox within moov (O(n) walk), fall back to brute-force scanForBox
+  // Parse metadata sub-boxes (advi, adop)
   const moovHdr = readBoxHeader(moovBuf, 0)
   const moovDataStart = moovHdr?.dataStart ?? 8
   const findMetaBox = (tag: string) =>
@@ -88,9 +116,7 @@ export async function parsePdrFile(
     ? parseAdvi(moovBuf.subarray(adviBox[2], adviBox[0] + adviBox[1]))
     : undefined
 
-  // Determine 100Hz frame size from dominant packet size.
-  // MMP version alone isn't reliable across generations (gen1 MMP v8 uses old format).
-  // Packet size is the direct indicator: ~4050 = MMP v4+ format, ~3247 = legacy format.
+  // Determine 100Hz frame size from dominant packet size
   const dominantPktSize = mostCommonValue(sampleTable.sampleSizes)
   const hz100Size = dominantPktSize > 3500 ? 25 : 17
 
@@ -104,7 +130,6 @@ export async function parsePdrFile(
     if (props.lat !== undefined && props.lon !== undefined) {
       refLocation = { lat: props.lat, lon: props.lon }
     }
-    // Build session info from decoded adop properties + advi fields
     const p = props.properties
     sessionInfo = {
       vehicle: p.get('vehicle.make'),
@@ -122,35 +147,28 @@ export async function parsePdrFile(
     }
   }
 
-  // Step 4c: Parse event definitions (adeg)
+  // Parse event definitions (adeg)
   const adegBox = findMetaBox('adeg')
   const eventDefs = adegBox
     ? parseAdeg(moovBuf.subarray(adegBox[2], adegBox[0] + adegBox[1]))
     : []
 
-  // Step 5: Decode all packets into columnar store + extract embedded events
+  // Decode all packets into columnar store + extract embedded events
   onProgress?.('Decoding telemetry...', 10)
-  const estimatedRows = sampleTable.sampleCount * 10  // ~10 rows per packet at 10 Hz
+  const estimatedRows = sampleTable.sampleCount * 10
   const store = createTelemetryStore(estimatedRows)
   const allEvents: EmbeddedEvent[] = []
 
-  // The first sample in the data track is typically a small init/config packet
-  // that we skip (size < 100). However it still occupies time in the MP4
-  // timeline (usually 1 second via stts), pushing all real telemetry timestamps
-  // forward. We subtract the first real packet's sampleTime so telemetry time 0
-  // aligns with video time 0.
   let timeBase = 0
 
   for (let i = 0; i < sampleOffsets.length; i++) {
     const offset = sampleOffsets[i]
     const size = sampleTable.sampleSizes[i]
 
-    if (size < 100) continue // skip init packet
+    if (size < 100) continue
 
     const packet = await source.read(offset, size)
 
-    // Use MP4 presentation time from stts/elst when available,
-    // fall back to packet index (assumes 1 second per packet)
     const rawBaseTime = trackTiming ? trackTiming.sampleTimes[i] : i
     if (!timeBase && rawBaseTime > 0) timeBase = rawBaseTime
     const baseTime = rawBaseTime - timeBase
@@ -164,11 +182,9 @@ export async function parsePdrFile(
     }
     if (storeFull) break
 
-    // Extract embedded events from oversized packets
     const events = extractEvents(packet, dominantPktSize, eventDefs)
     for (const evt of events) allEvents.push(evt)
 
-    // Report progress every 10 packets
     if (i % 10 === 0) {
       const pct = 10 + Math.round((i / sampleOffsets.length) * 85)
       onProgress?.('Decoding telemetry...', pct)
@@ -177,13 +193,9 @@ export async function parsePdrFile(
 
   onProgress?.('Complete', 100)
 
-  // Trim store to actual size (capacity was estimated)
   const trimmedStore = trimStore(store)
-
-  // Interpolate GPS between genuine fixes to eliminate duplicate-coordinate stutter
   interpolateGps(trimmedStore)
 
-  // If no refLocation from adop, derive it from the first decoded GPS position
   if (!refLocation && trimmedStore.length > 0) {
     const lat = trimmedStore.lat[0]
     const lon = trimmedStore.lon[0]
@@ -192,7 +204,6 @@ export async function parsePdrFile(
     }
   }
 
-  // Build metadata from typed arrays (no row objects needed)
   let maxSpeed = 0
   let maxRpm = 0
   for (let i = 0; i < trimmedStore.length; i++) {
@@ -204,7 +215,6 @@ export async function parsePdrFile(
     ? trimmedStore.time[trimmedStore.length - 1] - trimmedStore.time[0]
     : 0
 
-  // Try event-based lap detection first, fall back to GPS density heuristic
   const lapData = detectLapsFromEvents(allEvents, trimmedStore) ?? detectLaps(trimmedStore)
 
   return {
@@ -215,6 +225,128 @@ export async function parsePdrFile(
       sampleCount: sampleTable.sampleCount,
       duration,
       adviInfo,
+      sessionInfo,
+      refLocation,
+      maxSpeed_kph: maxSpeed,
+      maxRpm: maxRpm,
+      lapData,
+    },
+  }
+}
+
+// =============================================================================
+// Marlin Parser
+// =============================================================================
+
+async function parseMarlin(
+  source: PdrFileSource,
+  moovBuf: Uint8Array,
+  trackInfo: TrackInfo,
+  fileName: string,
+  onProgress?: ProgressCallback,
+): Promise<ParseResult> {
+  onProgress?.('Parsing Marlin metadata...', 5)
+
+  // Parse stsd → marl sub-boxes (mrlh, mrlv, mrld)
+  const { version, metadata: marlMeta, channels } = parseMarlSubBoxes(
+    moovBuf, trackInfo.trakData, trackInfo.trakEnd,
+  )
+
+  if (channels.size === 0) {
+    throw new Error('No channel definitions found in Marlin mrld box')
+  }
+
+  console.log(`[marlin] Version: 0x${version.toString(16).padStart(8, '0')}, ` +
+    `Channels: ${channels.size}`)
+  if (marlMeta.trackName) console.log(`[marlin] Track: ${marlMeta.trackName}`)
+  if (marlMeta.startDate) console.log(`[marlin] Date: ${marlMeta.startDate} ${marlMeta.startTime}`)
+  if (marlMeta.softwareVersion) console.log(`[marlin] Software: ${marlMeta.softwareVersion}`)
+
+  // Parse sample table (reuse generic MP4 sample table parser)
+  const sampleTable = parseSampleTable(moovBuf, trackInfo.trakData, trackInfo.trakEnd)
+  if (!sampleTable) {
+    throw new Error('Could not parse Marlin sample table')
+  }
+
+  console.log(`[marlin] Samples: ${sampleTable.sampleCount}`)
+
+  // Estimate duration from mdhd for capacity calculation
+  // Marlin timescale is 1000 (ms), so duration / 1000 = seconds
+  const mvhdTimescale = parseMvhdTimescale(moovBuf)
+  const trackTiming = parseTrackTiming(
+    moovBuf, trackInfo.trakData, trackInfo.trakEnd,
+    mvhdTimescale, sampleTable.sampleCount,
+  )
+  const durationEstimate = trackTiming
+    ? (trackTiming.duration / trackTiming.timescale)
+    : sampleTable.sampleCount  // fallback: ~1 second per sample
+
+  // Allocate store: 10 rows per second + 20% headroom
+  const estimatedRows = Math.ceil(durationEstimate * 10 * 1.2)
+  const store = createTelemetryStore(Math.max(estimatedRows, 1000))
+
+  // Decode all samples and resample to 10 Hz
+  const totalRecords = await decodeMarlinSamples(
+    source, sampleTable, channels, store, onProgress,
+  )
+
+  console.log(`[marlin] Decoded ${totalRecords} records → ${store.length} rows at 10 Hz`)
+
+  onProgress?.('Finalizing...', 95)
+
+  // Trim store, find reference GPS *before* interpolation (to avoid
+  // picking up interpolated ramp values from 0,0 to first real fix)
+  const trimmedStore = trimStore(store)
+
+  let refLocation: { lat: number; lon: number } | undefined
+  if (trimmedStore.length > 0) {
+    for (let i = 0; i < trimmedStore.length; i++) {
+      const lat = trimmedStore.lat[i]
+      const lon = trimmedStore.lon[i]
+      if (Math.abs(lat) > 1 && Math.abs(lon) > 1) {
+        refLocation = { lat, lon }
+        break
+      }
+    }
+  }
+
+  interpolateGps(trimmedStore)
+
+  // Build session info from Marlin metadata
+  let timestamp: string | undefined
+  if (marlMeta.startTimestampTicks > 0) {
+    const unixMs = (marlMeta.startTimestampTicks / 10_000_000) * 1000
+    timestamp = new Date(unixMs).toISOString()
+  } else if (marlMeta.startDate) {
+    timestamp = `${marlMeta.startDate}T${marlMeta.startTime || '00:00:00'}`
+  }
+
+  const sessionInfo: SessionInfo = { timestamp }
+
+  // Compute max stats
+  let maxSpeed = 0
+  let maxRpm = 0
+  for (let i = 0; i < trimmedStore.length; i++) {
+    if (trimmedStore.speed_kph[i] > maxSpeed) maxSpeed = trimmedStore.speed_kph[i]
+    if (trimmedStore.rpm[i] > maxRpm) maxRpm = trimmedStore.rpm[i]
+  }
+
+  const duration = trimmedStore.length > 0
+    ? trimmedStore.time[trimmedStore.length - 1] - trimmedStore.time[0]
+    : 0
+
+  // Lap detection — GPS density heuristic only (Marlin has no embedded events)
+  const lapData = detectLaps(trimmedStore)
+
+  onProgress?.('Complete', 100)
+
+  return {
+    store: trimmedStore,
+    metadata: {
+      fileName,
+      fileSize: source.size,
+      sampleCount: sampleTable.sampleCount,
+      duration,
       sessionInfo,
       refLocation,
       maxSpeed_kph: maxSpeed,

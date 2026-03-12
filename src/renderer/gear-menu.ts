@@ -137,6 +137,9 @@ function buildAboutPanel(container: HTMLDivElement): void {
     'For more information, visit ' +
     '<a href="https://github.com/rhizocode/OpenPDR" target="_blank" rel="noopener">github.com/rhizocode/OpenPDR</a>' +
     '<br><br>Comments, Questions, or Feedback? Email <a href="mailto:contact@openpdr.org">contact@openpdr.org</a>'
+  if (window.pdr.platform !== 'web') {
+    desc.innerHTML += '<br><br>Video export powered by <a href="https://ffmpeg.org" target="_blank" rel="noopener">FFmpeg</a>'
+  }
   container.appendChild(desc)
 
   // Check for updates button (Electron only)

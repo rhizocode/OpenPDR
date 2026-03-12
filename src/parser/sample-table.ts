@@ -220,6 +220,10 @@ export function parseTrackTiming(
 
   // -- edts/elst (edit list) --
   let elstDelay = 0
+  // mediaStartTime: where the non-empty edit starts in decoded media time (seconds).
+  // The edit list maps decoded time [mediaStartTime, ...) to presentation time [elstDelay, ...).
+  // Without this, presentation times are shifted by mediaStartTime, causing A/V desync.
+  let mediaStartTime = 0
   const edts = findBox(moovBuf, 'edts', trakData, trakEnd)
   if (edts) {
     const elst = findBox(moovBuf, 'elst', edts[2], edts[0] + edts[1])
@@ -250,29 +254,35 @@ export function parseTrackTiming(
         if (mediaTime === -1 && mvhdTimescale > 0) {
           // Empty edit = delay before media starts
           elstDelay += segDuration / mvhdTimescale
+        } else if (mediaTime >= 0 && !mediaStartTime) {
+          // Non-empty edit: playback starts at this point in decoded media.
+          // Convert from track timescale ticks to seconds.
+          mediaStartTime = mediaTime / timescale
         }
       }
     }
   }
 
   // -- Build per-sample presentation times --
+  // Correct formula: presentation_time = elstDelay + (decode_time - mediaStartTime)
+  // This accounts for the edit list's mediaTime trimming the start of the decoded stream.
   const sampleTimes = new Float64Array(sampleCount)
   let sampleIdx = 0
-  let cumulativeTime = elstDelay
+  let cumulativeDecodeTime = 0
   for (const entry of sttsEntries) {
     const deltaSec = entry.delta / timescale
     for (let j = 0; j < entry.count && sampleIdx < sampleCount; j++) {
-      sampleTimes[sampleIdx] = cumulativeTime
-      cumulativeTime += deltaSec
+      sampleTimes[sampleIdx] = elstDelay + (cumulativeDecodeTime - mediaStartTime)
+      cumulativeDecodeTime += deltaSec
       sampleIdx++
     }
   }
   // Fill any remaining samples (shouldn't happen, but be safe)
   while (sampleIdx < sampleCount) {
-    sampleTimes[sampleIdx] = cumulativeTime
-    cumulativeTime += 1.0 // fallback: assume 1 second
+    sampleTimes[sampleIdx] = elstDelay + (cumulativeDecodeTime - mediaStartTime)
+    cumulativeDecodeTime += 1.0 // fallback: assume 1 second
     sampleIdx++
   }
 
-  return { timescale, duration, sttsEntries, elstDelay, sampleTimes }
+  return { timescale, duration, sttsEntries, elstDelay, mediaStartTime, sampleTimes }
 }

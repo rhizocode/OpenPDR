@@ -1,12 +1,10 @@
 # OpenPDR
 
-**Open-source, cross-platform telemetry viewer for the Cosworth Performance Data Recorder (PDR 2.5) in 2025–2026 GM vehicles**: Cadillac CT5-V Blackwing, Corvette Z06, Corvette Stingray, and others.
+**Open-source, cross-platform telemetry viewer for video files with embedded vehicle telemetry.** Currently supports GM's Cosworth Performance Data Recorder across multiple generations of hardware and firmware.
 
-PDR records vehicle data directly into the MP4 file alongside the video. OpenPDR reads that data and plays it back as a synchronized HUD overlay.
+Many dashcams, action cameras, and data loggers embed telemetry (GPS, accelerometers, vehicle data) directly into video files. OpenPDR reads that data and plays it back as a synchronized HUD overlay.
 
-> OpenPDR currently only supports the **AliveDrive PDR 2.5** format (`adrv`/`adco` codec), which is distinct from the older **Marlin** format (`ctbx`/`mrld`) used in C7/C8 Corvette PDR systems.
-
-The format was reverse-engineered entirely through binary analysis of MP4 files recorded by the vehicles. Keep scrolling for [technical details](#how-the-parser-works), the full [protocol documentation](#protocol-documentation), or the [channel list](#telemetry-channels).
+We have reverse-engineered several telemetry formats through binary analysis of MP4 files from the vehicle. See the [protocol documentation](#protocol-documentation) for full details.
 
 ## Get Started
 
@@ -15,6 +13,19 @@ The format was reverse-engineered entirely through binary analysis of MP4 files 
 - **Web**: Use OpenPDR right now at **[openpdr.org](https://openpdr.org)**. No install or account required. The application runs in your browser and your data remains on your device. The website also has limited mobile support.
 
 - **Desktop**:  Download an installer from the [latest release](https://github.com/rhizocode/OpenPDR/releases/latest) for Windows, macOS, or Linux.
+
+## Features
+
+- Synchronized telemetry overlays on video: RPM gauge, G-force ball, steering angle, track map, and more
+- Lap comparison mode to analyze differences between two laps side-by-side
+- Fully customizable overlays
+- Real-time strip charts for each telemetry channel
+- Track map shows real-time vechicle location and supports color shading based on speed, throttle, braking zones
+- Export telemetry to CSV
+- Export video with baked overlays (desktop only)
+- Automatic lap detection from firmware events or GPS data
+- Runs on desktop, web, and mobile
+- Fully offline. Your data never leaves your device
 
 ## Build from Source
 
@@ -121,46 +132,22 @@ The renderer code calls `window.pdr.*` for all platform interactions (file dialo
 
 ## Telemetry Channels
 
-All 59 channels defined in the PDR 2.5 `adcp` descriptor have been identified with their authoritative Cosworth namespace names, scale factors, and offsets. All 9 enum channels (gear, drive mode, ABS, ESC, TCS, VSE, PTM, engine start/stop, e-motor axle) are fully decoded with human-readable labels.
+OpenPDR extracts telemetry embedded in video files and decodes it into usable channels — GPS, accelerometers, wheel speeds, engine/drivetrain data, tire pressures and temperatures, and more at rates up to 100 Hz. Enum channels (gear, drive mode, traction control, etc.) are decoded with human-readable labels.
 
-| Rate | Channels |
-|------|----------|
-| 100 Hz | Brake position, engine RPM, torque (N·m), steering angle, 4× wheel speeds, gyro yaw rate |
-| 50 Hz | Dual 3-axis accelerometer (raw device frame + gravity-compensated vehicle frame) |
-| 10 Hz | GPS (lat/lon/alt/heading/satellites/fix), vehicle speed, ABS status, throttle position, boost pressure, e-motor power, engine power |
-| 5 Hz | Gear, engine start/stop, ESC status, TCS status |
-| 2 Hz | Oil pressure |
-| 1 Hz | Engine temps (coolant, oil, air intake), transmission temp, outside air temp, fuel level, odometer, tire pressures (4×), tire temps (4×), drive mode, PTM mode, VSE status, HV battery/e-motor channels |
+See [`protocol/`](protocol/) for the complete channel lists and encoding details for each supported format.
 
 ---
 
 ## Protocol Documentation
 
-See [`protocol/ALIVEDRIVE_FORMAT.md`](protocol/ALIVEDRIVE_FORMAT.md) for the full reverse-engineered format specification, including:
+Format specifications and reference parsers live in [`protocol/`](protocol/). Formats documented so far:
 
-- MP4 container layout and track identification (`adrv` handler, `adco` codec)
-- Complete channel definitions with Cosworth namespace names (all 59 channels)
-- `adcp` box structure (channel parameters: scale, offset, min/max, type)
-- `adud` box structure (unit definitions)
-- `advi` box structure (format version, hardware generation, MMP firmware version)
-- `adeg` box structure (20 performance timing event definitions)
-- Rate table structure (`adcr`) and multi-rate interleaving pattern
-- Complete sub-frame byte layouts for all 6 rate groups (100/50/10/5/2/1 Hz)
-- Encoding details: temperature (Kelvin offset model), torque, pressure, GPS coordinates
+| Format | Handler / Codec | Vehicles | Channels |
+|--------|----------------|----------|----------|
+| **AliveDrive PDR 2.5** | `adrv` / `adco` | 2025–2026 GM (CT5-V Blackwing, Corvette Z06/Stingray, etc.) | 59 channels, 6 rate groups (1–100 Hz) |
+| **Marlin PDR 2.0** | `ctbx` / `marl` | C7/C8 Corvette, Camaro (original Cosworth PDR) | Up to 85 self-describing channels |
 
-Both format variants are covered: legacy (3247-byte packets, gen 1 / MMP ≤ 3) and MMP v4+ (4050-byte packets, gen 2 MMP ≥ 4).
-
-A standalone Python reference parser is available at [`protocol/alivedrive_parser.py`](protocol/alivedrive_parser.py).
-
----
-
-## How the Parser Works
-
-1. **Track discovery**:  locates the `adrv` handler / `adco` codec track in the MP4 container
-2. **Sample table parsing**:  reads `stsz`, `stco`, `stsc` to find each telemetry sample's offset and size
-3. **Deterministic offset computation**:  pre-computes all byte offsets from the known packet structure (preamble, carry-over, interleaved sub-frame groups)
-4. **Frame decoding**:  reads each multi-rate sub-frame at the computed offsets
-5. **Playback sync**:  binary search over decoded rows on each animation frame to drive the HUD overlay
+See the [`protocol/README.md`](protocol/README.md) for details and standalone reference parsers.
 
 ---
 
@@ -171,6 +158,8 @@ Contributions welcome, especially:
 - Testing with other GM PDR 2.5 vehicles (hybrids, EVs, trucks) to validate e-motor and HV battery channels
 - Identifying the remaining numeric fields in the `advi` header (offsets 16–28)
 - HUD overlay improvements and new channel visualisations
+- **Marlin sample files**: we need recordings from older vehicles running the original Marlin/Cougar PDR 2.0 firmware — different firmware versions are needed to answer the [open questions](protocol/MARLIN_FORMAT.md#9-open-questions) about diff encoding, version history, and gear mapping on 7+ speed transmissions
+- **Other telemetry formats**: sample files from GoPro (GPMF), AIM, Garmin Catalyst, RaceLogic VBOX, and other race/dash telemetry systems would help expand format support
 
 ---
 

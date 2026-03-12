@@ -10,7 +10,7 @@ import { formatLapTime } from './defaults'
 import { STORAGE_KEYS } from './storage-keys'
 import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg, lapData, duration, viewRange, setViewRange, selectedLapIdx, getSyncedTime, seekToTelemetryTime, onTelemetryLoad, onViewRangeChange, avSyncOffset, setInterpState, getEditMode, setEditMode, onEditModeChange } from './state'
 import { initHud } from './hud'
-import { initControls, getIsScrubbing } from './controls'
+import { initControls, getIsScrubbing, PLAY_SVG } from './controls'
 import { initFileOpen } from './file-open'
 import { initResizer } from './resizer'
 import { initOverlaySettings, initFontScale } from './overlay-settings'
@@ -419,7 +419,7 @@ function onCompareAnimationFrame(): void {
   if (!vA.paused && pos >= 0.999) {
     vA.pause()
     vB.pause()
-    btnPlay.innerHTML = '&#9654;'
+    btnPlay.innerHTML = PLAY_SVG
   }
 
   // Keep looping while playing or scrubbing
@@ -448,7 +448,7 @@ function onAnimationFrame(): void {
   // Playback clamping: pause when reaching end of view range
   if (!video.paused && getSyncedTime() >= viewRange.endTime) {
     video.pause()
-    btnPlay.innerHTML = '&#9654;'
+    btnPlay.innerHTML = PLAY_SVG
     seekToTelemetryTime(viewRange.endTime - 0.001)
   }
 
@@ -475,6 +475,67 @@ video.addEventListener('seeked', startAnimationLoop)
 
 // Also restart on timeupdate as a safety net
 video.addEventListener('timeupdate', startAnimationLoop)
+
+// ── Mobile sleep/wake video recovery ──
+// When a mobile device sleeps, the OS may release the hardware video decoder.
+// On wake the UI is fine but video frames are frozen. We detect this and
+// attempt recovery; if that fails we show a toast prompting the user to tap.
+{
+  const toast = document.getElementById('video-recovery-toast')!
+  let wasPlaying = false
+
+  document.addEventListener('visibilitychange', () => {
+    if (!video.src) return
+
+    if (document.hidden) {
+      // Entering sleep — remember playback state
+      wasPlaying = !video.paused
+      return
+    }
+
+    // Waking up — attempt to nudge the decoder back to life
+    const savedTime = video.currentTime
+    dbg('Visibility restored — attempting video decoder recovery')
+
+    // Nudge seek forces decoder re-init on most mobile browsers
+    video.currentTime = savedTime
+
+    // Give the decoder a moment, then check if it recovered
+    const timeout = setTimeout(() => {
+      // readyState < HAVE_CURRENT_DATA means decoder didn't recover
+      if (video.readyState < 2 || video.error) {
+        dbg(`Video decoder lost (readyState=${video.readyState}), showing recovery toast`)
+        toast.classList.remove('hidden')
+      } else if (wasPlaying) {
+        video.play().catch(() => {})
+      }
+    }, 500)
+
+    // If the seek actually works, we're fine — hide any toast and resume
+    video.addEventListener('seeked', function onRecovery() {
+      video.removeEventListener('seeked', onRecovery)
+      clearTimeout(timeout)
+      toast.classList.add('hidden')
+      if (wasPlaying) {
+        video.play().catch(() => {})
+      }
+    }, { once: true })
+  })
+
+  // Toast tap: reload video source at the same position
+  toast.addEventListener('click', () => {
+    const t = video.currentTime
+    const src = video.src
+    dbg('User tapped recovery toast — reloading video')
+    toast.classList.add('hidden')
+    video.src = ''
+    video.src = src
+    video.addEventListener('loadedmetadata', () => {
+      video.currentTime = t
+      startAnimationLoop()
+    }, { once: true })
+  })
+}
 
 // When entering compare mode, wire video A events to restart the animation loop
 let comparePlayHandler: (() => void) | null = null

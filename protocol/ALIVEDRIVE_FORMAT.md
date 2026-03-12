@@ -15,6 +15,24 @@ This document covers the **AliveDrive PDR 2.5** format, which is distinct from
 the older **Marlin** format (handler `ctbx`, codec `mrld`/`mrlv`/`marl`) used
 in Corvette C7/C8 PDR systems.
 
+### Abbreviations
+
+| Abbreviation | Meaning |
+|--------------|---------|
+| PDR | Performance Data Recorder — Cosworth-developed system integrating a forward-facing camera, microphone, GPS, and vehicle telemetry into a single recording unit |
+| MMP | Multimedia Processor — the dedicated Cosworth PDR ECU/hardware module that captures video, audio, and telemetry data |
+| VIP | Vehicle Intelligence Platform (GM "Global B") — GM's vehicle-wide electronic communications architecture that connects all modules; the MMP receives CAN bus telemetry through this platform |
+| App | The Cosworth PDR 2.5 application running on the vehicle's infotainment system; updatable independently via OTA, so different cars with identical MMP/VIP firmware may report different app versions |
+| ABS | Anti-Lock Braking System |
+| ESC | Electronic Stability Control |
+| TCS | Traction Control System |
+| VSE | Vehicle Stability Enhancement |
+| PTM | Performance Traction Management — V-series multi-level traction control (wet/dry/sport1/sport2/race) |
+| HV | High Voltage — refers to the hybrid/EV traction battery system |
+| ICE | Internal Combustion Engine |
+| GPS | Global Positioning System |
+| CAN | Controller Area Network — the in-vehicle serial bus used for inter-module communication |
+
 ---
 
 ## 1. MP4 Container Layout
@@ -1360,29 +1378,50 @@ Offset  Size  Type    Field
 8       2     u16 BE  format_version (5 = PDR 2.5)
 10      2     u16 BE  reserved (0)
 12      2     u16 BE  generation — hardware generation (1 = gen 1, 2 = gen 2)
-14      2     u16 BE  mmp_version — MMP firmware version (see §14.2)
-16      2     u16 BE  field_3 (e.g. 110)
-18      2     u16 BE  field_4 (e.g. 30)
-20      4     u32 BE  field_5 (e.g. 384063)
-24      2     u16 BE  field_6 (e.g. 1)
-26      2     u16 BE  field_7 (e.g. 17)
-28      2     u16 BE  field_8 (e.g. 80)
+14      2     u16 BE  mmp_minor — MMP firmware minor version (see §14.2)
+16      2     u16 BE  mmp_patch — MMP firmware patch version
+18      2     u16 BE  vip_major — VIP firmware major version
+20      4     u32 BE  vip_minor_patch — VIP minor (high 16 bits) + VIP patch (low 16 bits)
+24      2     u16 BE  app_major — App major version (always 1)
+26      2     u16 BE  app_minor — App minor version
+28      2     u16 BE  app_patch — App patch version
 30      var   string  null-terminated source identifier
 ```
+
+The box encodes three complete version triplets that correspond to the
+`adop` version properties (§13.3):
+
+| advi fields | Reconstructed version | adop property |
+|-------------|----------------------|---------------|
+| generation.mmp_minor.mmp_patch | e.g. 2.4.85 | `source.mmp.version` |
+| vip_major.(vip_minor_patch >> 16).(vip_minor_patch & 0xFFFF) | e.g. 31.4.26616 | `source.vip.version` |
+| app_major.app_minor.app_patch | e.g. 1.22.20 | `source.app.version` |
+
+> **VIP version packing:** The VIP minor and patch versions are packed into a
+> single u32. For example, VIP version `31.4.26616` is stored as
+> `vip_major = 31`, `vip_minor_patch = (4 << 16) | 26616 = 288760`
+> (hex `0x000467F8`). The VIP patch value can exceed 16 bits' unsigned range
+> in principle, but observed values (19792, 26616, 56383) fit within u16.
+
+> **App version variation:** The app version (fields at offsets 24–28) can
+> differ between recordings made on the same MMP/VIP firmware, because the
+> app (AliveDrive mobile or infotainment application) updates independently
+> from the MMP and VIP firmware.
 
 The source identifier string is `"com.cosworth.outing.source.pdr2_5"`,
 which identifies the data format as AliveDrive PDR 2.5.
 
 ### 14.2 Generation and MMP Version
 
-The `generation` field at offset 12 identifies the hardware generation, and the
-`mmp_version` field at offset 14 identifies the MMP firmware version. Together
-they determine the data format variant:
+The `generation` field at offset 12 identifies the hardware generation (which
+also serves as the MMP major version), and the `mmp_minor` field at offset 14
+identifies the MMP firmware minor version. Together they determine the data
+format variant:
 
 | Generation | MMP Version | Packet Size | Format | Preamble ID | Known Vehicles |
 |------------|-------------|-------------|--------|------------|-------------------|
 | 1 | 8 | 3247 | Legacy (17-byte 100 Hz) | 0x0CA1 | CT5-V Blackwing (LT4) |
-| 2 | 3 | 3247 | Legacy (17-byte 100 Hz) | 0x0CA1 | Corvette Stingray (LT2), Corvette Z06 (LT6) |
+| 2 | 3 | 3247 | Legacy (17-byte 100 Hz) | 0x0CA1 | Corvette Stingray (LT2), Corvette Z06 (LT6), Corvette ZR1 (LT7) |
 | 2 | 4+ | 4050 | MMP v4+ (25-byte 100 Hz) | 0x0FC4 | CT5-V Blackwing (LT4) |
 
 > **Important:** MMP version numbering differs across hardware generations.
@@ -1523,19 +1562,7 @@ part of the OpenPDR Electron viewer application.
 
 ## 19. Open Questions
 
-### 19.1 `advi` Fields 5, 6, 7, 8
-
-Fields 3 and 4 correspond to MMP patch version and VIP major version
-respectively (see §14.1). The remaining fields are not fully understood:
-
-| Field | Offset | Known Values | Notes |
-|-------|--------|-----------------|-------|
-| field_5 | 20 | 384063, 216400, 288760 | May encode VIP build number |
-| field_6 | 24 | always 1 | Unknown purpose |
-| field_7 | 26 | 17, 20, 22 | Correlates loosely with VIP minor |
-| field_8 | 28 | 20, 35, 80, 88 | Varies even within same firmware |
-
-### 19.2 Hybrid/EV Channel Validation
+### 19.1 Hybrid/EV Channel Validation
 
 This specification is based on ICE vehicles (CT5-V Blackwing, Corvette
 Stingray, Corvette Z06). The hybrid/EV channels — e-motor power level,

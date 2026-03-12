@@ -198,6 +198,7 @@ export function clampAllToViewport(): void {
 // ── Drag logic ──
 
 let dragTarget: OverlayKey | null = null
+let dragPointerId = -1
 let dragOffsetX = 0
 let dragOffsetY = 0
 
@@ -216,6 +217,7 @@ function onPointerDown(key: OverlayKey, el: HTMLElement, e: PointerEvent): void 
   e.preventDefault()
   e.stopPropagation()
   dragTarget = key
+  dragPointerId = e.pointerId
   el.classList.add('dragging')
   el.setPointerCapture(e.pointerId)
 
@@ -226,7 +228,7 @@ function onPointerDown(key: OverlayKey, el: HTMLElement, e: PointerEvent): void 
 }
 
 function onPointerMove(e: PointerEvent): void {
-  if (!dragTarget) return
+  if (!dragTarget || e.pointerId !== dragPointerId) return
   const el = hudElements.get(dragTarget)
   if (!el) return
 
@@ -258,17 +260,19 @@ function onPointerMove(e: PointerEvent): void {
   syncPositionsToB(container)
 }
 
-function onPointerUp(): void {
-  if (!dragTarget) return
+function onPointerUp(e: PointerEvent): void {
+  if (!dragTarget || e.pointerId !== dragPointerId) return
   const el = hudElements.get(dragTarget)
   if (el) el.classList.remove('dragging')
   dragTarget = null
+  dragPointerId = -1
   saveLayout()
 }
 
 // ── Resize logic ──
 
 let resizeTarget: OverlayKey | null = null
+let resizePointerId = -1
 let resizeCorner: OverlayOrigin = 'br'
 let resizeFixedPx = { x: 0, y: 0 }
 let resizeStartDiag = 0
@@ -279,6 +283,7 @@ function onResizePointerDown(key: OverlayKey, corner: OverlayOrigin, e: PointerE
   e.preventDefault()
   e.stopPropagation()
   resizeTarget = key
+  resizePointerId = e.pointerId
   resizeCorner = corner
   resizeStartScale = layout[key].scale
   resizeOrigOrigin = layout[key].origin ?? 'tl'
@@ -305,7 +310,7 @@ function onResizePointerDown(key: OverlayKey, corner: OverlayOrigin, e: PointerE
 }
 
 function onResizePointerMove(e: PointerEvent): void {
-  if (!resizeTarget) return
+  if (!resizeTarget || e.pointerId !== resizePointerId) return
   if (resizeStartDiag === 0) return
 
   const currentDiag = Math.hypot(e.clientX - resizeFixedPx.x, e.clientY - resizeFixedPx.y)
@@ -317,8 +322,8 @@ function onResizePointerMove(e: PointerEvent): void {
   syncPositionsToB(container)
 }
 
-function onResizePointerUp(): void {
-  if (!resizeTarget) return
+function onResizePointerUp(e: PointerEvent): void {
+  if (!resizeTarget || e.pointerId !== resizePointerId) return
 
   // Recompute the natural origin from center position
   const newOrigin = computeOrigin(resizeTarget)
@@ -329,7 +334,24 @@ function onResizePointerUp(): void {
   }
 
   resizeTarget = null
+  resizePointerId = -1
   saveLayout()
+}
+
+/** Clean up drag/resize state when the pointer is cancelled (e.g. browser gesture). */
+function onPointerCancel(e: PointerEvent): void {
+  if (dragTarget && e.pointerId === dragPointerId) {
+    const el = hudElements.get(dragTarget)
+    if (el) el.classList.remove('dragging')
+    dragTarget = null
+    dragPointerId = -1
+    saveLayout()
+  }
+  if (resizeTarget && e.pointerId === resizePointerId) {
+    resizeTarget = null
+    resizePointerId = -1
+    saveLayout()
+  }
 }
 
 // ── Edit mode enter/exit ──
@@ -354,14 +376,21 @@ function enterEditMode(): void {
   // Show centre guide lines
   container.classList.add('edit-guides')
 
-  // Attach global move/up listeners
+  // Attach global move/up/cancel listeners
   document.addEventListener('pointermove', onPointerMove)
   document.addEventListener('pointerup', onPointerUp)
+  document.addEventListener('pointercancel', onPointerCancel)
   document.addEventListener('pointermove', onResizePointerMove)
   document.addEventListener('pointerup', onResizePointerUp)
 }
 
 function exitEditMode(): void {
+  // Clear any in-progress drag/resize
+  dragTarget = null
+  dragPointerId = -1
+  resizeTarget = null
+  resizePointerId = -1
+
   for (const [, el] of hudElements) {
     el.classList.remove('edit-mode')
     el.classList.remove('dragging')
@@ -371,6 +400,7 @@ function exitEditMode(): void {
 
   document.removeEventListener('pointermove', onPointerMove)
   document.removeEventListener('pointerup', onPointerUp)
+  document.removeEventListener('pointercancel', onPointerCancel)
   document.removeEventListener('pointermove', onResizePointerMove)
   document.removeEventListener('pointerup', onResizePointerUp)
 
