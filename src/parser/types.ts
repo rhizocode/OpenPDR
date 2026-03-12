@@ -69,7 +69,9 @@ export interface TrackTiming {
   sttsEntries: SttsEntry[]
   /** Delay from edts/elst empty edit (seconds), 0 if no edit list */
   elstDelay: number
-  /** Per-sample presentation times in seconds (elst delay + cumulative stts) */
+  /** Media start time from first non-empty edit list entry (seconds), 0 if none */
+  mediaStartTime: number
+  /** Per-sample presentation times in seconds (elst delay + cumulative stts - mediaStartTime) */
   sampleTimes: Float64Array
 }
 

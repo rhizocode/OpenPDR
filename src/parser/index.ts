@@ -74,6 +74,12 @@ export async function parsePdrFile(
     mvhdTimescale, sampleTable.sampleCount,
   )
 
+  if (trackTiming) {
+    console.log(`[sync] Data track: elstDelay=${trackTiming.elstDelay.toFixed(3)}s, ` +
+      `mediaStart=${trackTiming.mediaStartTime.toFixed(3)}s, ` +
+      `sample0=${trackTiming.sampleTimes[0]?.toFixed(3)}s, sample1=${trackTiming.sampleTimes[1]?.toFixed(3)}s`)
+  }
+
   onProgress?.('Parsing metadata...', 5)
 
   // Step 4: Parse metadata sub-boxes (advi, adop)
@@ -134,11 +140,9 @@ export async function parsePdrFile(
   const store = createTelemetryStore(estimatedRows)
   const allEvents: EmbeddedEvent[] = []
 
-  // The first sample in the data track is typically a small init/config packet
-  // that we skip (size < 100). However it still occupies time in the MP4
-  // timeline (usually 1 second via stts), pushing all real telemetry timestamps
-  // forward. We subtract the first real packet's sampleTime so telemetry time 0
-  // aligns with video time 0.
+  // The init packet (size < 100) occupies time in the MP4 timeline but contains
+  // no telemetry. We subtract the first real packet's presentation time so
+  // telemetry time 0 aligns with the start of actual data.
   let timeBase = 0
 
   for (let i = 0; i < sampleOffsets.length; i++) {
