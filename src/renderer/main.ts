@@ -10,7 +10,7 @@ import { formatLapTime } from './defaults'
 import { STORAGE_KEYS } from './storage-keys'
 import { video, findRowAtTime, setCurrentRow, updateInterpolation, fireFrameTick, isDebugVisible, dbg, lapData, duration, viewRange, setViewRange, selectedLapIdx, getSyncedTime, seekToTelemetryTime, onTelemetryLoad, onViewRangeChange, avSyncOffset, setInterpState, getEditMode, setEditMode, onEditModeChange } from './state'
 import { initHud } from './hud'
-import { initControls, getIsScrubbing } from './controls'
+import { initControls, getIsScrubbing, PLAY_SVG } from './controls'
 import { initFileOpen } from './file-open'
 import { initResizer } from './resizer'
 import { initOverlaySettings, initFontScale } from './overlay-settings'
@@ -419,7 +419,7 @@ function onCompareAnimationFrame(): void {
   if (!vA.paused && pos >= 0.999) {
     vA.pause()
     vB.pause()
-    btnPlay.innerHTML = '&#9654;'
+    btnPlay.innerHTML = PLAY_SVG
   }
 
   // Keep looping while playing or scrubbing
@@ -448,7 +448,7 @@ function onAnimationFrame(): void {
   // Playback clamping: pause when reaching end of view range
   if (!video.paused && getSyncedTime() >= viewRange.endTime) {
     video.pause()
-    btnPlay.innerHTML = '&#9654;'
+    btnPlay.innerHTML = PLAY_SVG
     seekToTelemetryTime(viewRange.endTime - 0.001)
   }
 

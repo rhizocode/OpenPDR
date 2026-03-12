@@ -9,6 +9,9 @@ import { video, formatTime, toggleDebugPanel, viewRange, getViewDuration, viewFr
 import { isCompareMode, videoA as cmpVideoA, videoB as cmpVideoB, syncDataA, syncDataB, lapA, lapB, trackPosition } from './compare-state'
 import { trackPositionToTime, timeToTrackPosition } from './compare-sync'
 
+export const PLAY_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>'
+export const PAUSE_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="3" width="6" height="18"/><rect x="14" y="3" width="6" height="18"/></svg>'
+
 let isScrubbing = false
 
 export function getIsScrubbing(): boolean {
@@ -140,13 +143,13 @@ export function initControls(): Controls {
         cmpVideoB.muted = true
         cmpVideoB.play()
       }
-      btnPlay.innerHTML = '&#9646;&#9646;'
+      btnPlay.innerHTML = PAUSE_SVG
     } else {
       v.pause()
       if (isCompareMode() && cmpVideoB) {
         cmpVideoB.pause()
       }
-      btnPlay.innerHTML = '&#9654;'
+      btnPlay.innerHTML = PLAY_SVG
     }
   })
 
