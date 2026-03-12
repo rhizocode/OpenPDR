@@ -97,3 +97,45 @@ export interface EmbeddedEvent {
   eventName: string        // e.g., "com.cosworth.event.lap.start"
   time: number             // seconds from recording start
 }
+
+// ── Format Detection ──────────────────────────────────────────────────────────
+
+/** Known PDR telemetry formats */
+export type FormatType = 'alivedrive' | 'marlin'
+
+/** Result of format detection on a moov buffer */
+export interface FormatDetection {
+  format: FormatType
+  trackInfo: TrackInfo
+}
+
+// ── Marlin-specific types ─────────────────────────────────────────────────────
+
+/** A single channel definition from the Marlin mrld dictionary (448-byte record). */
+export interface MarlinChannel {
+  channelId: number
+  typeId: number
+  units: string
+  intervalTicks: number   // sample interval in 100 ns units
+  multiplier: number      // raw → SI conversion multiplier
+  offset: number          // raw → SI conversion offset
+  name: string
+  description: string
+}
+
+/** Recording metadata from the Marlin mrlv box. */
+export interface MarlinMetadata {
+  recordingId: string
+  startDate: string
+  startTime: string
+  endTime: string
+  endDate: string
+  timezone: string
+  trackName: string
+  country: string
+  language: string
+  softwareVersion: string
+  unitSystem: string
+  recordingType: string
+  startTimestampTicks: number  // 100 ns since Unix epoch
+}
