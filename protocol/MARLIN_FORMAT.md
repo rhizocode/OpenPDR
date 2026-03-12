@@ -551,7 +551,64 @@ For time-aligned CSV output at a fixed rate (e.g. 100 Hz), decoders should:
 
 ---
 
-## 9. References
+## 9. Open Questions
+
+### 9.1 Channel Flags (§4.4)
+
+The `flags` bitmask is consistently `7` (0b111) across all observed channels.
+The individual bit meanings are unknown — likely enabled/visible/logged states,
+but this has not been confirmed. If a channel were flagged as disabled
+(e.g. `flags = 0`), decoders currently wouldn't know to exclude it.
+
+### 9.2 Gear Encoding for 7+ Speed Transmissions
+
+Gear values 7–12 are listed as reserved, but the C8 Corvette has an 8-speed
+DCT and some vehicles may have 7-speed manuals. It is unknown whether
+these transmissions report gear values 7 and 8 directly, or use a different
+encoding. Needs verification with a C8 DCT or 7-speed manual recording.
+
+### 9.3 `kvp\x00` Metadata Entries
+
+The `mrlv` box supports a `kvp` format (64-byte key + 256-byte value pairs),
+but no instances have been observed in available recordings. The keys and
+their semantics are unknown.
+
+### 9.4 Format Version History
+
+Only version 4 (`0x00040000` in `mrlh`) has been observed. It is unknown
+what changed between versions 1–3, or whether the mrld record layout,
+telemetry record encoding, or mrlv tag set differs in earlier versions.
+
+### 9.5 Full Record Reserved Bits
+
+Bits [29:28] of the full record header word are documented as "typically 0."
+Their purpose is unknown — they may be unused padding, or they may carry
+meaning in firmware versions not yet examined.
+
+### 9.6 Diff Record Coverage
+
+The diff record format (§6.3) is fully specified, but all examined files
+use exclusively full records. The diff decoder path has not been validated
+against real diff-encoded data. It may only appear in older firmware or
+specific recording modes.
+
+### 9.7 Channel `num` Field
+
+The `num` field at offset 8 in the mrld record (§4.1) is labelled "channel
+ordinal" but its relationship to `channel_id` is unclear. In observed data
+it mirrors the channel_id. It may serve as a display ordering hint or a
+legacy field with no current function.
+
+### 9.8 Type ID vs. Multiplier/Offset
+
+The `type_id` field (§4.3) categorizes channels by physical quantity, but
+the actual raw→SI conversion is always driven by `multiplier` and `offset`.
+It is unknown whether `type_id` affects decoding behavior in the original
+Cosworth software, or if it is purely informational metadata.
+
+---
+
+## 10. References
 
 - ExifTool GM.pm module by Phil Harvey: `https://exiftool.org/forum/index.php?topic=11335`
 - ISO 14496-12 (MPEG-4 Part 12): ISO base media file format
