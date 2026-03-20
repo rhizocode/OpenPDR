@@ -10,6 +10,7 @@ import type { BrakeMode } from './defaults'
 import { getOverlaysVisible, setOverlaysVisible } from './hud'
 import { saveRpmConfig, getRpmConfig, loadRpmConfig, getDetectedEngine, isManualOverride, setManualOverride } from './rpm-gauge'
 import { avSyncOffset, setAvSyncOffset } from './state'
+import { STORAGE_KEYS } from './storage-keys'
 import { getBrakeMode, setBrakeMode } from './defaults'
 
 export function initOverlaySettings(): void {
