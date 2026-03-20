@@ -18,4 +18,5 @@ export const STORAGE_KEYS = {
   lapsPanelWidth: 'pdr-laps-panel-width',
   brakeMode: 'pdr-brake-mode',
   trackMapConfig: 'pdr-trackmap-config',
+  overlaysVisible: 'pdr-overlays-visible',
 } as const

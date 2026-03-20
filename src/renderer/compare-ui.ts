@@ -179,6 +179,7 @@ function enterSameFile(): void {
     sessionInfoB: sessionInfo,
   }
 
+  video.pause()
   enterCompareMode(config)
   applyCompareLayout(config, bestIdx, secondIdx)
 }
@@ -247,6 +248,7 @@ async function enterDifferentFile(): Promise<void> {
     sessionInfoB: resultB.metadata.sessionInfo ?? null,
   }
 
+  video.pause()
   enterCompareMode(config)
   applyCompareLayout(config, bestA, bestB)
 }

@@ -6,37 +6,26 @@
  * HUD overlay toggles are in the Edit panel (edit-mode.ts).
  */
 
-import type { OverlayConfig } from './types'
 import type { BrakeMode } from './defaults'
-import { applyOverlayConfig, getOverlayConfig, setOverlayConfig } from './hud'
+import { getOverlaysVisible, setOverlaysVisible } from './hud'
 import { saveRpmConfig, getRpmConfig, loadRpmConfig, getDetectedEngine, isManualOverride, setManualOverride } from './rpm-gauge'
 import { avSyncOffset, setAvSyncOffset } from './state'
 import { STORAGE_KEYS } from './storage-keys'
 import { getBrakeMode, setBrakeMode } from './defaults'
 
-const OVERLAY_STORAGE_KEY = STORAGE_KEYS.overlayConfig
-
 export function initOverlaySettings(): void {
   loadRpmConfig()
 
-  // Keyboard shortcut: H to toggle all HUD
+  // Keyboard shortcut: H to toggle all HUD (master visibility)
   document.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'SELECT') return
 
     if (e.code === 'KeyH') {
-      const config = getOverlayConfig()
-      const allOn = Object.values(config).every(v => v)
-      const keys = Object.keys(config) as (keyof OverlayConfig)[]
-      for (const key of keys) {
-        config[key] = !allOn
-      }
-      setOverlayConfig(config)
-      applyOverlayConfig(config)
-      localStorage.setItem(OVERLAY_STORAGE_KEY, JSON.stringify(config))
-      // Update edit panel checkboxes if they exist
-      for (const cb of document.querySelectorAll<HTMLInputElement>('input[data-edit-overlay-key]')) {
-        cb.checked = !allOn
-      }
+      const newVisible = !getOverlaysVisible()
+      setOverlaysVisible(newVisible)
+      // Keep the master toggle checkbox in sync
+      const masterCb = document.getElementById('overlay-master-toggle') as HTMLInputElement | null
+      if (masterCb) masterCb.checked = newVisible
     }
   })
 }

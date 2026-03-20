@@ -9,6 +9,7 @@
 import { lapData, currentRow, interpPrev, interpNext, interpAlpha, telemetryStore, chartZoom, onChartZoomChange, getSyncedTime } from './state'
 import { onTelemetryLoad, onFrameTick } from './state'
 import { findClosestTimeIndex } from '../shared/telemetry-store'
+import { isCompareMode, compareZoom, onCompareZoomChange } from './compare-state'
 import { getTrackMapConfig, onTrackMapConfigChange, getBrakeDisplay } from './defaults'
 import type { TrackMapColorMode } from './defaults'
 import type { TrackLayout } from './types'
@@ -570,7 +571,18 @@ function drawPositionDot(gps?: typeof _gpsOut): void {
 
 /** Dim the track sections outside the chart zoom window. */
 function drawZoomHighlight(): void {
-  if (!chartZoom || !telemetryStore || !proj) return
+  if (!proj) return
+
+  if (isCompareMode()) {
+    drawZoomHighlightCompare()
+  } else {
+    drawZoomHighlightSingle()
+  }
+}
+
+/** Zoom highlight for single-video mode: dims store indices outside chartZoom. */
+function drawZoomHighlightSingle(): void {
+  if (!chartZoom || !telemetryStore) return
   const store = telemetryStore
   if (store.length === 0) return
 
@@ -604,6 +616,48 @@ function drawZoomHighlight(): void {
     for (let i = zoomEnd; i <= currentLapEndIdx; i++) {
       if (store.lat[i] === 0 && store.lon[i] === 0) continue
       const px = gpsToCanvasInto(store.lat[i], store.lon[i])
+      if (!px) continue
+      if (first) { ctx.moveTo(px.x, px.y); first = false }
+      else ctx.lineTo(px.x, px.y)
+    }
+    ctx.stroke()
+  }
+}
+
+/** Zoom highlight for compare mode: dims cachedLayout.points outside compareZoom. */
+function drawZoomHighlightCompare(): void {
+  if (!compareZoom || !cachedLayout) return
+  const pts = cachedLayout.points
+  if (pts.length < 2) return
+
+  const idxStart = Math.round(compareZoom.posStart * (pts.length - 1))
+  const idxEnd = Math.round(compareZoom.posEnd * (pts.length - 1))
+  if (idxEnd <= idxStart) return
+
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'
+  ctx.lineWidth = Math.round(trackLW * 1.6)
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+
+  // Dim segment before zoom window
+  if (idxStart > 0) {
+    ctx.beginPath()
+    let first = true
+    for (let i = 0; i <= idxStart; i++) {
+      const px = gpsToCanvasInto(pts[i].lat, pts[i].lon)
+      if (!px) continue
+      if (first) { ctx.moveTo(px.x, px.y); first = false }
+      else ctx.lineTo(px.x, px.y)
+    }
+    ctx.stroke()
+  }
+
+  // Dim segment after zoom window
+  if (idxEnd < pts.length - 1) {
+    ctx.beginPath()
+    let first = true
+    for (let i = idxEnd; i < pts.length; i++) {
+      const px = gpsToCanvasInto(pts[i].lat, pts[i].lon)
       if (!px) continue
       if (first) { ctx.moveTo(px.x, px.y); first = false }
       else ctx.lineTo(px.x, px.y)
@@ -718,6 +772,14 @@ export function initTrackMap(el: HTMLCanvasElement): void {
   })
 
   onChartZoomChange(() => {
+    if (cachedLayout && proj) {
+      blitTrack()
+      drawZoomHighlight()
+      drawPositionDot()
+    }
+  })
+
+  onCompareZoomChange(() => {
     if (cachedLayout && proj) {
       blitTrack()
       drawZoomHighlight()

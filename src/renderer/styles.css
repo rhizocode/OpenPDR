@@ -1166,6 +1166,11 @@ html, body {
   color: var(--text-secondary);
 }
 
+#overlay-master-toggle {
+  cursor: pointer;
+  margin: 0;
+}
+
 .gear-section-content {
   padding: 4px 10px 8px;
   border-bottom: 1px solid #333;
