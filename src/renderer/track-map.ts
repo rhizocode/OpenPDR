@@ -578,6 +578,8 @@ function drawZoomHighlight(): void {
 
   let zoomStart: number
   let zoomEnd: number
+  let lapStart: number
+  let lapEnd: number
 
   if (isCompareMode()) {
     if (!compareZoom || !syncDataA) return
@@ -585,10 +587,15 @@ function drawZoomHighlight(): void {
     const tEnd = trackPositionToTime(syncDataA, compareZoom.posEnd)
     zoomStart = findClosestTimeIndex(store.time, tStart, store.length)
     zoomEnd = findClosestTimeIndex(store.time, tEnd, store.length)
+    // Use sync data's lap range, not the video-time-based currentLap range
+    lapStart = syncDataA.startIdx
+    lapEnd = syncDataA.endIdx - 1
   } else {
     if (!chartZoom) return
     zoomStart = findClosestTimeIndex(store.time, chartZoom.startTime, store.length)
     zoomEnd = findClosestTimeIndex(store.time, chartZoom.endTime, store.length)
+    lapStart = currentLapStartIdx
+    lapEnd = currentLapEndIdx
   }
   if (zoomEnd <= zoomStart) return
 
@@ -598,10 +605,10 @@ function drawZoomHighlight(): void {
   ctx.lineCap = 'round'
 
   // Dim segment before zoom window
-  if (zoomStart > currentLapStartIdx) {
+  if (zoomStart > lapStart) {
     ctx.beginPath()
     let first = true
-    for (let i = currentLapStartIdx; i <= zoomStart; i++) {
+    for (let i = lapStart; i <= zoomStart; i++) {
       if (store.lat[i] === 0 && store.lon[i] === 0) continue
       const px = gpsToCanvasInto(store.lat[i], store.lon[i])
       if (!px) continue
@@ -612,10 +619,10 @@ function drawZoomHighlight(): void {
   }
 
   // Dim segment after zoom window
-  if (zoomEnd < currentLapEndIdx) {
+  if (zoomEnd < lapEnd) {
     ctx.beginPath()
     let first = true
-    for (let i = zoomEnd; i <= currentLapEndIdx; i++) {
+    for (let i = zoomEnd; i <= lapEnd; i++) {
       if (store.lat[i] === 0 && store.lon[i] === 0) continue
       const px = gpsToCanvasInto(store.lat[i], store.lon[i])
       if (!px) continue
