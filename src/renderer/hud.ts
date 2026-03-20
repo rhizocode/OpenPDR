@@ -48,6 +48,18 @@ function loadOverlayConfig(): OverlayConfig {
   return { ...DEFAULT_OVERLAY }
 }
 
+// ── Master overlay visibility (independent of per-overlay config) ──
+const OVERLAYS_VISIBLE_KEY = STORAGE_KEYS.overlaysVisible
+let overlaysVisible: boolean = localStorage.getItem(OVERLAYS_VISIBLE_KEY) !== 'false'
+
+export function getOverlaysVisible(): boolean { return overlaysVisible }
+
+export function setOverlaysVisible(visible: boolean): void {
+  overlaysVisible = visible
+  localStorage.setItem(OVERLAYS_VISIBLE_KEY, visible ? 'true' : 'false')
+  applyOverlayConfig(overlayConfig)
+}
+
 export function getOverlayConfig(): OverlayConfig {
   return { ...overlayConfig }
 }
@@ -221,7 +233,7 @@ export function applyOverlayConfig(config: OverlayConfig): void {
   for (const el of videoContainer.querySelectorAll<HTMLElement>('.hud-element[data-overlay]')) {
     const key = el.dataset.overlay as OverlayKey
     if (key in config) {
-      if (config[key]) {
+      if (overlaysVisible && config[key]) {
         el.classList.add('active')
       } else {
         el.classList.remove('active')

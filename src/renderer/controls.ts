@@ -6,7 +6,7 @@
  */
 
 import { video, formatTime, toggleDebugPanel, viewRange, getViewDuration, viewFractionToTime, getSyncedTime, seekToTelemetryTime, avSyncOffset, onViewRangeChange, chartZoom, setChartZoom, onChartZoomChange, chartLoopMode, setChartLoopMode } from './state'
-import { isCompareMode, videoA as cmpVideoA, videoB as cmpVideoB, syncDataA, syncDataB, lapA, lapB, trackPosition } from './compare-state'
+import { isCompareMode, videoA as cmpVideoA, videoB as cmpVideoB, syncDataA, syncDataB, lapA, lapB, trackPosition, compareZoom, setCompareZoom, onCompareZoomChange, compareChartFractionToPos } from './compare-state'
 import { trackPositionToTime, timeToTrackPosition } from './compare-sync'
 
 export const PLAY_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>'
@@ -121,6 +121,17 @@ export function initControls(): Controls {
         if (trackPosition >= 0.999) {
           compareSeekToTrackPos(0)
         }
+        // Snap compare zoom window to playhead if playhead is off-screen
+        if (compareZoom) {
+          if (trackPosition < compareZoom.posStart || trackPosition >= compareZoom.posEnd) {
+            const dur = compareZoom.posEnd - compareZoom.posStart
+            let newStart = trackPosition - dur * 0.1
+            let newEnd = newStart + dur
+            if (newStart < 0) { newStart = 0; newEnd = dur }
+            if (newEnd > 1) { newEnd = 1; newStart = Math.max(0, 1 - dur) }
+            setCompareZoom({ posStart: newStart, posEnd: newEnd })
+          }
+        }
       } else {
         if (getSyncedTime() >= viewRange.endTime - 0.05) {
           seekToTelemetryTime(viewRange.startTime)
@@ -228,7 +239,16 @@ export function initControls(): Controls {
   const scrubZoomRight = document.getElementById('scrub-zoom-right') as HTMLDivElement
 
   function updateZoomIndicator(): void {
-    if (!chartZoom || isCompareMode()) { scrubZoomRegion.style.display = 'none'; return }
+    if (isCompareMode()) {
+      if (!compareZoom) { scrubZoomRegion.style.display = 'none'; return }
+      const leftPct = compareZoom.posStart * 100
+      const widthPct = (compareZoom.posEnd - compareZoom.posStart) * 100
+      scrubZoomRegion.style.display = 'block'
+      scrubZoomRegion.style.left = `${leftPct}%`
+      scrubZoomRegion.style.width = `${widthPct}%`
+      return
+    }
+    if (!chartZoom) { scrubZoomRegion.style.display = 'none'; return }
     const d = getViewDuration()
     if (d <= 0) { scrubZoomRegion.style.display = 'none'; return }
     const leftPct = ((chartZoom.startTime - viewRange.startTime) / d) * 100
@@ -239,18 +259,18 @@ export function initControls(): Controls {
   }
 
   onChartZoomChange(updateZoomIndicator)
+  onCompareZoomChange(updateZoomIndicator)
 
   // ── Draggable zoom bracket handles ──
   let zoomDragSide: 'left' | 'right' | null = null
 
-  function pctToTime(e: PointerEvent): number {
+  function pctFromPointer(e: PointerEvent): number {
     const rect = scrubContainer.getBoundingClientRect()
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    return viewRange.startTime + pct * getViewDuration()
+    return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
   }
 
   function startZoomDrag(side: 'left' | 'right', e: PointerEvent): void {
-    if (!chartZoom || isCompareMode()) return
+    if (isCompareMode() ? !compareZoom : !chartZoom) return
     e.preventDefault()
     e.stopPropagation()
     zoomDragSide = side
@@ -260,16 +280,31 @@ export function initControls(): Controls {
   }
 
   function onZoomDragMove(e: PointerEvent): void {
-    if (!zoomDragSide || !chartZoom) return
+    if (!zoomDragSide) return
     e.stopPropagation()
-    const t = pctToTime(e)
-    const MIN_ZOOM = 1.0  // minimum 1 second
-    if (zoomDragSide === 'left') {
-      const newStart = Math.max(viewRange.startTime, Math.min(t, chartZoom.endTime - MIN_ZOOM))
-      setChartZoom({ startTime: newStart, endTime: chartZoom.endTime })
+    const pct = pctFromPointer(e)
+
+    if (isCompareMode()) {
+      if (!compareZoom) return
+      const MIN_ZOOM_POS = 0.03
+      if (zoomDragSide === 'left') {
+        const newStart = Math.max(0, Math.min(pct, compareZoom.posEnd - MIN_ZOOM_POS))
+        setCompareZoom({ posStart: newStart, posEnd: compareZoom.posEnd })
+      } else {
+        const newEnd = Math.min(1, Math.max(pct, compareZoom.posStart + MIN_ZOOM_POS))
+        setCompareZoom({ posStart: compareZoom.posStart, posEnd: newEnd })
+      }
     } else {
-      const newEnd = Math.min(viewRange.endTime, Math.max(t, chartZoom.startTime + MIN_ZOOM))
-      setChartZoom({ startTime: chartZoom.startTime, endTime: newEnd })
+      if (!chartZoom) return
+      const t = viewRange.startTime + pct * getViewDuration()
+      const MIN_ZOOM = 1.0  // minimum 1 second
+      if (zoomDragSide === 'left') {
+        const newStart = Math.max(viewRange.startTime, Math.min(t, chartZoom.endTime - MIN_ZOOM))
+        setChartZoom({ startTime: newStart, endTime: chartZoom.endTime })
+      } else {
+        const newEnd = Math.min(viewRange.endTime, Math.max(t, chartZoom.startTime + MIN_ZOOM))
+        setChartZoom({ startTime: chartZoom.startTime, endTime: newEnd })
+      }
     }
   }
 

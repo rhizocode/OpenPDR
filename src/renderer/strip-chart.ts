@@ -32,6 +32,8 @@ import {
   onCompareEnter,
   onCompareExit,
   onCompareLapChange,
+  compareZoom, setCompareZoom, onCompareZoomChange,
+  compareChartFraction, compareChartFractionToPos,
 } from './compare-state'
 import { buildDeltaTime, trackPositionToTime } from './compare-sync'
 import { getBrakeDisplay, onBrakeModeChange } from './defaults'
@@ -334,7 +336,28 @@ export function initChartPanel(): void {
 
   // On every animation frame: page-snap if needed, then draw playhead
   onFrameTick(() => {
-    if (chartZoom && !video.paused && !isCompareMode()) {
+    if (isCompareMode()) {
+      const cz = compareZoom
+      if (cz && videoA && !videoA.paused) {
+        if (trackPosition >= cz.posEnd) {
+          if (chartLoopMode) {
+            // Loop: seek back to start of zoom region
+            const sd = syncDataA
+            if (sd) {
+              const telTime = trackPositionToTime(sd, cz.posStart)
+              seekToTelemetryTime(telTime)
+            }
+          } else {
+            // Page-snap: advance window forward
+            const dur = cz.posEnd - cz.posStart
+            let newStart = cz.posEnd
+            let newEnd = newStart + dur
+            if (newEnd > 1) { newEnd = 1; newStart = Math.max(0, newEnd - dur) }
+            setCompareZoom({ posStart: newStart, posEnd: newEnd })
+          }
+        }
+      }
+    } else if (chartZoom && !video.paused) {
       const t = getSyncedTime()
       if (t >= chartZoom.endTime) {
         if (chartLoopMode) {
@@ -363,6 +386,9 @@ export function initChartPanel(): void {
   // On chart zoom change: re-render charts with new zoom window
   onChartZoomChange(() => { if (!isCompareMode()) resizeAndRender() })
 
+  // On compare zoom change: re-render compare charts with new zoom window
+  onCompareZoomChange(() => { if (isCompareMode()) resizeAndRender() })
+
   // Compare mode lifecycle
   onCompareEnter(() => {
     buildToolbar()  // show delta toggle button
@@ -376,6 +402,7 @@ export function initChartPanel(): void {
     deltaChannelData = null
     scaledCacheA.clear()
     scaledCacheB.clear()
+    setCompareZoom(null)
     buildToolbar()  // remove delta toggle button
     // Restore single-file mode
     buildScaledCache()
@@ -401,11 +428,12 @@ export function initChartPanel(): void {
     if (xPct < 0 || xPct > 1) return
 
     if (isCompareMode()) {
-      // xPct = track position (0..1); convert to time via syncDataA, then seek videoA
+      // xPct = fraction within compare zoom window (or full 0..1)
+      const pos = compareChartFractionToPos(xPct)
       const sd = syncDataA
       const va = videoA
       if (!sd || !va) return
-      const telTime = trackPositionToTime(sd, xPct)
+      const telTime = trackPositionToTime(sd, pos)
       va.currentTime = telTime - avSyncOffset
     } else {
       if (getChartVisibleDuration() > 0) {
@@ -431,48 +459,67 @@ export function initChartPanel(): void {
   })
 
   // ── Scroll wheel zoom ──
+  const ZOOM_FACTOR = 0.15
+  const MIN_COMPARE_ZOOM = 0.03  // minimum 3% of lap
+
   canvas.addEventListener('wheel', (e) => {
-    if (isCompareMode()) return
     e.preventDefault()
 
     const rect = canvas.getBoundingClientRect()
     const xPct = (e.clientX - rect.left - getLabelWidth()) / (rect.width - getLabelWidth())
     if (xPct < 0 || xPct > 1) return
 
-    const z = chartZoom
-    const curStart = z ? z.startTime : viewRange.startTime
-    const curEnd = z ? z.endTime : viewRange.endTime
-    const curDur = curEnd - curStart
-
-    const ZOOM_FACTOR = 0.15
     const direction = e.deltaY > 0 ? 1 : -1  // 1 = zoom out, -1 = zoom in
     const scale = 1 + direction * ZOOM_FACTOR
-    const newDur = curDur * scale
 
-    // Fully zoomed out → clear zoom
-    const viewDur = viewRange.endTime - viewRange.startTime
-    if (newDur >= viewDur) {
-      setChartZoom(null)
-      return
+    if (isCompareMode()) {
+      const cz = compareZoom
+      const curStart = cz ? cz.posStart : 0
+      const curEnd = cz ? cz.posEnd : 1
+      const curDur = curEnd - curStart
+      const newDur = curDur * scale
+
+      // Fully zoomed out → clear zoom
+      if (newDur >= 1) { setCompareZoom(null); return }
+      if (newDur < MIN_COMPARE_ZOOM) return
+
+      const cursorPos = curStart + xPct * curDur
+      let newStart = cursorPos - xPct * newDur
+      let newEnd = cursorPos + (1 - xPct) * newDur
+
+      if (newStart < 0) { newStart = 0; newEnd = newDur }
+      if (newEnd > 1) { newEnd = 1; newStart = 1 - newDur }
+
+      setCompareZoom({ posStart: newStart, posEnd: newEnd })
+    } else {
+      const z = chartZoom
+      const curStart = z ? z.startTime : viewRange.startTime
+      const curEnd = z ? z.endTime : viewRange.endTime
+      const curDur = curEnd - curStart
+      const newDur = curDur * scale
+
+      // Fully zoomed out → clear zoom
+      const viewDur = viewRange.endTime - viewRange.startTime
+      if (newDur >= viewDur) { setChartZoom(null); return }
+      if (newDur < 1.0) return  // minimum 1 second
+
+      // Anchor: cursor's time stays at the same screen fraction
+      const cursorTime = curStart + xPct * curDur
+      let newStart = cursorTime - xPct * newDur
+      let newEnd = cursorTime + (1 - xPct) * newDur
+
+      // Clamp to viewRange bounds
+      if (newStart < viewRange.startTime) {
+        newStart = viewRange.startTime
+        newEnd = newStart + newDur
+      }
+      if (newEnd > viewRange.endTime) {
+        newEnd = viewRange.endTime
+        newStart = newEnd - newDur
+      }
+
+      setChartZoom({ startTime: newStart, endTime: newEnd })
     }
-    if (newDur < 1.0) return  // minimum 1 second
-
-    // Anchor: cursor's time stays at the same screen fraction
-    const cursorTime = curStart + xPct * curDur
-    let newStart = cursorTime - xPct * newDur
-    let newEnd = cursorTime + (1 - xPct) * newDur
-
-    // Clamp to viewRange bounds
-    if (newStart < viewRange.startTime) {
-      newStart = viewRange.startTime
-      newEnd = newStart + newDur
-    }
-    if (newEnd > viewRange.endTime) {
-      newEnd = viewRange.endTime
-      newStart = newEnd - newDur
-    }
-
-    setChartZoom({ startTime: newStart, endTime: newEnd })
   }, { passive: false })
 
   // ── Pinch-to-zoom (touch) ──
@@ -481,7 +528,7 @@ export function initChartPanel(): void {
   let pinchCenterFrac = 0.5
 
   canvas.addEventListener('touchstart', (e) => {
-    if (isCompareMode() || e.touches.length !== 2) return
+    if (e.touches.length !== 2) return
     e.preventDefault()
 
     const rect = canvas.getBoundingClientRect()
@@ -496,12 +543,17 @@ export function initChartPanel(): void {
     const dy = e.touches[0].clientY - e.touches[1].clientY
     pinchStartDist = Math.hypot(dx, dy)
 
-    const z = chartZoom
-    pinchStartDur = z ? z.endTime - z.startTime : viewRange.endTime - viewRange.startTime
+    if (isCompareMode()) {
+      const cz = compareZoom
+      pinchStartDur = cz ? cz.posEnd - cz.posStart : 1
+    } else {
+      const z = chartZoom
+      pinchStartDur = z ? z.endTime - z.startTime : viewRange.endTime - viewRange.startTime
+    }
   }, { passive: false })
 
   canvas.addEventListener('touchmove', (e) => {
-    if (isCompareMode() || e.touches.length !== 2 || pinchStartDist === 0) return
+    if (e.touches.length !== 2 || pinchStartDist === 0) return
     e.preventDefault()
 
     const dx = e.touches[0].clientX - e.touches[1].clientX
@@ -512,30 +564,50 @@ export function initChartPanel(): void {
     const scale = pinchStartDist / curDist  // >1 = pinch in (zoom out), <1 = pinch out (zoom in)
     const newDur = pinchStartDur * scale
 
-    const viewDur = viewRange.endTime - viewRange.startTime
-    if (newDur >= viewDur) { setChartZoom(null); return }
-    if (newDur < 1.0) return  // minimum 1 second
+    if (isCompareMode()) {
+      if (newDur >= 1) { setCompareZoom(null); return }
+      if (newDur < MIN_COMPARE_ZOOM) return
 
-    const z = chartZoom
-    const curStart = z ? z.startTime : viewRange.startTime
-    const curEnd = z ? z.endTime : viewRange.endTime
-    const curDur = curEnd - curStart
-    const cursorTime = curStart + pinchCenterFrac * curDur
+      const cz = compareZoom
+      const curStart = cz ? cz.posStart : 0
+      const curEnd = cz ? cz.posEnd : 1
+      const curDur = curEnd - curStart
+      const cursorPos = curStart + pinchCenterFrac * curDur
 
-    let newStart = cursorTime - pinchCenterFrac * newDur
-    let newEnd = cursorTime + (1 - pinchCenterFrac) * newDur
+      let newStart = cursorPos - pinchCenterFrac * newDur
+      let newEnd = cursorPos + (1 - pinchCenterFrac) * newDur
 
-    if (newStart < viewRange.startTime) { newStart = viewRange.startTime; newEnd = newStart + newDur }
-    if (newEnd > viewRange.endTime) { newEnd = viewRange.endTime; newStart = newEnd - newDur }
+      if (newStart < 0) { newStart = 0; newEnd = newDur }
+      if (newEnd > 1) { newEnd = 1; newStart = 1 - newDur }
 
-    setChartZoom({ startTime: newStart, endTime: newEnd })
+      setCompareZoom({ posStart: newStart, posEnd: newEnd })
+    } else {
+      const viewDur = viewRange.endTime - viewRange.startTime
+      if (newDur >= viewDur) { setChartZoom(null); return }
+      if (newDur < 1.0) return  // minimum 1 second
+
+      const z = chartZoom
+      const curStart = z ? z.startTime : viewRange.startTime
+      const curEnd = z ? z.endTime : viewRange.endTime
+      const curDur = curEnd - curStart
+      const cursorTime = curStart + pinchCenterFrac * curDur
+
+      let newStart = cursorTime - pinchCenterFrac * newDur
+      let newEnd = cursorTime + (1 - pinchCenterFrac) * newDur
+
+      if (newStart < viewRange.startTime) { newStart = viewRange.startTime; newEnd = newStart + newDur }
+      if (newEnd > viewRange.endTime) { newEnd = viewRange.endTime; newStart = newEnd - newDur }
+
+      setChartZoom({ startTime: newStart, endTime: newEnd })
+    }
   }, { passive: false })
 
   canvas.addEventListener('touchend', () => { pinchStartDist = 0 })
 
   // ── Double-click to reset zoom ──
   canvas.addEventListener('dblclick', () => {
-    if (!isCompareMode()) setChartZoom(null)
+    if (isCompareMode()) setCompareZoom(null)
+    else setChartZoom(null)
   })
 }
 
@@ -1019,6 +1091,11 @@ function renderCompareSingleTrace(
   const margin = 4 * dpr
   const drawH = h - margin * 2
 
+  const cz = compareZoom
+  const posStart = cz ? cz.posStart : 0
+  const posEnd = cz ? cz.posEnd : 1
+  const posDur = posEnd - posStart
+
   offCtx.globalAlpha = alpha
   offCtx.strokeStyle = color
   offCtx.lineWidth = 1.5 * dpr
@@ -1026,7 +1103,12 @@ function renderCompareSingleTrace(
 
   let first = true
   for (let i = 0; i < n; i++) {
-    const x = dist[i] * w
+    const pos = dist[i]
+    // Skip samples outside zoom window (with 1-sample margin for continuity)
+    if (cz && (pos < posStart && i < n - 1 && dist[i + 1] < posStart)) continue
+    if (cz && pos > posEnd && i > 0 && dist[i - 1] > posEnd) continue
+
+    const x = ((pos - posStart) / posDur) * w
     const v = values[startIdx + i]
     const y = Math.max(0, Math.min(h, h - margin - ((v - config.min) / range) * drawH))
     if (first) { offCtx.moveTo(x, y); first = false }
@@ -1076,9 +1158,16 @@ function renderDeltaOffscreen(dd: DeltaChannelData, w: number, h: number): void 
   const margin = 4 * dpr
   const drawH = h - margin * 2
 
-  // Auto-range: find max absolute value
+  const cz = compareZoom
+  const posStart = cz ? cz.posStart : 0
+  const posEnd = cz ? cz.posEnd : 1
+  const posDur = posEnd - posStart
+
+  // Auto-range: find max absolute value (within visible range for better scaling)
   let maxAbs = 0.5
-  for (let i = 0; i < n; i++) {
+  const visStart = Math.max(0, Math.floor(posStart * (n - 1)))
+  const visEnd = Math.min(n - 1, Math.ceil(posEnd * (n - 1)))
+  for (let i = visStart; i <= visEnd; i++) {
     const a = Math.abs(delta[i])
     if (a > maxAbs) maxAbs = a
   }
@@ -1100,12 +1189,13 @@ function renderDeltaOffscreen(dd: DeltaChannelData, w: number, h: number): void 
   // delta[i] > 0 → A is slower → red (B is faster)
   // delta[i] < 0 → A is faster → green
 
-  // Build polygon points
+  // Build polygon points (mapped through zoom window)
   const xs: number[] = []
   const ys: number[] = []
   for (let i = 0; i < n; i++) {
     const pos = i / (n - 1)
-    xs.push(pos * w)
+    const x = ((pos - posStart) / posDur) * w
+    xs.push(x)
     const v = Math.max(-maxAbs, Math.min(maxAbs, delta[i]))
     ys.push(h - margin - ((v + maxAbs) / (2 * maxAbs)) * drawH)
   }
@@ -1114,7 +1204,7 @@ function renderDeltaOffscreen(dd: DeltaChannelData, w: number, h: number): void 
   offCtx.beginPath()
   offCtx.moveTo(xs[0], zeroY)
   for (let i = 0; i < n; i++) {
-    const clampedY = Math.min(ys[i], zeroY)  // only above zero line (delta > 0 maps to lower y)
+    const clampedY = Math.min(ys[i], zeroY)
     offCtx.lineTo(xs[i], clampedY)
   }
   offCtx.lineTo(xs[n - 1], zeroY)
@@ -1126,7 +1216,7 @@ function renderDeltaOffscreen(dd: DeltaChannelData, w: number, h: number): void 
   offCtx.beginPath()
   offCtx.moveTo(xs[0], zeroY)
   for (let i = 0; i < n; i++) {
-    const clampedY = Math.max(ys[i], zeroY)  // only below zero line (delta < 0 maps to higher y)
+    const clampedY = Math.max(ys[i], zeroY)
     offCtx.lineTo(xs[i], clampedY)
   }
   offCtx.lineTo(xs[n - 1], zeroY)
@@ -1457,7 +1547,8 @@ function drawPlayhead(): void {
     const totalCharts = compareChannelData.length + (deltaChannelData ? 1 : 0)
     if (totalCharts > 0) {
       const labelW = getLabelWidth() * dpr
-      x = Math.round(labelW + trackPosition * (w - labelW))
+      const frac = compareChartFraction(trackPosition)
+      x = Math.round(labelW + frac * (w - labelW))
     }
   } else {
     if (channelData.length > 0 && getChartVisibleDuration() > 0) {

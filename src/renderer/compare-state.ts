@@ -56,6 +56,32 @@ export function setTrackPosition(pos: number): void {
   trackPosition = Math.max(0, Math.min(1, pos))
 }
 
+// ── Compare zoom (position sub-window within 0..1) ──
+export interface CompareZoom { posStart: number; posEnd: number }
+export let compareZoom: CompareZoom | null = null
+
+export function setCompareZoom(zoom: CompareZoom | null): void {
+  compareZoom = zoom
+  compareZoomBus.fire()
+}
+
+/** 0..1 fraction within compare zoom window (or full range if no zoom). */
+export function compareChartFraction(pos: number): number {
+  const z = compareZoom
+  if (z) {
+    const d = z.posEnd - z.posStart
+    return d <= 0 ? 0 : (pos - z.posStart) / d
+  }
+  return pos
+}
+
+/** Inverse: fraction → track position within compare zoom window. */
+export function compareChartFractionToPos(frac: number): number {
+  const z = compareZoom
+  if (z) return z.posStart + frac * (z.posEnd - z.posStart)
+  return frac
+}
+
 // ── Current rows ──
 export let currentRowA: TelemetryRow | null = null
 export let currentRowB: TelemetryRow | null = null
@@ -77,10 +103,12 @@ export let syncDataB: SyncData | null = null
 const compareEnterBus = createBus()
 const compareExitBus = createBus()
 const compareLapChangeBus = createBus()
+const compareZoomBus = createBus()
 
 export function onCompareEnter(fn: () => void) { return compareEnterBus.on(fn) }
 export function onCompareExit(fn: () => void) { return compareExitBus.on(fn) }
 export function onCompareLapChange(fn: () => void) { return compareLapChangeBus.on(fn) }
+export function onCompareZoomChange(fn: () => void) { return compareZoomBus.on(fn) }
 
 // ── Scratch rows for row lookups ──
 const _findRowA = createEmptyRow()
@@ -209,6 +237,7 @@ export function enterCompareMode(config: CompareConfig): void {
   sessionInfoA = config.sessionInfoA
   sessionInfoB = config.sessionInfoB
   trackPosition = 0
+  compareZoom = null
 
   // Auto-detect redline per side from engine metadata
   const specA = detectEngine(config.sessionInfoA?.engine)
@@ -234,6 +263,7 @@ export function exitCompareMode(): void {
   interpPrevA = interpNextA = null
   interpPrevB = interpNextB = null
   trackPosition = 0
+  compareZoom = null
 
   compareExitBus.fire()
 }
@@ -241,6 +271,7 @@ export function exitCompareMode(): void {
 export function setCompareLapA(idx: number): void {
   if (!lapDataA?.laps[idx]) return
   lapA = lapDataA.laps[idx]
+  compareZoom = null
   rebuildSync()
   compareLapChangeBus.fire()
 }
@@ -248,6 +279,7 @@ export function setCompareLapA(idx: number): void {
 export function setCompareLapB(idx: number): void {
   if (!lapDataB?.laps[idx]) return
   lapB = lapDataB.laps[idx]
+  compareZoom = null
   rebuildSync()
   compareLapChangeBus.fire()
 }
