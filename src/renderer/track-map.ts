@@ -9,6 +9,8 @@
 import { lapData, currentRow, interpPrev, interpNext, interpAlpha, telemetryStore, chartZoom, onChartZoomChange, getSyncedTime } from './state'
 import { onTelemetryLoad, onFrameTick } from './state'
 import { findClosestTimeIndex } from '../shared/telemetry-store'
+import { isCompareMode, compareZoom, onCompareZoomChange, syncDataA } from './compare-state'
+import { trackPositionToTime } from './compare-sync'
 import { getTrackMapConfig, onTrackMapConfigChange, getBrakeDisplay } from './defaults'
 import type { TrackMapColorMode } from './defaults'
 import type { TrackLayout } from './types'
@@ -570,12 +572,24 @@ function drawPositionDot(gps?: typeof _gpsOut): void {
 
 /** Dim the track sections outside the chart zoom window. */
 function drawZoomHighlight(): void {
-  if (!chartZoom || !telemetryStore || !proj) return
+  if (!telemetryStore || !proj) return
   const store = telemetryStore
   if (store.length === 0) return
 
-  const zoomStart = findClosestTimeIndex(store.time, chartZoom.startTime, store.length)
-  const zoomEnd = findClosestTimeIndex(store.time, chartZoom.endTime, store.length)
+  let zoomStart: number
+  let zoomEnd: number
+
+  if (isCompareMode()) {
+    if (!compareZoom || !syncDataA) return
+    const tStart = trackPositionToTime(syncDataA, compareZoom.posStart)
+    const tEnd = trackPositionToTime(syncDataA, compareZoom.posEnd)
+    zoomStart = findClosestTimeIndex(store.time, tStart, store.length)
+    zoomEnd = findClosestTimeIndex(store.time, tEnd, store.length)
+  } else {
+    if (!chartZoom) return
+    zoomStart = findClosestTimeIndex(store.time, chartZoom.startTime, store.length)
+    zoomEnd = findClosestTimeIndex(store.time, chartZoom.endTime, store.length)
+  }
   if (zoomEnd <= zoomStart) return
 
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'
@@ -718,6 +732,14 @@ export function initTrackMap(el: HTMLCanvasElement): void {
   })
 
   onChartZoomChange(() => {
+    if (cachedLayout && proj) {
+      blitTrack()
+      drawZoomHighlight()
+      drawPositionDot()
+    }
+  })
+
+  onCompareZoomChange(() => {
     if (cachedLayout && proj) {
       blitTrack()
       drawZoomHighlight()
