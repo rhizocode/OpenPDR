@@ -15,6 +15,7 @@ import { rpmConfigB } from './compare-state'
 import { drawGForce } from './gforce-ball'
 import { drawSteering } from './steering'
 import { resolveGearDisplay, formatTimestamp, getBrakeDisplay } from './defaults'
+import { getOverlaysVisible } from './hud'
 
 // ── B-side DOM refs (created on enter, nulled on exit) ──
 let anchorB: HTMLDivElement | null = null
@@ -158,7 +159,7 @@ export function applyOverlayConfigB(config: OverlayConfig): void {
   for (const el of anchorB.querySelectorAll<HTMLElement>('.hud-element[data-overlay]')) {
     const key = el.dataset.overlay as OverlayKey
     if (key in config) {
-      el.style.display = config[key] ? (OVERLAY_DISPLAY[key] ?? 'block') : 'none'
+      el.style.display = (getOverlaysVisible() && config[key]) ? (OVERLAY_DISPLAY[key] ?? 'block') : 'none'
     }
   }
 }

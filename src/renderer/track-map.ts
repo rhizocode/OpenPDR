@@ -9,8 +9,7 @@
 import { lapData, currentRow, interpPrev, interpNext, interpAlpha, telemetryStore, chartZoom, onChartZoomChange, getSyncedTime } from './state'
 import { onTelemetryLoad, onFrameTick } from './state'
 import { findClosestTimeIndex } from '../shared/telemetry-store'
-import { isCompareMode, compareZoom, onCompareZoomChange, syncDataA } from './compare-state'
-import { trackPositionToTime } from './compare-sync'
+import { isCompareMode, compareZoom, onCompareZoomChange } from './compare-state'
 import { getTrackMapConfig, onTrackMapConfigChange, getBrakeDisplay } from './defaults'
 import type { TrackMapColorMode } from './defaults'
 import type { TrackLayout } from './types'
@@ -572,31 +571,23 @@ function drawPositionDot(gps?: typeof _gpsOut): void {
 
 /** Dim the track sections outside the chart zoom window. */
 function drawZoomHighlight(): void {
-  if (!telemetryStore || !proj) return
+  if (!proj) return
+
+  if (isCompareMode()) {
+    drawZoomHighlightCompare()
+  } else {
+    drawZoomHighlightSingle()
+  }
+}
+
+/** Zoom highlight for single-video mode: dims store indices outside chartZoom. */
+function drawZoomHighlightSingle(): void {
+  if (!chartZoom || !telemetryStore) return
   const store = telemetryStore
   if (store.length === 0) return
 
-  let zoomStart: number
-  let zoomEnd: number
-  let lapStart: number
-  let lapEnd: number
-
-  if (isCompareMode()) {
-    if (!compareZoom || !syncDataA) return
-    const tStart = trackPositionToTime(syncDataA, compareZoom.posStart)
-    const tEnd = trackPositionToTime(syncDataA, compareZoom.posEnd)
-    zoomStart = findClosestTimeIndex(store.time, tStart, store.length)
-    zoomEnd = findClosestTimeIndex(store.time, tEnd, store.length)
-    // Use sync data's lap range, not the video-time-based currentLap range
-    lapStart = syncDataA.startIdx
-    lapEnd = syncDataA.endIdx - 1
-  } else {
-    if (!chartZoom) return
-    zoomStart = findClosestTimeIndex(store.time, chartZoom.startTime, store.length)
-    zoomEnd = findClosestTimeIndex(store.time, chartZoom.endTime, store.length)
-    lapStart = currentLapStartIdx
-    lapEnd = currentLapEndIdx
-  }
+  const zoomStart = findClosestTimeIndex(store.time, chartZoom.startTime, store.length)
+  const zoomEnd = findClosestTimeIndex(store.time, chartZoom.endTime, store.length)
   if (zoomEnd <= zoomStart) return
 
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'
@@ -605,10 +596,10 @@ function drawZoomHighlight(): void {
   ctx.lineCap = 'round'
 
   // Dim segment before zoom window
-  if (zoomStart > lapStart) {
+  if (zoomStart > currentLapStartIdx) {
     ctx.beginPath()
     let first = true
-    for (let i = lapStart; i <= zoomStart; i++) {
+    for (let i = currentLapStartIdx; i <= zoomStart; i++) {
       if (store.lat[i] === 0 && store.lon[i] === 0) continue
       const px = gpsToCanvasInto(store.lat[i], store.lon[i])
       if (!px) continue
@@ -619,12 +610,54 @@ function drawZoomHighlight(): void {
   }
 
   // Dim segment after zoom window
-  if (zoomEnd < lapEnd) {
+  if (zoomEnd < currentLapEndIdx) {
     ctx.beginPath()
     let first = true
-    for (let i = zoomEnd; i <= lapEnd; i++) {
+    for (let i = zoomEnd; i <= currentLapEndIdx; i++) {
       if (store.lat[i] === 0 && store.lon[i] === 0) continue
       const px = gpsToCanvasInto(store.lat[i], store.lon[i])
+      if (!px) continue
+      if (first) { ctx.moveTo(px.x, px.y); first = false }
+      else ctx.lineTo(px.x, px.y)
+    }
+    ctx.stroke()
+  }
+}
+
+/** Zoom highlight for compare mode: dims cachedLayout.points outside compareZoom. */
+function drawZoomHighlightCompare(): void {
+  if (!compareZoom || !cachedLayout) return
+  const pts = cachedLayout.points
+  if (pts.length < 2) return
+
+  const idxStart = Math.round(compareZoom.posStart * (pts.length - 1))
+  const idxEnd = Math.round(compareZoom.posEnd * (pts.length - 1))
+  if (idxEnd <= idxStart) return
+
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'
+  ctx.lineWidth = Math.round(trackLW * 1.6)
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+
+  // Dim segment before zoom window
+  if (idxStart > 0) {
+    ctx.beginPath()
+    let first = true
+    for (let i = 0; i <= idxStart; i++) {
+      const px = gpsToCanvasInto(pts[i].lat, pts[i].lon)
+      if (!px) continue
+      if (first) { ctx.moveTo(px.x, px.y); first = false }
+      else ctx.lineTo(px.x, px.y)
+    }
+    ctx.stroke()
+  }
+
+  // Dim segment after zoom window
+  if (idxEnd < pts.length - 1) {
+    ctx.beginPath()
+    let first = true
+    for (let i = idxEnd; i < pts.length; i++) {
+      const px = gpsToCanvasInto(pts[i].lat, pts[i].lon)
       if (!px) continue
       if (first) { ctx.moveTo(px.x, px.y); first = false }
       else ctx.lineTo(px.x, px.y)
