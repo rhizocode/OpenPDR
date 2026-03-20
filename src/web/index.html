@@ -68,7 +68,14 @@
           <span id="steering-label" class="steering-label"></span>
         </div>
         <div class="hud-element" id="hud-gforce" data-overlay="gforce">
-          <canvas id="gforce-canvas" width="120" height="120"></canvas>
+          <svg id="gforce-svg" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="60" cy="60" r="52" fill="rgba(0,0,0,0.4)"/>
+            <circle cx="60" cy="60" r="17.33" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+            <circle cx="60" cy="60" r="34.67" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+            <line x1="8" y1="60" x2="112" y2="60" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+            <line x1="60" y1="8" x2="60" y2="112" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+            <circle class="gforce-dot" cx="60" cy="60" r="5" fill="#ff6b00" stroke="#fff" stroke-width="1.5"/>
+          </svg>
         </div>
         <div class="hud-element" id="hud-pedals" data-overlay="pedals">
           <div class="pedal-bar">
