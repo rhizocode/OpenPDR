@@ -164,7 +164,7 @@ function parseKlvLevel(
         strmCtx.scale = readScal(scalData, type, structSize, repeat, scalDv)
       } else if (fourcc === 'GPSU' && type === TYPE_UTC) {
         result.gpsu = readNullTermString(data, payloadStart, payloadEnd)
-      } else if (fourcc === 'GPSF' && type === TYPE_INT32 && payloadSize >= 4) {
+      } else if (fourcc === 'GPSF' && (type === TYPE_INT32 || type === TYPE_UINT32) && payloadSize >= 4) {
         result.gpsf = readInt32BE(data, payloadStart, dv)
       } else if (fourcc === 'GPSP' && type === TYPE_UINT16 && payloadSize >= 2) {
         result.gpsp = readUint16BE(data, payloadStart, dv)

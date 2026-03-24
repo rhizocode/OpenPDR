@@ -461,14 +461,12 @@ export function trimStore(store: TelemetryStore): TelemetryStore {
 /**
  * Interpolate GPS lat/lon between genuine fixes.
  *
- * GPS receivers often update slower than the telemetry row rate (e.g. 2 Hz
- * GPS vs 10 Hz rows), so consecutive rows carry identical lat/lon values.
- * This creates a staircase pattern that causes visible dot stuttering on
- * the track map.
+ * Handles two cases:
+ *   1. Runs of identical lat/lon (GPS slower than telemetry rate — staircase)
+ *   2. Runs of zero lat/lon (GPS had no fix — e.g. GoPro with fix=0)
  *
- * This function finds runs of duplicate lat/lon and replaces them with
- * values linearly interpolated by time between the bounding genuine fixes.
- * Called once after parsing — no runtime cost.
+ * Both are replaced with values linearly interpolated by time between the
+ * bounding genuine fixes. Called once after parsing — no runtime cost.
  */
 export function interpolateGps(store: TelemetryStore): void {
   const n = store.length
@@ -478,33 +476,32 @@ export function interpolateGps(store: TelemetryStore): void {
   const lon = store.lon
   const time = store.time
 
+  /** True if this row has a genuine GPS fix worth keeping. */
+  const isGood = (i: number) => lat[i] !== 0 || lon[i] !== 0
+
   let i = 0
   while (i < n) {
-    // Find the end of a run of identical lat/lon
-    const refLat = lat[i]
-    const refLon = lon[i]
+    // Skip to a good anchor point
+    if (!isGood(i)) { i++; continue }
+
+    // Find the next row that differs from i AND is a good fix
     let j = i + 1
-    while (j < n && lat[j] === refLat && lon[j] === refLon) j++
+    while (j < n && (!isGood(j) || (lat[j] === lat[i] && lon[j] === lon[i]))) j++
 
-    // If this run is only 1 row, or we're at the very end, nothing to interpolate
-    if (j - i <= 1 || j >= n) {
-      i = j
-      continue
-    }
+    // Nothing to interpolate if run is length 1 or we hit the end
+    if (j - i <= 1 || j >= n) { i = j; continue }
 
-    // We have a run [i .. j-1] of identical coordinates.
-    // The genuine fix before the run is at i, the next genuine fix is at j.
-    // Linearly interpolate all rows in (i, j) exclusive by time.
-    const nextLat = lat[j]
-    const nextLon = lon[j]
+    // Linearly interpolate all rows in (i, j) exclusive by time
     const t0 = time[i]
     const span = time[j] - t0
     if (span <= 0) { i = j; continue }
 
+    const lat0 = lat[i], lon0 = lon[i]
+    const lat1 = lat[j], lon1 = lon[j]
     for (let k = i + 1; k < j; k++) {
       const alpha = (time[k] - t0) / span
-      lat[k] = refLat + (nextLat - refLat) * alpha
-      lon[k] = refLon + (nextLon - refLon) * alpha
+      lat[k] = lat0 + (lat1 - lat0) * alpha
+      lon[k] = lon0 + (lon1 - lon0) * alpha
     }
 
     i = j

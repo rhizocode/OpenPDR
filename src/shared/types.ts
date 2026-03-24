@@ -126,6 +126,7 @@ export interface SessionInfo {
   model?: string         // e.g. "Corvette"
   engine?: string        // e.g. "6.2L V8 (LT2)"
   year?: string          // e.g. "2026"
+  camera?: string        // e.g. "HERO10 Black" (GoPro device name)
   timestamp?: string     // ISO 8601 recording start
   generation?: number
   mmpVersion?: number

@@ -269,6 +269,7 @@ function populateSessionOverlay(): void {
   const fields: Array<[string, string | undefined]> = [
     ['Vehicle', vehicleStr],
     ['Engine', info.engine],
+    ['Camera', info.camera],
     ['Date', dateStr],
   ]
 

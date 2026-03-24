@@ -105,7 +105,9 @@ export async function decodeGoProSamples(
       store.frameIdx[idx] = r
 
       // GPS: nearest-neighbor from ~9 Hz grid
-      if (gpsRows && gpsCount > 0) {
+      // Skip samples with no fix (fix=0) — leave lat/lon at 0 so
+      // interpolateGps() can fill the gap from surrounding good data.
+      if (gpsRows && gpsCount > 0 && gpsFix >= 2) {
         const gi = Math.min(Math.round(r * (gpsCount - 1) / (outputCount - 1)), gpsCount - 1)
         const gps = gpsRows[gi]
         store.lat[idx] = gps.lat
@@ -176,7 +178,7 @@ export async function decodeGoProSamples(
   // Build session info
   const timestamp = gpsuTimestamp ? parseGpsuTimestamp(gpsuTimestamp) : undefined
   const sessionInfo: SessionInfo = {
-    vehicle: deviceName,
+    camera: deviceName,
     timestamp,
   }
 
@@ -288,3 +290,4 @@ function parseGpsuTimestamp(gpsu: string): string | undefined {
   const pad = (n: number) => n.toString().padStart(2, '0')
   return `${year}-${pad(mm)}-${pad(dd)}T${pad(hh)}:${pad(mi)}:${pad(ss)}${frac}Z`
 }
+
