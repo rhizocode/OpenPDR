@@ -27,6 +27,7 @@ import { detectLaps, detectLapsFromEvents } from './lap-detection'
 import { detectFormat } from './format-detect'
 import { parseMarlSubBoxes } from './marlin/marlin-track'
 import { decodeMarlinSamples } from './marlin/marlin-decoder'
+import { decodeGoProSamples } from './gopro/gopro-decoder'
 import type { ParseResult, SessionInfo, TelemetryRow, EmbeddedEvent, ProgressCallback, TrackInfo } from './types'
 
 export type { TelemetryRow, ParseResult, ProgressCallback }
@@ -59,7 +60,7 @@ export async function parsePdrFile(
   // Step 2: Detect format
   const detection = detectFormat(moovBuf)
   if (!detection) {
-    throw new Error('No PDR data track found (checked for AliveDrive adrv/adco and Marlin ctbx/marl)')
+    throw new Error('No telemetry data track found (checked for AliveDrive adrv/adco, Marlin ctbx/marl, and GoPro meta/gpmd)')
   }
 
   console.log(`[parser] Detected format: ${detection.format}`)
@@ -70,6 +71,8 @@ export async function parsePdrFile(
       return parseAliveDrive(source, moovBuf, detection.trackInfo, fileName, onProgress)
     case 'marlin':
       return parseMarlin(source, moovBuf, detection.trackInfo, fileName, onProgress)
+    case 'gopro':
+      return parseGoPro(source, moovBuf, detection.trackInfo, fileName, onProgress)
   }
 }
 
@@ -348,6 +351,100 @@ async function parseMarlin(
       sampleCount: sampleTable.sampleCount,
       duration,
       sessionInfo,
+      refLocation,
+      maxSpeed_kph: maxSpeed,
+      maxRpm: maxRpm,
+      lapData,
+    },
+  }
+}
+
+// =============================================================================
+// GoPro Parser
+// =============================================================================
+
+async function parseGoPro(
+  source: PdrFileSource,
+  moovBuf: Uint8Array,
+  trackInfo: TrackInfo,
+  fileName: string,
+  onProgress?: ProgressCallback,
+): Promise<ParseResult> {
+  onProgress?.('Parsing GoPro metadata...', 5)
+
+  // Parse sample table (reuse generic MP4 sample table parser)
+  const sampleTable = parseSampleTable(moovBuf, trackInfo.trakData, trackInfo.trakEnd)
+  if (!sampleTable) {
+    throw new Error('Could not parse GoPro sample table')
+  }
+
+  const sampleOffsets = getSampleOffsets(sampleTable)
+
+  console.log(`[gopro] Samples: ${sampleTable.sampleCount}`)
+
+  // Parse track timing for accurate sample presentation times
+  const mvhdTimescale = parseMvhdTimescale(moovBuf)
+  const trackTiming = parseTrackTiming(
+    moovBuf, trackInfo.trakData, trackInfo.trakEnd,
+    mvhdTimescale, sampleTable.sampleCount,
+  )
+
+  // Allocate store: 10 rows per sample (each sample ≈ 1 second)
+  const estimatedRows = Math.ceil(sampleTable.sampleCount * 10 * 1.2)
+  const store = createTelemetryStore(Math.max(estimatedRows, 1000))
+
+  // Decode all GPMF samples and resample to 10 Hz
+  const goProInfo = await decodeGoProSamples(
+    source, sampleTable, sampleOffsets, trackTiming, store, onProgress,
+  )
+
+  console.log(`[gopro] Decoded ${sampleTable.sampleCount} samples → ${store.length} rows at 10 Hz`)
+  if (goProInfo.deviceName) console.log(`[gopro] Device: ${goProInfo.deviceName}`)
+
+  onProgress?.('Finalizing...', 95)
+
+  // Trim and interpolate GPS
+  const trimmedStore = trimStore(store)
+
+  let refLocation: { lat: number; lon: number } | undefined
+  if (trimmedStore.length > 0) {
+    for (let i = 0; i < trimmedStore.length; i++) {
+      const lat = trimmedStore.lat[i]
+      const lon = trimmedStore.lon[i]
+      if (Math.abs(lat) > 1 && Math.abs(lon) > 1) {
+        refLocation = { lat, lon }
+        break
+      }
+    }
+  }
+
+  interpolateGps(trimmedStore)
+
+  // Compute max stats (RPM will be 0 for GoPro — no engine data)
+  let maxSpeed = 0
+  let maxRpm = 0
+  for (let i = 0; i < trimmedStore.length; i++) {
+    if (trimmedStore.speed_kph[i] > maxSpeed) maxSpeed = trimmedStore.speed_kph[i]
+    if (trimmedStore.rpm[i] > maxRpm) maxRpm = trimmedStore.rpm[i]
+  }
+
+  const duration = trimmedStore.length > 0
+    ? trimmedStore.time[trimmedStore.length - 1] - trimmedStore.time[0]
+    : 0
+
+  // Lap detection — GPS density heuristic only
+  const lapData = detectLaps(trimmedStore)
+
+  onProgress?.('Complete', 100)
+
+  return {
+    store: trimmedStore,
+    metadata: {
+      fileName,
+      fileSize: source.size,
+      sampleCount: sampleTable.sampleCount,
+      duration,
+      sessionInfo: goProInfo.sessionInfo,
       refLocation,
       maxSpeed_kph: maxSpeed,
       maxRpm: maxRpm,

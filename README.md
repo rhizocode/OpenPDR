@@ -1,6 +1,6 @@
 # OpenPDR
 
-**Open-source, cross-platform telemetry viewer for video files with embedded vehicle telemetry.** Currently supports GM's Cosworth Performance Data Recorder across multiple generations of hardware and firmware.
+**Open-source, cross-platform telemetry viewer for video files with embedded vehicle telemetry.** Supports GM's Cosworth Performance Data Recorder across multiple generations of hardware and firmware, as well as GoPro cameras with GPMF telemetry.
 
 Many dashcams, action cameras, and data loggers embed telemetry (GPS, accelerometers, vehicle data) directly into video files. OpenPDR reads that data and plays it back as a synchronized HUD overlay.
 
@@ -93,7 +93,9 @@ src/
     strip-chart.ts      Telemetry strip charts
     controls.ts         Playback controls and scrub bar
   parser/
-    index.ts            TypeScript MP4 parser (adco track → typed telemetry)
+    index.ts            TypeScript MP4 parser — format detection + routing
+    marlin/             Marlin PDR 2.0 decoder
+    gopro/              GoPro GPMF telemetry decoder
   shared/
     file-source.ts      Platform-agnostic file read interface
     telemetry-store.ts  Columnar telemetry storage
@@ -142,10 +144,11 @@ See [`protocol/`](protocol/) for the complete channel lists and encoding details
 
 Format specifications and reference parsers live in [`protocol/`](protocol/). Formats documented so far:
 
-| Format | Handler / Codec | Vehicles | Channels |
-|--------|----------------|----------|----------|
+| Format | Handler / Codec | Devices | Channels |
+|--------|----------------|---------|----------|
 | **AliveDrive PDR 2.5** | `adrv` / `adco` | 2025–2026 GM (CT5-V Blackwing, Corvette Z06/Stingray, etc.) | 59 channels, 6 rate groups (1–100 Hz) |
 | **Marlin PDR 2.0** | `ctbx` / `marl` | C7/C8 Corvette, Camaro (original Cosworth PDR) | Up to 85 self-describing channels |
+| **GoPro GPMF** | `meta` / `gpmd` | GoPro HERO5 and newer (HERO10, HERO11, etc.) | GPS (9 Hz), accelerometer, gyroscope (198 Hz) |
 
 See the [`protocol/README.md`](protocol/README.md) for details and standalone reference parsers.
 
@@ -159,7 +162,7 @@ Contributions welcome, especially:
 - Identifying the remaining numeric fields in the `advi` header (offsets 16–28)
 - HUD overlay improvements and new channel visualisations
 - **Marlin sample files**: we need recordings from older vehicles running the original Marlin/Cougar PDR 2.0 firmware — different firmware versions are needed to answer the [open questions](protocol/MARLIN_FORMAT.md#9-open-questions) about diff encoding, version history, and gear mapping on 7+ speed transmissions
-- **Other telemetry formats**: sample files from GoPro (GPMF), AIM, Garmin Catalyst, RaceLogic VBOX, and other race/dash telemetry systems would help expand format support
+- **Other telemetry formats**: sample files from AIM, Garmin Catalyst, RaceLogic VBOX, and other race/dash telemetry systems would help expand format support
 
 ---
 
