@@ -1664,6 +1664,169 @@ html, body {
   color: #ff4081;
 }
 
+/* ── Remix mode ── */
+
+/* Remix dropdown menu (same pattern as compare) */
+.remix-dropdown {
+  display: none;
+  position: absolute;
+  top: 38px;
+  left: 0;
+  background: var(--bg-secondary);
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 6px 0;
+  z-index: 1000;
+  font-size: 0.75em;
+  min-width: 230px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.remix-dropdown.visible {
+  display: block;
+}
+
+.remix-dropdown-item {
+  padding: 6px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.remix-dropdown-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.remix-dropdown-item.disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Remix sync panel (floating inside video container) */
+#remix-sync-panel {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid #555;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  min-width: 260px;
+  backdrop-filter: blur(8px);
+}
+
+.remix-sync-header {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 10px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.remix-sync-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.remix-sync-label {
+  color: var(--text-secondary);
+  min-width: 75px;
+}
+
+#remix-offset-display {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  flex: 1;
+}
+
+.remix-nudge-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  justify-content: center;
+}
+
+.remix-btn-nudge {
+  padding: 3px 7px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  transition: background 0.15s;
+}
+
+.remix-btn-nudge:hover {
+  background: #444;
+}
+
+.remix-btn-nudge:active {
+  background: var(--accent-dim);
+}
+
+.remix-btn-small {
+  padding: 2px 10px;
+  background: var(--bg-tertiary);
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+}
+
+.remix-btn-small:hover {
+  background: var(--accent-dim);
+  color: #fff;
+}
+
+.remix-btn-exit {
+  width: 100%;
+  padding: 5px 0;
+  background: transparent;
+  color: var(--red);
+  border: 1px solid var(--red);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  text-align: center;
+}
+
+.remix-btn-exit:hover {
+  background: var(--red);
+  color: #fff;
+}
+
+#remix-confidence {
+  color: var(--green);
+  font-weight: 700;
+}
+
+#btn-remix {
+  font-size: 0.75em;
+  padding: 0 10px;
+  height: 26px;
+  cursor: pointer;
+}
+
+#btn-remix.active {
+  background: var(--accent) !important;
+  color: #fff !important;
+  border-color: var(--accent) !important;
+}
+
 /* ── Update button (toolbar) ── */
 #btn-update {
   background: var(--bg-tertiary) !important;

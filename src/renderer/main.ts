@@ -23,6 +23,7 @@ import { initOverlayRenderer } from './overlay-renderer'
 import { initCompareUI } from './compare-ui'
 import { initGearMenu } from './gear-menu'
 import { initUpdateUI } from './update-ui'
+import { initRemixUI } from './remix-ui'
 import {
   isCompareMode,
   videoA as getVideoA,
@@ -65,6 +66,7 @@ initOverlayRenderer()
 initCompareUI()
 initGearMenu()
 initUpdateUI()
+initRemixUI()
 initLapSelector()
 
 // ── Mobile hamburger menu ──

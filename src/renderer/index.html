@@ -28,6 +28,7 @@
       <span id="fps-counter" title="Render FPS"></span>
       <select id="compare-lap-b" class="compare-select compare-b" title="Lap B" style="display:none"></select>
       <button id="btn-compare" title="Compare laps" style="display:none">Compare</button>
+      <button id="btn-remix" title="Remix: overlay PDR telemetry on GoPro video">Remix</button>
     </header>
 
     <!-- Unified gear panel dropdown (hidden by default) -->
@@ -97,6 +98,31 @@
           <div id="hud-session-content"></div>
         </div>
         </div><!-- /video-overlay-anchor -->
+
+        <!-- Remix sync panel (floating, hidden by default) -->
+        <div id="remix-sync-panel" style="display:none">
+          <div class="remix-sync-header">Sync Alignment</div>
+          <div class="remix-sync-row">
+            <span class="remix-sync-label">Offset:</span>
+            <span id="remix-offset-display">+0.000s</span>
+            <button id="remix-auto-align" class="remix-btn-small" title="Re-run auto-alignment">Auto</button>
+          </div>
+          <div class="remix-nudge-row">
+            <button class="remix-btn-nudge" data-remix-nudge="-1" title="-1s">-1s</button>
+            <button class="remix-btn-nudge" data-remix-nudge="-0.1" title="-0.1s">-0.1s</button>
+            <button class="remix-btn-nudge" data-remix-nudge="-0.0167" title="-1 frame">&lt;1f</button>
+            <button class="remix-btn-nudge" data-remix-nudge="0.0167" title="+1 frame">1f&gt;</button>
+            <button class="remix-btn-nudge" data-remix-nudge="0.1" title="+0.1s">+0.1s</button>
+            <button class="remix-btn-nudge" data-remix-nudge="1" title="+1s">+1s</button>
+          </div>
+          <div class="remix-sync-row">
+            <span class="remix-sync-label">Confidence:</span>
+            <span id="remix-confidence">--</span>
+          </div>
+          <div class="remix-sync-row">
+            <button id="remix-exit" class="remix-btn-exit">Exit Remix</button>
+          </div>
+        </div>
 
         <!-- No-file prompt -->
         <div id="no-file-prompt">
