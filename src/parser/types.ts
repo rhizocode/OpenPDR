@@ -101,7 +101,7 @@ export interface EmbeddedEvent {
 // ── Format Detection ──────────────────────────────────────────────────────────
 
 /** Known PDR telemetry formats */
-export type FormatType = 'alivedrive' | 'marlin'
+export type FormatType = 'alivedrive' | 'marlin' | 'gopro'
 
 /** Result of format detection on a moov buffer */
 export interface FormatDetection {

@@ -6,10 +6,11 @@
  * A position dot tracks the current video time.
  */
 
-import { lapData, currentRow, interpPrev, interpNext, interpAlpha, telemetryStore, chartZoom, onChartZoomChange, getSyncedTime } from './state'
+import { lapData, currentRow, interpPrev, interpNext, interpAlpha, telemetryStore, chartZoom, onChartZoomChange, getSyncedTime, video, avSyncOffset } from './state'
 import { onTelemetryLoad, onFrameTick } from './state'
 import { findClosestTimeIndex } from '../shared/telemetry-store'
 import { isCompareMode, compareZoom, onCompareZoomChange } from './compare-state'
+import { isRemixMode, getGoProStore, getRemixOffset, onRemixEnter, onRemixExit } from './remix-state'
 import { getTrackMapConfig, onTrackMapConfigChange, getBrakeDisplay } from './defaults'
 import type { TrackMapColorMode } from './defaults'
 import type { TrackLayout } from './types'
@@ -244,6 +245,34 @@ function computePerpendicularAngle(
 
   const trackAngle = Math.atan2(p1.y - p0.y, p1.x - p0.x)
   return trackAngle + Math.PI / 2 // perpendicular
+}
+
+/** Expand track bounds to include GoPro GPS data. */
+function expandBoundsForGoProStore(
+  layout: TrackLayout,
+  goStore: import('../shared/telemetry-store').TelemetryStore,
+): TrackLayout['bounds'] | null {
+  let minLat = layout.bounds.minLat
+  let maxLat = layout.bounds.maxLat
+  let minLon = layout.bounds.minLon
+  let maxLon = layout.bounds.maxLon
+
+  for (let i = 0; i < goStore.length; i += 3) {
+    const lat = goStore.lat[i]
+    const lon = goStore.lon[i]
+    if (lat === 0 && lon === 0) continue
+    if (lat < minLat) minLat = lat
+    if (lat > maxLat) maxLat = lat
+    if (lon < minLon) minLon = lon
+    if (lon > maxLon) maxLon = lon
+  }
+
+  // Only return expanded bounds if they actually changed
+  if (minLat === layout.bounds.minLat && maxLat === layout.bounds.maxLat &&
+      minLon === layout.bounds.minLon && maxLon === layout.bounds.maxLon) {
+    return null
+  }
+  return { minLat, maxLat, minLon, maxLon }
 }
 
 // ── Satellite imagery ─────────────────────────────────────────────────────────
@@ -567,6 +596,63 @@ function drawPositionDot(gps?: typeof _gpsOut): void {
   ctx.stroke()
 }
 
+// ── Remix mode: secondary GoPro trace + dot ──────────────────────────────────
+
+/** Draw the GoPro GPS trace as a semi-transparent blue polyline. */
+function drawGoProTrace(): void {
+  const goStore = getGoProStore()
+  if (!goStore || goStore.length < 2 || !proj) return
+
+  ctx.beginPath()
+  ctx.strokeStyle = 'rgba(51, 153, 255, 0.5)' // blue
+  ctx.lineWidth = Math.max(2 * dpr, trackLW * 0.6)
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+
+  let first = true
+  for (let i = 0; i < goStore.length; i += 3) { // skip points for performance
+    if (goStore.lat[i] === 0 && goStore.lon[i] === 0) continue
+    const px = gpsToCanvas(goStore.lat[i], goStore.lon[i])
+    if (!px) continue
+    if (first) { ctx.moveTo(px.x, px.y); first = false }
+    else ctx.lineTo(px.x, px.y)
+  }
+  ctx.stroke()
+}
+
+/** Pre-allocated for GoPro dot position. */
+const _goProDotXY = { x: 0, y: 0 }
+
+/** Draw the GoPro position dot (blue) at the current GoPro time. */
+function drawGoProDot(): void {
+  const goStore = getGoProStore()
+  if (!goStore || goStore.length === 0 || !proj) return
+
+  // GoPro time = video.currentTime (since video is GoPro)
+  // The remixOffset is applied to the PDR telemetry, not the GoPro
+  const goProTime = video.currentTime
+  const idx = findClosestTimeIndex(goStore.time, goProTime, goStore.length)
+
+  const lat = goStore.lat[idx]
+  const lon = goStore.lon[idx]
+  if (lat === 0 && lon === 0) return
+
+  const result = gpsToCanvasInto(lat, lon)
+  if (!result) return
+  // Copy since gpsToCanvasInto reuses a singleton
+  _goProDotXY.x = result.x
+  _goProDotXY.y = result.y
+
+  const dotR = Math.max(trackLW * 0.7, 3 * dpr)
+  ctx.beginPath()
+  ctx.arc(_goProDotXY.x, _goProDotXY.y, dotR, 0, Math.PI * 2)
+  ctx.fillStyle = '#3399ff'
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)'
+  ctx.lineWidth = 1.5 * dpr
+  ctx.stroke()
+}
+
 // ── Zoom highlight ────────────────────────────────────────────────────────────
 
 /** Dim the track sections outside the chart zoom window. */
@@ -767,7 +853,47 @@ export function initTrackMap(el: HTMLCanvasElement): void {
 
       blitTrack()
       drawZoomHighlight()
+      if (isRemixMode()) {
+        drawGoProTrace()
+        drawGoProDot()
+      }
       drawPositionDot(gps)
+    }
+  })
+
+  // Remix mode: rebuild projection with expanded bounds to fit both traces
+  onRemixEnter(() => {
+    if (cachedLayout && proj) {
+      const goStore = getGoProStore()
+      if (goStore && goStore.length > 0) {
+        // Expand bounds to include GoPro trace
+        const expanded = expandBoundsForGoProStore(cachedLayout, goStore)
+        if (expanded) {
+          cachedLayout = { ...cachedLayout, bounds: expanded }
+          fitContainerToTrack(cachedLayout)
+          resizeCanvas()
+          buildProjection(cachedLayout)
+          renderTrackCache()
+          blitTrack()
+          drawGoProTrace()
+          drawPositionDot()
+        }
+      }
+    }
+  })
+
+  onRemixExit(() => {
+    // Rebuild layout from original lap data (without GoPro bounds)
+    trackedLapIdx = -1
+    const ld = lapData
+    if (ld?.hasLapData && ld.trackLayout) {
+      cachedLayout = ld.trackLayout
+      fitContainerToTrack(cachedLayout)
+      resizeCanvas()
+      buildProjection(cachedLayout)
+      renderTrackCache()
+      blitTrack()
+      drawPositionDot()
     }
   })
 

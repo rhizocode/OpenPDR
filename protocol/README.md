@@ -27,3 +27,13 @@ Original Cosworth Performance Data Recorder in C7/C8 Corvette and Camaro. Up to 
 | [`MARLIN_FORMAT.md`](MARLIN_FORMAT.md) | Complete format specification — MP4 container layout, `mrlh`/`mrlv`/`mrld` box structures, 448-byte channel dictionary records, full/diff telemetry record encoding, two-stage unit conversion, and all known channel definitions |
 
 See [`ALIVEDRIVE_FORMAT.md`](ALIVEDRIVE_FORMAT.md) §18 for AliveDrive parser usage and the TypeScript implementation in `src/parser/`.
+
+### GoPro GPMF (`meta` / `gpmd`)
+
+GoPro Metadata Format embedded in GoPro HERO5+ cameras. Contains GPS at ~9 Hz, accelerometer and gyroscope at ~198 Hz, plus camera metadata. The format uses nested KLV (Key-Length-Value) binary structures within an MP4 `gpmd`-coded metadata track.
+
+| File | Description |
+|------|-------------|
+| [`GOPRO_GPMF_FORMAT.md`](GOPRO_GPMF_FORMAT.md) | Format overview — MP4 track detection, KLV structure, GPS5/ACCL/GYRO stream decoding, axis remapping, and resampling strategy |
+
+TypeScript implementation: `src/parser/gopro/`

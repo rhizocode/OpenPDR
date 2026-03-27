@@ -264,6 +264,7 @@ function getSessionFields(info: SessionInfo): Array<[string, string]> {
     .map(s => s!.replace(/[()]/g, ''))
   if (vehicleParts.length) fields.push(['Vehicle', vehicleParts.join(' ')])
   if (info.engine) fields.push(['Engine', info.engine])
+  if (info.camera) fields.push(['Camera', info.camera])
   if (info.timestamp) fields.push(['Date', formatTimestamp(info.timestamp)])
   return fields
 }
