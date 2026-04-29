@@ -1,6 +1,6 @@
 {
   "name": "openpdr-viewer",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "OpenPDR Viewer — PDR telemetry playback and analysis",
   "main": "out/main/index.js",
   "scripts": {
