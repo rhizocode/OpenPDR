@@ -23,7 +23,7 @@ import { decodePacket } from './telemetry-decoder'
 import { extractEvents } from './event-extractor'
 import { createTelemetryStore, writeRow, trimStore, interpolateGps } from '../shared/telemetry-store'
 import type { TelemetryStore } from '../shared/telemetry-store'
-import { detectLaps, detectLapsFromEvents } from './lap-detection'
+import { detectLapsFromEvents, detectLapsFromCrossings } from './lap-detection'
 import { detectFormat } from './format-detect'
 import { parseMarlSubBoxes } from './marlin/marlin-track'
 import { decodeMarlinSamples } from './marlin/marlin-decoder'
@@ -215,7 +215,8 @@ async function parseAliveDrive(
     ? trimmedStore.time[trimmedStore.length - 1] - trimmedStore.time[0]
     : 0
 
-  const lapData = detectLapsFromEvents(allEvents, trimmedStore) ?? detectLaps(trimmedStore)
+  const lapData = detectLapsFromEvents(allEvents, trimmedStore)
+    ?? { laps: [], trackLayout: null, hasLapData: false }
 
   return {
     store: trimmedStore,
@@ -285,12 +286,14 @@ async function parseMarlin(
   const estimatedRows = Math.ceil(durationEstimate * 10 * 1.2)
   const store = createTelemetryStore(Math.max(estimatedRows, 1000))
 
-  // Decode all samples and resample to 10 Hz
-  const totalRecords = await decodeMarlinSamples(
+  // Decode all samples and resample to 10 Hz; also collect S/F beacon
+  // crossings for lap detection.
+  const { totalRecords, beaconTimes } = await decodeMarlinSamples(
     source, sampleTable, channels, store, onProgress,
   )
 
-  console.log(`[marlin] Decoded ${totalRecords} records → ${store.length} rows at 10 Hz`)
+  console.log(`[marlin] Decoded ${totalRecords} records → ${store.length} rows at 10 Hz, ` +
+    `${beaconTimes.length} beacon crossing(s)`)
 
   onProgress?.('Finalizing...', 95)
 
@@ -335,8 +338,9 @@ async function parseMarlin(
     ? trimmedStore.time[trimmedStore.length - 1] - trimmedStore.time[0]
     : 0
 
-  // Lap detection — GPS density heuristic only (Marlin has no embedded events)
-  const lapData = detectLaps(trimmedStore)
+  // Lap detection — Marlin "Beacon" channel transitions (driver-set S/F line)
+  const lapData = detectLapsFromCrossings(beaconTimes, trimmedStore, 'beacon')
+    ?? { laps: [], trackLayout: null, hasLapData: false }
 
   onProgress?.('Complete', 100)
 

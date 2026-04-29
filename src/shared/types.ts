@@ -109,7 +109,7 @@ export interface LapData {
   laps: LapInfo[]
   trackLayout: TrackLayout | null
   hasLapData: boolean
-  detectionMethod?: 'events' | 'gps-density'
+  detectionMethod?: 'events' | 'beacon'
 }
 
 /** Version info from advi box (crosses IPC boundary in ParseResult) */

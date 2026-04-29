@@ -112,11 +112,20 @@ function decodeSample(data: Uint8Array): DecodedRecord[] {
   return records
 }
 
+/** Result of decoding all Marlin samples. */
+export interface MarlinDecodeResult {
+  /** Number of raw measurement records decoded across all samples. */
+  totalRecords: number
+  /** S/F crossing times in seconds: each transition of the "Beacon" channel. */
+  beaconTimes: number[]
+}
+
 /**
  * Decode all Marlin telemetry samples and resample to a 10 Hz grid.
  *
- * Writes directly into the pre-allocated TelemetryStore. Returns the
- * number of raw measurement records decoded (for diagnostics).
+ * Writes directly into the pre-allocated TelemetryStore. Also captures
+ * Beacon channel transitions (driver-configured S/F crossings) for use
+ * by lap detection.
  */
 export async function decodeMarlinSamples(
   source: PdrFileSource,
@@ -124,15 +133,23 @@ export async function decodeMarlinSamples(
   channels: Map<number, MarlinChannel>,
   store: TelemetryStore,
   onProgress?: ProgressCallback,
-): Promise<number> {
+): Promise<MarlinDecodeResult> {
   const sampleOffsets = getSampleOffsets(sampleTable)
   const totalSamples = Math.min(sampleOffsets.length, sampleTable.sampleSizes.length)
+
+  // Find the Beacon channel id so we can capture S/F crossings as we decode.
+  let beaconChannelId = -1
+  for (const [id, ch] of channels) {
+    if (ch.name === 'Beacon') { beaconChannelId = id; break }
+  }
 
   // Phase 1: Decode all samples into individual timestamped records.
   // Records within each sample are already chronological, and samples
   // are ordered, so the combined list is in timestamp order.
   const allRecords: DecodedRecord[] = []
   let totalRecords = 0
+  const beaconTimes: number[] = []
+  let lastBeaconRaw: number | undefined
 
   for (let i = 0; i < totalSamples; i++) {
     const offset = sampleOffsets[i]
@@ -150,6 +167,12 @@ export async function decodeMarlinSamples(
       if (rec.timestamp > 0) {
         allRecords.push(rec)
       }
+      // Beacon raw value increments on every S/F crossing. Capture
+      // each transition's timestamp.
+      if (rec.channelId === beaconChannelId && rec.rawValue !== lastBeaconRaw) {
+        beaconTimes.push(rec.timestamp / TICKS_PER_SECOND)
+        lastBeaconRaw = rec.rawValue
+      }
     }
 
     if (onProgress && (i % 100 === 0 || i === totalSamples - 1)) {
@@ -158,14 +181,14 @@ export async function decodeMarlinSamples(
     }
   }
 
-  if (allRecords.length === 0) return totalRecords
+  if (allRecords.length === 0) return { totalRecords, beaconTimes }
 
   // Phase 2: Build 10 Hz time grid with carry-forward interpolation.
   // Records are in chronological order. We walk the grid, absorbing
   // every record whose timestamp falls at or before each grid point.
 
   const lastTs = allRecords[allRecords.length - 1].timestamp
-  if (lastTs <= 0) return totalRecords
+  if (lastTs <= 0) return { totalRecords, beaconTimes }
 
   const numSteps = Math.floor(lastTs / INTERVAL_TICKS) + 1
 
@@ -220,5 +243,5 @@ export async function decodeMarlinSamples(
     }
   }
 
-  return totalRecords
+  return { totalRecords, beaconTimes }
 }

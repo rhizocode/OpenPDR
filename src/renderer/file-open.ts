@@ -89,8 +89,9 @@ async function openFile(filePath?: string): Promise<void> {
     // Seed HUD with first row so indicators aren't blank on load
     if (store.length > 0) setCurrentRow(getRow(store, 0))
     if (meta.lapData?.hasLapData) {
-      const method = meta.lapData.detectionMethod === 'events'
-        ? 'start/finish line events from device' : 'GPS density heuristic'
+      const method = meta.lapData.detectionMethod === 'beacon'
+        ? 'beacon channel from device'
+        : 'start/finish line events from device'
       dbg(`Laps detected: ${meta.lapData.laps.length} (${method})`)
     } else {
       dbg('No laps detected')
