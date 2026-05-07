@@ -58,6 +58,10 @@ const NS = 'http://www.w3.org/2000/svg'
 let primarySvg: SVGSVGElement | null = null
 // Track all managed SVG instances for config-change rebuilds
 const managedSvgs = new Set<SVGSVGElement>()
+// Per-SVG filter ID counter — each gauge needs a unique filter ID so that
+// hiding one (display:none) doesn't break filter rendering in another
+// gauge that happens to share the ID.
+let filterIdCounter = 0
 
 // ── Helpers: polar → cartesian, SVG arc path ──
 
@@ -200,10 +204,12 @@ export function buildGauge(svg: SVGSVGElement, cfg: RpmConfig): GaugeElements {
   }
   svg.appendChild(tickGroup)
 
-  // Drop shadow filter for text
+  // Drop shadow filter for text — unique ID per gauge so multiple gauges
+  // (compare A/B) can render filters independently even when one is hidden.
+  const filterId = `rpm-shadow-${++filterIdCounter}`
   const defs = createSvgEl('defs')
   const filter = createSvgEl('filter')
-  setAttrs(filter, { id: 'rpm-shadow', x: '-20%', y: '-20%', width: '140%', height: '140%' })
+  setAttrs(filter, { id: filterId, x: '-20%', y: '-20%', width: '140%', height: '140%' })
   const feDropShadow = createSvgEl('feDropShadow')
   setAttrs(feDropShadow, { dx: 0, dy: 1, stdDeviation: 2, 'flood-color': 'rgba(0,0,0,0.7)' })
   filter.appendChild(feDropShadow)
@@ -219,7 +225,7 @@ export function buildGauge(svg: SVGSVGElement, cfg: RpmConfig): GaugeElements {
     'text-anchor': 'middle', 'dominant-baseline': 'central',
     fill: '#fff', 'font-family': 'Consolas, monospace',
     'font-size': '36', 'font-weight': 'bold',
-    filter: 'url(#rpm-shadow)',
+    filter: `url(#${filterId})`,
   })
   rpmText.textContent = '0'
   svg.appendChild(rpmText)
@@ -231,7 +237,7 @@ export function buildGauge(svg: SVGSVGElement, cfg: RpmConfig): GaugeElements {
     'text-anchor': 'middle', 'dominant-baseline': 'central',
     fill: '#aaa', 'font-family': 'Consolas, monospace',
     'font-size': '16',
-    filter: 'url(#rpm-shadow)',
+    filter: `url(#${filterId})`,
   })
   rpmLabel.textContent = 'RPM'
   svg.appendChild(rpmLabel)

@@ -34,7 +34,7 @@ import {
 import type { LapInfo, LapData } from './types'
 import type { TelemetryStore } from '../shared/telemetry-store'
 import { createOverlayB, destroyOverlayB, applyOverlayConfigB, updateAnchorBBounds, populateSessionB } from './compare-overlay-b'
-import { getOverlayConfig } from './hud'
+import { getOverlayConfig, getOverlaysVisibleB, setOverlaysVisibleB } from './hud'
 import { formatLapTime } from './defaults'
 
 const pdr = window.pdr ?? null
@@ -44,6 +44,8 @@ const btnCompare = document.getElementById('btn-compare') as HTMLButtonElement
 const lapSelector = document.getElementById('lap-selector') as HTMLSelectElement
 const compareLapA = document.getElementById('compare-lap-a') as HTMLSelectElement
 const compareLapB = document.getElementById('compare-lap-b') as HTMLSelectElement
+const overlaysToggleA = document.getElementById('overlays-toggle-a') as HTMLLabelElement
+const overlaysToggleB = document.getElementById('overlays-toggle-b') as HTMLLabelElement
 const videoContainer = document.getElementById('video-container') as HTMLDivElement
 
 // Track file paths for display
@@ -270,10 +272,14 @@ function applyCompareLayout(config: CompareConfig, idxA: number, idxB: number): 
   labelB.textContent = `B: ${config.fileNameB}`
   videoContainer.appendChild(labelB)
 
-  // Switch toolbar: hide lap-selector, show compare selects
+  // Switch toolbar: hide lap-selector, show compare selects + B-side overlay toggle
   lapSelector.style.display = 'none'
   compareLapA.style.display = ''
   compareLapB.style.display = ''
+  overlaysToggleA.classList.add('compare-a')
+  overlaysToggleB.style.display = ''
+  const cbB = overlaysToggleB.querySelector('input') as HTMLInputElement
+  cbB.checked = getOverlaysVisibleB()
 
   populateCompareSelect(compareLapA, config.lapDataA, idxA)
   populateCompareSelect(compareLapB, config.lapDataB, idxB)
@@ -323,6 +329,8 @@ function removeCompareLayout(): void {
   }
   compareLapA.style.display = 'none'
   compareLapB.style.display = 'none'
+  overlaysToggleA.classList.remove('compare-a')
+  overlaysToggleB.style.display = 'none'
 
   btnCompare.classList.remove('active')
   btnCompare.textContent = 'Compare'
@@ -361,6 +369,11 @@ export function initCompareUI(): void {
   compareLapB.addEventListener('change', () => {
     setCompareLapB(parseInt(compareLapB.value, 10))
   })
+
+  // Wire B-side overlay toggle (A-side toggle is wired in initHud)
+  const cbB = overlaysToggleB.querySelector('input') as HTMLInputElement
+  cbB.checked = getOverlaysVisibleB()
+  cbB.addEventListener('change', () => setOverlaysVisibleB(cbB.checked))
 
   // Wire exit cleanup
   onCompareExit(removeCompareLayout)

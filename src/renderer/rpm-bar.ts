@@ -20,6 +20,11 @@ const BAR_X = 0, BAR_Y = 4, BAR_W = W, BAR_H = 20
 const NS = 'http://www.w3.org/2000/svg'
 
 let primarySvg: SVGSVGElement | null = null
+// Unique filter ID per build so multiple bars (compare A/B) don't share IDs
+// — sharing causes the B-side text to disappear when A's container is hidden,
+// because both text elements reference the same filter and one of them is
+// inside a `display:none` ancestor.
+let filterIdCounter = 0
 
 interface BarElements {
   svg: SVGSVGElement
@@ -55,10 +60,11 @@ export function buildBar(svg: SVGSVGElement, cfg: RpmConfig): BarElements {
   const greenW = BAR_W * redlinePct
   const redW = BAR_W - greenW
 
-  // Drop shadow filter for labels
+  // Drop shadow filter for labels — unique ID per bar (see filterIdCounter above)
+  const filterId = `rpm-bar-shadow-${++filterIdCounter}`
   const defs = createSvgEl('defs')
   const filter = createSvgEl('filter')
-  setAttrs(filter, { id: 'rpm-bar-shadow', x: '-20%', y: '-20%', width: '140%', height: '140%' })
+  setAttrs(filter, { id: filterId, x: '-20%', y: '-20%', width: '140%', height: '140%' })
   const feShadow = createSvgEl('feDropShadow')
   setAttrs(feShadow, { dx: 0, dy: 1, stdDeviation: 1.5, 'flood-color': 'rgba(0,0,0,0.8)' })
   filter.appendChild(feShadow)
@@ -124,7 +130,7 @@ export function buildBar(svg: SVGSVGElement, cfg: RpmConfig): BarElements {
         'text-anchor': 'middle', 'dominant-baseline': 'central',
         fill: 'rgba(255,255,255,0.85)', 'font-family': 'Consolas, monospace',
         'font-size': '12', 'font-weight': 'bold',
-        filter: 'url(#rpm-bar-shadow)',
+        filter: `url(#${filterId})`,
       })
       label.textContent = (r / 1000).toString()
       tickGroup.appendChild(label)

@@ -7,7 +7,8 @@
  */
 
 import type { BrakeMode } from './defaults'
-import { getOverlaysVisible, setOverlaysVisible } from './hud'
+import { getOverlaysVisibleA, setOverlaysVisibleA, getOverlaysVisibleB, setOverlaysVisibleB } from './hud'
+import { isCompareMode } from './compare-state'
 import { saveRpmConfig, getRpmConfig, loadRpmConfig, getDetectedEngine, isManualOverride, setManualOverride } from './rpm-gauge'
 import { avSyncOffset, setAvSyncOffset } from './state'
 import { STORAGE_KEYS } from './storage-keys'
@@ -16,16 +17,22 @@ import { getBrakeMode, setBrakeMode } from './defaults'
 export function initOverlaySettings(): void {
   loadRpmConfig()
 
-  // Keyboard shortcut: H to toggle all HUD (master visibility)
+  // Keyboard shortcut: H to toggle HUD visibility.
+  // In single mode toggles A; in compare mode toggles both sides together
+  // based on the A side's current state (so they stay in sync after H).
   document.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'SELECT') return
 
     if (e.code === 'KeyH') {
-      const newVisible = !getOverlaysVisible()
-      setOverlaysVisible(newVisible)
-      // Keep the master toggle checkbox in sync
-      const masterCb = document.getElementById('overlay-master-toggle') as HTMLInputElement | null
-      if (masterCb) masterCb.checked = newVisible
+      const newVisible = !getOverlaysVisibleA()
+      setOverlaysVisibleA(newVisible)
+      const cbA = document.querySelector<HTMLInputElement>('#overlays-toggle-a input')
+      if (cbA) cbA.checked = newVisible
+      if (isCompareMode()) {
+        setOverlaysVisibleB(newVisible)
+        const cbB = document.querySelector<HTMLInputElement>('#overlays-toggle-b input')
+        if (cbB) cbB.checked = newVisible
+      }
     }
   })
 }

@@ -10,7 +10,6 @@ import { buildEditPanel } from './edit-mode'
 import { buildRpmPanel, buildAvSyncPanel, buildFontSizePanel, buildBrakeDisplayPanel } from './overlay-settings'
 import { buildExportPanel } from './export-menu'
 import { triggerUpdateCheck } from './update-ui'
-import { getOverlaysVisible, setOverlaysVisible } from './hud'
 
 interface Section {
   id: string
@@ -48,26 +47,6 @@ export function initGearMenu(): void {
 
     header.appendChild(chevron)
     header.appendChild(labelSpan)
-
-    // Master overlay toggle checkbox on the Overlays section header
-    if (sec.id === 'overlays') {
-      const spacer = document.createElement('span')
-      spacer.style.flex = '1'
-      header.appendChild(spacer)
-
-      const masterCb = document.createElement('input')
-      masterCb.type = 'checkbox'
-      masterCb.id = 'overlay-master-toggle'
-      masterCb.checked = getOverlaysVisible()
-      masterCb.title = 'Toggle all overlays on/off'
-      masterCb.addEventListener('click', (e) => {
-        e.stopPropagation() // Don't trigger accordion toggle
-      })
-      masterCb.addEventListener('change', () => {
-        setOverlaysVisible(masterCb.checked)
-      })
-      header.appendChild(masterCb)
-    }
 
     const content = document.createElement('div')
     content.className = 'gear-section-content'

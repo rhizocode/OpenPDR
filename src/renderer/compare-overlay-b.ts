@@ -10,12 +10,13 @@
  */
 
 import type { TelemetryRow, OverlayConfig, OverlayKey, SessionInfo } from './types'
-import { drawRpmGauge } from './rpm-gauge'
+import { drawRpmGauge, buildGauge } from './rpm-gauge'
+import { buildBar } from './rpm-bar'
 import { rpmConfigB } from './compare-state'
 import { drawGForce } from './gforce-ball'
 import { drawSteering } from './steering'
 import { resolveGearDisplay, formatTimestamp, getBrakeDisplay } from './defaults'
-import { getOverlaysVisible } from './hud'
+import { getOverlaysVisibleB } from './hud'
 
 // ── B-side DOM refs (created on enter, nulled on exit) ──
 let anchorB: HTMLDivElement | null = null
@@ -68,6 +69,14 @@ export function createOverlayB(videoContainer: HTMLDivElement, overlayAnchorA: H
   gforceSvgB = anchorB.querySelector('#gforce-svg-b') as unknown as SVGSVGElement
   steeringSvgB = anchorB.querySelector('#steering-svg-b') as unknown as SVGSVGElement
   steeringLabelB = anchorB.querySelector('#steering-label-b') as HTMLSpanElement
+
+  // Re-build cloned RPM SVGs so they get unique filter IDs. The cloned text
+  // elements still point at the A-side filter (filter="url(#rpm-shadow-N)"),
+  // and that filter goes inert when A is hidden — making the B-side text
+  // disappear. Re-building swaps in fresh, side-local IDs.
+  if (rpmSvgB) buildGauge(rpmSvgB, rpmConfigB)
+  const rpmBarSvgB = anchorB.querySelector('#hud-rpm-bar-b svg') as SVGSVGElement | null
+  if (rpmBarSvgB) buildBar(rpmBarSvgB, rpmConfigB)
 
   // Remove track map from B — same track for both sides
   anchorB.querySelector('#hud-trackMap-b')?.remove()
@@ -159,7 +168,7 @@ export function applyOverlayConfigB(config: OverlayConfig): void {
   for (const el of anchorB.querySelectorAll<HTMLElement>('.hud-element[data-overlay]')) {
     const key = el.dataset.overlay as OverlayKey
     if (key in config) {
-      el.style.display = (getOverlaysVisible() && config[key]) ? (OVERLAY_DISPLAY[key] ?? 'block') : 'none'
+      el.style.display = (getOverlaysVisibleB() && config[key]) ? (OVERLAY_DISPLAY[key] ?? 'block') : 'none'
     }
   }
 }

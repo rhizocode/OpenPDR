@@ -370,7 +370,8 @@ html, body {
 }
 
 /* Gear number sits above the arrow */
-#hud-gear-value {
+#hud-gear-value,
+#hud-gear-value-b {
   position: relative;
   top: 2px;
   z-index: 1;
@@ -1166,9 +1167,35 @@ html, body {
   color: var(--text-secondary);
 }
 
-#overlay-master-toggle {
+/* Top-bar Show Overlays toggle (per side in compare mode) */
+.overlays-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 0.75em;
+  font-family: Consolas, monospace;
+  cursor: pointer;
+  user-select: none;
+}
+
+.overlays-toggle input {
   cursor: pointer;
   margin: 0;
+}
+
+.overlays-toggle.compare-a {
+  border-color: #00e5ff;
+  color: #00e5ff;
+}
+
+.overlays-toggle.compare-b {
+  border-color: #ff4081;
+  color: #ff4081;
 }
 
 .gear-section-content {
@@ -1849,6 +1876,7 @@ html, body {
   }
   #toolbar > #lap-selector,
   #toolbar > .compare-select,
+  #toolbar > .overlays-toggle,
   #toolbar > .toolbar-spacer,
   #toolbar > #toolbar-center,
   #toolbar > #fps-counter,
@@ -1905,6 +1933,12 @@ html, body {
     order: 5;
     flex-basis: 100%;
     max-width: 100%;
+  }
+
+  /* Overlays toggle: visible alongside lap selectors when shown */
+  #toolbar.mobile-open > .overlays-toggle:not([style*="display: none"]):not([style*="display:none"]) {
+    display: inline-flex !important;
+    order: 5;
   }
 
   /* Row 5: Layout Edit Mode button */

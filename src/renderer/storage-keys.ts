@@ -19,4 +19,5 @@ export const STORAGE_KEYS = {
   brakeMode: 'pdr-brake-mode',
   trackMapConfig: 'pdr-trackmap-config',
   overlaysVisible: 'pdr-overlays-visible',
+  overlaysVisibleB: 'pdr-overlays-visible-b',
 } as const

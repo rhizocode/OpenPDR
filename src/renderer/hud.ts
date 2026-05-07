@@ -49,15 +49,26 @@ function loadOverlayConfig(): OverlayConfig {
 }
 
 // ── Master overlay visibility (independent of per-overlay config) ──
-const OVERLAYS_VISIBLE_KEY = STORAGE_KEYS.overlaysVisible
-let overlaysVisible: boolean = localStorage.getItem(OVERLAYS_VISIBLE_KEY) !== 'false'
+// Per-side: A controls single-view and the A side in compare mode; B controls
+// the B side in compare mode.
+const OVERLAYS_VISIBLE_A_KEY = STORAGE_KEYS.overlaysVisible
+const OVERLAYS_VISIBLE_B_KEY = STORAGE_KEYS.overlaysVisibleB
+let overlaysVisibleA: boolean = localStorage.getItem(OVERLAYS_VISIBLE_A_KEY) !== 'false'
+let overlaysVisibleB: boolean = localStorage.getItem(OVERLAYS_VISIBLE_B_KEY) !== 'false'
 
-export function getOverlaysVisible(): boolean { return overlaysVisible }
+export function getOverlaysVisibleA(): boolean { return overlaysVisibleA }
+export function getOverlaysVisibleB(): boolean { return overlaysVisibleB }
 
-export function setOverlaysVisible(visible: boolean): void {
-  overlaysVisible = visible
-  localStorage.setItem(OVERLAYS_VISIBLE_KEY, visible ? 'true' : 'false')
+export function setOverlaysVisibleA(visible: boolean): void {
+  overlaysVisibleA = visible
+  localStorage.setItem(OVERLAYS_VISIBLE_A_KEY, visible ? 'true' : 'false')
   applyOverlayConfig(overlayConfig)
+}
+
+export function setOverlaysVisibleB(visible: boolean): void {
+  overlaysVisibleB = visible
+  localStorage.setItem(OVERLAYS_VISIBLE_B_KEY, visible ? 'true' : 'false')
+  applyOverlayConfigB(overlayConfig)
 }
 
 export function getOverlayConfig(): OverlayConfig {
@@ -233,7 +244,7 @@ export function applyOverlayConfig(config: OverlayConfig): void {
   for (const el of videoContainer.querySelectorAll<HTMLElement>('.hud-element[data-overlay]')) {
     const key = el.dataset.overlay as OverlayKey
     if (key in config) {
-      if (overlaysVisible && config[key]) {
+      if (overlaysVisibleA && config[key]) {
         el.classList.add('active')
       } else {
         el.classList.remove('active')
@@ -302,4 +313,16 @@ export function initHud(): void {
 
   // Session info: populate once when telemetry is loaded
   onTelemetryLoad(() => populateSessionOverlay())
+
+  // Toolbar overlay toggle (A side / single-view).
+  // The B-side toggle is wired by compare-ui when compare mode enters.
+  const toggleA = document.getElementById('overlays-toggle-a') as HTMLLabelElement | null
+  const cbA = toggleA?.querySelector('input') as HTMLInputElement | null
+  if (toggleA && cbA) {
+    cbA.checked = overlaysVisibleA
+    cbA.addEventListener('change', () => setOverlaysVisibleA(cbA.checked))
+  }
+  onTelemetryLoad(() => {
+    if (toggleA) toggleA.style.display = ''
+  })
 }
