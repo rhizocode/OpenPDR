@@ -19,7 +19,7 @@ import type { PdrFileSource } from '../shared/file-source'
 import { readMoovBox, findBox, readBoxHeader, scanForBox, parseMvhdTimescale } from './mp4-boxes'
 import { findAdcoTrack, parseAdvi, parseAdop, parseAdeg } from './adco-track'
 import { parseSampleTable, getSampleOffsets, parseTrackTiming } from './sample-table'
-import { decodePacket } from './telemetry-decoder'
+import { decodePacket, isCompletePacket } from './telemetry-decoder'
 import { extractEvents } from './event-extractor'
 import { createTelemetryStore, writeRow, trimStore, interpolateGps } from '../shared/telemetry-store'
 import type { TelemetryStore } from '../shared/telemetry-store'
@@ -159,18 +159,56 @@ async function parseAliveDrive(
   const store = createTelemetryStore(estimatedRows)
   const allEvents: EmbeddedEvent[] = []
 
-  let timeBase = 0
+  // The first sample in the data track is typically a small init/config packet
+  // that we skip (size < 100). However it still occupies time in the MP4
+  // timeline (usually 1 second via stts), pushing all real telemetry timestamps
+  // forward. We subtract the first real packet's sampleTime so telemetry time 0
+  // aligns with video time 0.
+  //
+  // `null` rather than 0: when a file has no init packet its first real packet
+  // sits at sampleTime 0, and a falsy-0 check would skip it and latch onto the
+  // *second* packet instead, shifting the whole session a second early.
+  let timeBase: number | null = null
+
+  // Recovered/repaired PDR files can carry a damaged stsz whose sample sizes
+  // under-report the real packet lengths.  The packets themselves are intact in
+  // the mdat, so a short declared size silently truncates a second of telemetry
+  // and leaves a hole.  When a size looks short, re-read the full dominant
+  // packet length — bounded by the next sample's offset so we can never stray
+  // into a neighbouring sample — and use it only if it validates as a complete
+  // packet.  Healthy files hit this path only for the init packet, which fails
+  // validation and falls through unchanged.
+  const canRecover = dominantPktSize >= 3000
+  let recoveredPackets = 0
 
   for (let i = 0; i < sampleOffsets.length; i++) {
     const offset = sampleOffsets[i]
-    const size = sampleTable.sampleSizes[i]
+    const declaredSize = sampleTable.sampleSizes[i]
 
-    if (size < 100) continue
+    let packet: Uint8Array | undefined
 
-    const packet = await source.read(offset, size)
+    if (canRecover && declaredSize < dominantPktSize) {
+      // Bound the read by the next sample so we can never pull in a
+      // neighbouring packet, and never extend the final sample — a recording
+      // cut off mid-second legitimately ends short.
+      const nextOffset = sampleOffsets[i + 1]
+      const room = nextOffset !== undefined && nextOffset > offset ? nextOffset - offset : 0
+      if (room >= dominantPktSize) {
+        const candidate = await source.read(offset, dominantPktSize)
+        if (candidate.length >= dominantPktSize && isCompletePacket(candidate, hz100Size, declaredSize)) {
+          packet = candidate
+          recoveredPackets++
+        }
+      }
+    }
+
+    if (!packet) {
+      if (declaredSize < 100) continue // skip init packet
+      packet = await source.read(offset, declaredSize)
+    }
 
     const rawBaseTime = trackTiming ? trackTiming.sampleTimes[i] : i
-    if (!timeBase && rawBaseTime > 0) timeBase = rawBaseTime
+    if (timeBase === null) timeBase = rawBaseTime
     const baseTime = rawBaseTime - timeBase
 
     const rows = decodePacket(packet, baseTime, i, hz100Size)
@@ -189,6 +227,13 @@ async function parseAliveDrive(
       const pct = 10 + Math.round((i / sampleOffsets.length) * 85)
       onProgress?.('Decoding telemetry...', pct)
     }
+  }
+
+  if (recoveredPackets > 0) {
+    console.warn(
+      `parsePdrFile: stsz under-reported ${recoveredPackets} of ${sampleTable.sampleCount} ` +
+      `telemetry sample sizes; recovered the full packets from the mdat`
+    )
   }
 
   onProgress?.('Complete', 100)

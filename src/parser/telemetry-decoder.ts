@@ -15,6 +15,113 @@ import {
   enumLabel,
 } from './constants'
 
+/** Return the 10 GPS-latitude offsets for a given 100Hz frame size. */
+export function latOffsetsFor(hz100Size: number): number[] {
+  return hz100Size === 25 ? LAT_OFFSETS_V4 : LAT_OFFSETS_LEGACY
+}
+
+/**
+ * Sanity-check a 50Hz sub-frame.
+ *
+ * The vehicle-frame accelerometer is gravity-dominated, so its Z axis sits in a
+ * very narrow band.  Measured across the sample library, 99.98% of genuine
+ * sub-frames land in [0.2, 3.0] g; the rest are the zeroed first packet of a
+ * session.  That tight target makes this a strong test against foreign bytes.
+ */
+function validate50Hz(f: Hz50Frame): boolean {
+  if (!Number.isFinite(f.accel_device_x_g)) return false
+  if (!Number.isFinite(f.accel_device_y_g)) return false
+  if (!Number.isFinite(f.accel_device_z_g)) return false
+  if (!Number.isFinite(f.accel_vehicle_x_g)) return false
+  if (!Number.isFinite(f.accel_vehicle_y_g)) return false
+  if (!Number.isFinite(f.accel_vehicle_z_g)) return false
+  return f.accel_vehicle_z_g >= 0.2 && f.accel_vehicle_z_g <= 3.0
+}
+
+/**
+ * Test whether `packet` is a structurally complete telemetry packet.
+ *
+ * Used to validate a packet re-read at the dominant sample size when stsz
+ * under-reports its length (see parsePdrFile).  Two independent tests:
+ *
+ * 1. All ten 10 Hz frames present with a sane GPS block — a misaligned read
+ *    fails on the fix-quality / satellite-count bytes or on the position jump.
+ * 2. Every 100 Hz and 50 Hz sub-frame that extends past `declaredSize` — i.e.
+ *    every sub-frame built from bytes we are *adding* — must decode to
+ *    physically plausible values.  This is what catches a genuinely-short
+ *    packet followed by unrelated bytes, which test 1 alone misses when the
+ *    truncation falls past the last GPS block.
+ *
+ * `declaredSize` of 0 checks the whole packet.
+ */
+export function isCompletePacket(
+  packet: Uint8Array,
+  hz100Size: number,
+  declaredSize = 0,
+): boolean {
+  const offsets = latOffsetsFor(hz100Size)
+  const dv = dataViewFor(packet)
+
+  let refLat = 0
+  let refLon = 0
+  let haveRef = false
+
+  for (const latOff of offsets) {
+    if (latOff + 26 > packet.length) return false
+
+    const lat = readInt32BE(packet, latOff, dv) * DEG_SCALE
+    const lon = readInt32BE(packet, latOff + 4, dv) * DEG_SCALE
+    if (!(Math.abs(lat) <= 90) || !(Math.abs(lon) <= 180)) return false
+
+    if (packet[latOff + 16] > 8) return false   // gps_fix_quality
+    if (packet[latOff + 17] > 64) return false  // gps_satellites
+
+    if (!haveRef) {
+      refLat = lat; refLon = lon; haveRef = true
+    } else if (Math.abs(lat - refLat) > 0.01 || Math.abs(lon - refLon) > 0.01) {
+      // One packet spans a single second; a car cannot cover ~1 km in that time.
+      return false
+    }
+  }
+
+  // Walk the sub-frame groups exactly as decodePacket does, checking every
+  // sub-frame whose bytes reach past declaredSize.
+  //
+  // Genuine packets do contain the occasional implausible sub-frame (~0.02% of
+  // 231k measured across the sample library), so tolerate one failure once
+  // enough sub-frames have been checked for the test to still have power.
+  // Foreign bytes fail nearly every sub-frame, so this costs no discrimination.
+  const hz1Size = hz100Size === 25 ? 34 : 31
+  const groupSize = 2 * hz100Size + 24
+  let checked = 0
+  let failed = 0
+
+  for (let frameIdx = 0; frameIdx < 10; frameIdx++) {
+    let subFrameStart = offsets[frameIdx] + 26
+    if (frameIdx % 2 === 0) subFrameStart += 4
+    if (frameIdx === 0 || frameIdx === 5) subFrameStart += 1
+    if (frameIdx === 0) subFrameStart += hz1Size
+
+    for (let g = 0; g < 5; g++) {
+      const gOff = subFrameStart + g * groupSize
+      for (const off of [gOff, gOff + hz100Size]) {
+        if (off + hz100Size <= declaredSize || off + hz100Size > packet.length) continue
+        const f = decode100HzFrame(packet, off, hz100Size, dv)
+        checked++
+        if (!f || !validate100Hz(f)) failed++
+      }
+      const off50 = gOff + 2 * hz100Size
+      if (off50 + 24 <= declaredSize || off50 + 24 > packet.length) continue
+      const f50 = decode50HzFrame(packet, off50, dv)
+      checked++
+      if (!f50 || !validate50Hz(f50)) failed++
+    }
+  }
+
+  if (checked === 0) return false
+  return failed <= (checked >= 8 ? 1 : 0)
+}
+
 /** Preamble size at the start of each data packet. */
 const PREAMBLE_SIZE = 14
 
